@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspace=@kinetix-sentry/types && npm run build --workspace=@kinetix-sentry/protocol && npm run build --workspace=@kinetix-sentry/validation && npm run build --workspace=@kinetix-sentry/crypto && npm run build --workspace=@kinetix-sentry/backend",
+    "start": "node backend/dist/index.js",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "dev:backend": "npm run dev --workspace=@kinetix-sentry/backend"
