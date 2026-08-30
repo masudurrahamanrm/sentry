@@ -3,11 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "description": "Kinetix Control + Sentry Personal Device Communication Monorepo",
+  "main": "backend/dist/index.js",
   "workspaces": [
     "backend",
     "packages/*"
   ],
   "scripts": {
+    "postinstall": "npm run build",
     "build": "npm run build --workspace=@kinetix-sentry/types && npm run build --workspace=@kinetix-sentry/protocol && npm run build --workspace=@kinetix-sentry/validation && npm run build --workspace=@kinetix-sentry/crypto && npm run build --workspace=@kinetix-sentry/backend",
     "start": "node backend/dist/index.js",
     "test": "npm run test --workspaces --if-present",
