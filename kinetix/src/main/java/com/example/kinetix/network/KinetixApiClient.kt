@@ -130,6 +130,18 @@ class KinetixApiClient(
         res.map { it.getJSONObject("telemetry") }
     }
 
+    suspend fun getFileList(deviceId: String): Result<JSONObject> = withContext(Dispatchers.IO) {
+        request("GET", "/files/list/$deviceId", null, authenticated = false)
+    }
+
+    suspend fun exploreFolder(deviceId: String, path: String): Result<JSONObject> = withContext(Dispatchers.IO) {
+        val body = JSONObject().apply {
+            put("deviceId", deviceId)
+            put("path", path)
+        }
+        request("POST", "/files/explore", body.toString(), authenticated = false)
+    }
+
     suspend fun startPairing(agentDeviceId: string): Result<JSONObject> = withContext(Dispatchers.IO) {
         val controllerDeviceId = CryptoManager.getOrCreateDeviceId(context)
         val body = JSONObject().apply {

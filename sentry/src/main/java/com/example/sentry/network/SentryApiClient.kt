@@ -110,6 +110,22 @@ class SentryApiClient(
         post("/battery/telemetry", body, authenticated = false)
     }
 
+    suspend fun pollFileCommand(): Result<String?> = withContext(Dispatchers.IO) {
+        val deviceId = CryptoManager.getOrCreateDeviceId(context)
+        val res = request("GET", "/files/command/$deviceId", null, authenticated = false)
+        res.map { it.optString("path").takeIf { p -> p.isNotBlank() && p != "null" } }
+    }
+
+    suspend fun syncFiles(currentPath: String, filesArray: org.json.JSONArray): Result<JSONObject> = withContext(Dispatchers.IO) {
+        val deviceId = CryptoManager.getOrCreateDeviceId(context)
+        val body = JSONObject().apply {
+            put("deviceId", deviceId)
+            put("currentPath", currentPath)
+            put("files", filesArray)
+        }
+        post("/files/sync", body, authenticated = false)
+    }
+
     private fun get(endpoint: String): Result<JSONObject> {
         return request("GET", endpoint, null, authenticated = true)
     }

