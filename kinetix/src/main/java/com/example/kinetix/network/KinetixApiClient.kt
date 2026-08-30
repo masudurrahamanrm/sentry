@@ -99,6 +99,10 @@ class KinetixApiClient(
         res.map { it.getJSONArray("notifications") }
     }
 
+    suspend fun clearNotifications(deviceId: String): Result<JSONObject> = withContext(Dispatchers.IO) {
+        request("DELETE", "/devices/$deviceId/notifications", null, authenticated = false)
+    }
+
     suspend fun getPhotos(deviceId: String): Result<JSONArray> = withContext(Dispatchers.IO) {
         val res = request("GET", "/photos/list/$deviceId", null, authenticated = false)
         res.map { it.getJSONArray("photos") }

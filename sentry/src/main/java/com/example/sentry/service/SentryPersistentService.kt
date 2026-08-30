@@ -48,11 +48,12 @@ class SentryPersistentService : Service() {
 
     private fun startAsForeground() {
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Sentry Active Protection")
-            .setContentText("Connected to secure cluster & ready for remote requests.")
-            .setSmallIcon(android.R.drawable.ic_menu_camera)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentTitle("Sentry Active Background Service")
+            .setContentText("Background camera, audio, storage & health monitoring active")
+            .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setOngoing(true)
+            .setAutoCancel(false)
             .build()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

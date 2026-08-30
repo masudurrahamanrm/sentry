@@ -91,6 +91,16 @@ export async function getNotificationsHandler(req: Request, res: Response, next:
   }
 }
 
+export async function clearNotificationsHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const deviceId = req.params.deviceId;
+    liveNotificationsMap.set(deviceId, []);
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // In-memory live photos buffer
 const livePhotosMap = new Map<string, Array<any>>();
 // Pending remote camera trigger commands

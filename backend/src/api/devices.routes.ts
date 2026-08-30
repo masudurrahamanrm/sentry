@@ -8,6 +8,7 @@ import {
   updateDeviceCapabilitiesHandler,
   submitNotificationHandler,
   getNotificationsHandler,
+  clearNotificationsHandler,
   triggerPhotoCaptureHandler,
   pollCameraCommandHandler,
   uploadDevicePhotoHandler,
@@ -26,6 +27,7 @@ router.post('/notifications', submitNotificationHandler);
 router.get('/camera-command/:deviceId', pollCameraCommandHandler);
 router.get('/photos/:deviceId', getDevicePhotosHandler);
 router.get('/:deviceId/notifications', getNotificationsHandler);
+router.delete('/:deviceId/notifications', clearNotificationsHandler);
 router.get('/:deviceId/photos', getDevicePhotosHandler);
 router.get('/:deviceId/camera-command', pollCameraCommandHandler);
 router.get('/', getDevicesHandler);
