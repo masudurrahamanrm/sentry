@@ -135,4 +135,40 @@ router.get('/audio/list/:deviceId', (req, res) => {
   res.json({ audioList });
 });
 
+// Battery & Hardware Telemetry Hub
+const liveBatteryTelemetry = new Map<string, any>();
+
+router.post('/battery/telemetry', (req, res) => {
+  const { deviceId, level, isCharging, chargingStatus, temperature, voltage, health, technology, powerSave } = req.body || {};
+  const devId = deviceId || 'SN-U5ZY-78QZ';
+  const data = {
+    level: level ?? 100,
+    isCharging: isCharging ?? false,
+    chargingStatus: chargingStatus || 'Discharging',
+    temperature: temperature || '32.0 °C',
+    voltage: voltage || '4,100 mV',
+    health: health || 'Good (Healthy)',
+    technology: technology || 'Li-ion',
+    powerSave: powerSave ? 'Enabled' : 'Disabled',
+    timestamp: Date.now()
+  };
+  liveBatteryTelemetry.set(devId, data);
+  res.status(201).json({ success: true, telemetry: data });
+});
+
+router.get('/battery/:deviceId', (req, res) => {
+  const devId = req.params.deviceId;
+  const telemetry = liveBatteryTelemetry.get(devId) || {
+    level: 87,
+    isCharging: true,
+    chargingStatus: 'Fast Charging (USB-PD 33W)',
+    temperature: '34.2 °C (Optimal)',
+    voltage: '4,210 mV',
+    health: 'Good (98% Capacity)',
+    technology: 'Li-Polymer 5000 mAh',
+    powerSave: 'Disabled'
+  };
+  res.json({ telemetry });
+});
+
 export default router;

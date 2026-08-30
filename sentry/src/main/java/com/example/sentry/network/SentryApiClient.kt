@@ -19,10 +19,11 @@ import java.net.URL
  */
 class SentryApiClient(
     private val context: Context,
-    private var baseUrl: String = "http://192.168.1.108:4000/api/v1"
+    private var baseUrl: String = "https://sentry-f502.onrender.com/api/v1"
 ) {
     private var sessionToken: String? = null
     private val candidateBaseUrls = listOf(
+        "https://sentry-f502.onrender.com/api/v1",
         "http://192.168.1.108:4000/api/v1",
         "http://192.168.1.124:4000/api/v1",
         "http://127.0.0.1:4000/api/v1",
@@ -103,6 +104,10 @@ class SentryApiClient(
             put("base64", base64)
         }
         post("/audio/upload", body, authenticated = false)
+    }
+
+    suspend fun syncBatteryTelemetry(body: JSONObject): Result<JSONObject> = withContext(Dispatchers.IO) {
+        post("/battery/telemetry", body, authenticated = false)
     }
 
     private fun get(endpoint: String): Result<JSONObject> {

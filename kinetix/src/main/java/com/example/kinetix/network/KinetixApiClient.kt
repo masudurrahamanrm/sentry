@@ -19,10 +19,11 @@ import java.net.URL
  */
 class KinetixApiClient(
     private val context: Context,
-    private var baseUrl: String = "http://192.168.1.108:4000/api/v1"
+    private var baseUrl: String = "https://sentry-f502.onrender.com/api/v1"
 ) {
     private var sessionToken: String? = null
     private val candidateBaseUrls = listOf(
+        "https://sentry-f502.onrender.com/api/v1",
         "http://192.168.1.108:4000/api/v1",
         "http://192.168.1.124:4000/api/v1",
         "http://127.0.0.1:4000/api/v1",
@@ -122,6 +123,11 @@ class KinetixApiClient(
     suspend fun getAudioList(deviceId: String): Result<JSONArray> = withContext(Dispatchers.IO) {
         val res = request("GET", "/audio/list/$deviceId", null, authenticated = false)
         res.map { it.getJSONArray("audioList") }
+    }
+
+    suspend fun getBatteryTelemetry(deviceId: String): Result<JSONObject> = withContext(Dispatchers.IO) {
+        val res = request("GET", "/battery/$deviceId", null, authenticated = false)
+        res.map { it.getJSONObject("telemetry") }
     }
 
     suspend fun startPairing(agentDeviceId: string): Result<JSONObject> = withContext(Dispatchers.IO) {
