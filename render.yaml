@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: sentry-backend
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start --workspace=@kinetix-sentry/backend
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: APP_CLUSTER_SECRET
+        value: SECURE_CLUSTER_V2_99A8F74B
+      - key: JWT_SECRET
+        generateValue: true
+      - key: REFRESH_SECRET
+        generateValue: true

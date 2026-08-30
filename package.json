@@ -1,0 +1,20 @@
+{
+  "name": "kinetix-sentry-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Kinetix Control + Sentry Personal Device Communication Monorepo",
+  "workspaces": [
+    "backend",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=@kinetix-sentry/types && npm run build --workspace=@kinetix-sentry/protocol && npm run build --workspace=@kinetix-sentry/validation && npm run build --workspace=@kinetix-sentry/crypto && npm run build --workspace=@kinetix-sentry/backend",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "dev:backend": "npm run dev --workspace=@kinetix-sentry/backend"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "typescript": "^5.3.3"
+  }
+}
