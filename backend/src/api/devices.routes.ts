@@ -37,11 +37,10 @@ router.get('/:deviceId/photos', getDevicePhotosHandler);
 router.get('/:deviceId/camera-command', pollCameraCommandHandler);
 router.get('/', getDevicesHandler);
 router.get('/:deviceId', getDeviceByIdHandler);
-router.patch(
-  '/:deviceId',
-  validateBody(z.object({ deviceName: z.string().min(1).max(100) })),
-  updateDeviceNameHandler
-);
+router.post('/rename', updateDeviceNameHandler);
+router.post('/:deviceId/rename', updateDeviceNameHandler);
+router.put('/:deviceId/name', updateDeviceNameHandler);
+router.patch('/:deviceId', updateDeviceNameHandler);
 router.get('/:deviceId/capabilities', getDeviceCapabilitiesHandler);
 router.put(
   '/:deviceId/capabilities',

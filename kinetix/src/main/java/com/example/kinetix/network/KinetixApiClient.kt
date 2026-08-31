@@ -174,6 +174,15 @@ class KinetixApiClient(
         request("GET", "/files/content/$deviceId?path=$encoded", null, authenticated = false)
     }
 
+    suspend fun updateDeviceName(deviceId: String, newName: String): Result<JSONObject> = withContext(Dispatchers.IO) {
+        val body = JSONObject().apply {
+            put("deviceId", deviceId)
+            put("deviceName", newName)
+            put("name", newName)
+        }
+        request("POST", "/devices/rename", body.toString(), authenticated = false)
+    }
+
     suspend fun startPairing(agentDeviceId: string): Result<JSONObject> = withContext(Dispatchers.IO) {
         val controllerDeviceId = CryptoManager.getOrCreateDeviceId(context)
         val body = JSONObject().apply {

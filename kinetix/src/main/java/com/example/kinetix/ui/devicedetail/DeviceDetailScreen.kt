@@ -5,10 +5,12 @@ import android.util.Base64
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -40,7 +42,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun DeviceDetailScreen(
     deviceId: String,
@@ -72,6 +74,9 @@ fun DeviceDetailScreen(
     var filesEnabled by remember { mutableStateOf(true) }
     var batteryEnabled by remember { mutableStateOf(true) }
     var showInfoModal by remember { mutableStateOf(false) }
+    var showRenameModal by remember { mutableStateOf(false) }
+    var renameInputText by remember { mutableStateOf("") }
+    var isRenaming by remember { mutableStateOf(false) }
     var actionMessage by remember { mutableStateOf<String?>(null) }
     var activeBottomTab by remember { mutableIntStateOf(0) }
 
@@ -258,18 +263,47 @@ fun DeviceDetailScreen(
                     }
                 }
 
-                // Device Name & Status Column
+                // Device Name & Status Column (Tap / Double-tap / Long press to Rename)
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 4.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .combinedClickable(
+                            onClick = {
+                                renameInputText = deviceName
+                                showRenameModal = true
+                            },
+                            onLongClick = {
+                                renameInputText = deviceName
+                                showRenameModal = true
+                            },
+                            onDoubleClick = {
+                                renameInputText = deviceName
+                                showRenameModal = true
+                            }
+                        )
                 ) {
-                    Text(
-                        text = deviceName,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 17.sp,
-                        color = Color(0xFF1D1B20),
-                        maxLines = 1
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = deviceName,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 17.sp,
+                            color = Color(0xFF1D1B20),
+                            maxLines = 1
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            Icons.Outlined.Edit,
+                            contentDescription = "Rename Device",
+                            tint = Color(0xFF9E9E9E),
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(top = 2.dp)
@@ -872,6 +906,94 @@ fun DeviceDetailScreen(
                 }
             }
         }
+    }
+
+    // Device Rename Dialog
+    if (showRenameModal) {
+        AlertDialog(
+            onDismissRequest = { if (!isRenaming) showRenameModal = false },
+            icon = {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFEDE7F6)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null, tint = Color(0xFF673AB7), modifier = Modifier.size(24.dp))
+                }
+            },
+            title = {
+                Text("Rename Device", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = Color(0xFF1D1B20))
+            },
+            text = {
+                Column {
+                    Text(
+                        "Set a custom friendly name for this device. It will update across your dashboard immediately.",
+                        fontSize = 13.sp,
+                        color = Color(0xFF757575)
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    OutlinedTextField(
+                        value = renameInputText,
+                        onValueChange = { renameInputText = it },
+                        label = { Text("Device Name") },
+                        placeholder = { Text("e.g. Work Phone, Galaxy S24") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF673AB7),
+                            focusedLabelColor = Color(0xFF673AB7)
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val newName = renameInputText.trim()
+                        if (newName.isNotBlank()) {
+                            coroutineScope.launch {
+                                isRenaming = true
+                                withContext(Dispatchers.IO) {
+                                    val client = com.example.kinetix.network.KinetixApiClient(context)
+                                    client.updateDeviceName(deviceId, newName)
+                                }
+                                deviceName = newName
+                                actionMessage = "Device renamed to \"$newName\""
+                                isRenaming = false
+                                showRenameModal = false
+                                delay(2500)
+                                actionMessage = null
+                            }
+                        }
+                    },
+                    enabled = !isRenaming && renameInputText.isNotBlank(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF673AB7))
+                ) {
+                    if (isRenaming) {
+                        CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Saving...")
+                    } else {
+                        Text("Save Name", fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showRenameModal = false },
+                    enabled = !isRenaming,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Cancel")
+                }
+            },
+            shape = RoundedCornerShape(24.dp),
+            containerColor = Color.White
+        )
     }
 }
 

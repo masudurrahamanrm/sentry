@@ -30,8 +30,14 @@ export async function getDeviceByIdHandler(req: Request, res: Response, next: Ne
 
 export async function updateDeviceNameHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const device = await deviceService.updateFriendlyName(req.params.deviceId, req.body.deviceName);
-    res.json({ device });
+    const devId = req.params.deviceId || req.body.deviceId;
+    const name = req.body.deviceName || req.body.name;
+    if (!devId || !name) {
+      res.status(400).json({ error: { message: 'deviceId and deviceName are required' } });
+      return;
+    }
+    const device = await deviceService.updateFriendlyName(devId, name);
+    res.json({ success: true, device });
   } catch (err) {
     next(err);
   }
