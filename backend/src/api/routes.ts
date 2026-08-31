@@ -139,9 +139,12 @@ router.get('/audio/list/:deviceId', (req, res) => {
 const liveBatteryTelemetry = new Map<string, any>();
 
 router.post('/battery/telemetry', (req, res) => {
-  const { deviceId, percentage, level, isCharging, chargingStatus, temperature, voltage, health, technology, powerSave, networkType, networkStatus, uptime, wallpaper } = req.body || {};
+  const { deviceId, deviceName, percentage, level, isCharging, chargingStatus, temperature, voltage, health, technology, powerSave, networkType, networkStatus, uptime, wallpaper, hardware } = req.body || {};
   const devId = deviceId || 'SN-U5ZY-78QZ';
+  const existing = liveBatteryTelemetry.get(devId);
   const data = {
+    deviceId: devId,
+    deviceName: existing?.deviceName || deviceName || 'realme RMX5101 (Sentry)',
     level: level ?? percentage ?? 100,
     percentage: percentage ?? level ?? 100,
     isCharging: isCharging ?? false,
@@ -154,7 +157,8 @@ router.post('/battery/telemetry', (req, res) => {
     networkType: networkType || '5G+',
     networkStatus: networkStatus || 'Strong',
     uptime: uptime || '2h 14m',
-    wallpaper: wallpaper || null,
+    wallpaper: wallpaper || existing?.wallpaper || null,
+    hardware: hardware || existing?.hardware || null,
     timestamp: Date.now()
   };
   liveBatteryTelemetry.set(devId, data);
@@ -163,22 +167,37 @@ router.post('/battery/telemetry', (req, res) => {
 
 router.get('/battery/:deviceId', (req, res) => {
   const devId = req.params.deviceId;
-  const telemetry = liveBatteryTelemetry.get(devId) || {
-    level: 44,
-    percentage: 44,
-    isCharging: false,
-    chargingStatus: 'Good',
-    temperature: '34.2 °C',
-    voltage: '4,210 mV',
-    health: 'Good',
-    technology: 'Li-ion',
-    powerSave: 'Disabled',
-    networkType: '5G+',
-    networkStatus: 'Strong',
-    uptime: '2h 14m',
-    wallpaper: null
-  };
-  res.json({ telemetry });
+  let telemetry = liveBatteryTelemetry.get(devId);
+  if (!telemetry) {
+    for (const [k, v] of liveBatteryTelemetry.entries()) {
+      if (k.toLowerCase() === devId.toLowerCase() || devId.includes(k) || k.includes(devId)) {
+        telemetry = v;
+        break;
+      }
+    }
+  }
+  if (!telemetry && liveBatteryTelemetry.size > 0) {
+    telemetry = Array.from(liveBatteryTelemetry.values()).pop();
+  }
+  res.json({
+    telemetry: telemetry || {
+      deviceId: devId,
+      deviceName: 'realme RMX5101 (Sentry)',
+      level: 44,
+      percentage: 44,
+      isCharging: false,
+      chargingStatus: 'Good',
+      temperature: '34.2 °C',
+      voltage: '4,210 mV',
+      health: 'Good',
+      technology: 'Li-ion',
+      powerSave: 'Disabled',
+      networkType: '5G+',
+      networkStatus: 'Strong',
+      uptime: '2h 14m',
+      wallpaper: null
+    }
+  });
 });
 
 // File & Storage Explorer Hub

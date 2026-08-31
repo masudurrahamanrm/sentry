@@ -59,20 +59,24 @@ fun DeviceDetailScreen(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val coroutineScope = rememberCoroutineScope()
-    var deviceName by remember { mutableStateOf("realme RMX5101 (Sentry)") }
+
+    // 0ms Instant Load from Persistent Local Cache
+    val cachedTel = remember(deviceId) { com.example.kinetix.cache.KinetixDeviceCache.getCachedTelemetry(context, deviceId) }
+    val cachedCaps = remember(deviceId) { com.example.kinetix.cache.KinetixDeviceCache.getCachedCapabilities(context, deviceId) }
+    var deviceName by remember(deviceId) { mutableStateOf(com.example.kinetix.cache.KinetixDeviceCache.getDeviceName(context, deviceId)) }
     var osVersion by remember { mutableStateOf("Android 16") }
     var isOnline by remember { mutableStateOf(true) }
-    var batteryPercentage by remember { mutableIntStateOf(44) }
-    var batteryStatusText by remember { mutableStateOf("Good") }
-    var networkType by remember { mutableStateOf("5G+") }
-    var uptimeText by remember { mutableStateOf("2h 14m") }
-    var wallpaperBase64 by remember { mutableStateOf<String?>(null) }
-    var cameraEnabled by remember { mutableStateOf(true) }
-    var locationEnabled by remember { mutableStateOf(true) }
-    var notificationEnabled by remember { mutableStateOf(true) }
-    var micEnabled by remember { mutableStateOf(true) }
-    var filesEnabled by remember { mutableStateOf(true) }
-    var batteryEnabled by remember { mutableStateOf(true) }
+    var batteryPercentage by remember(deviceId) { mutableIntStateOf(cachedTel.percentage) }
+    var batteryStatusText by remember(deviceId) { mutableStateOf(cachedTel.status) }
+    var networkType by remember(deviceId) { mutableStateOf(cachedTel.networkType) }
+    var uptimeText by remember(deviceId) { mutableStateOf(cachedTel.uptime) }
+    var wallpaperBase64 by remember(deviceId) { mutableStateOf(com.example.kinetix.cache.KinetixDeviceCache.getWallpaper(context, deviceId)) }
+    var cameraEnabled by remember(deviceId) { mutableStateOf(cachedCaps.camera) }
+    var locationEnabled by remember(deviceId) { mutableStateOf(cachedCaps.location) }
+    var notificationEnabled by remember(deviceId) { mutableStateOf(cachedCaps.notifications) }
+    var micEnabled by remember(deviceId) { mutableStateOf(cachedCaps.mic) }
+    var filesEnabled by remember(deviceId) { mutableStateOf(cachedCaps.files) }
+    var batteryEnabled by remember(deviceId) { mutableStateOf(cachedCaps.battery) }
     var showInfoModal by remember { mutableStateOf(false) }
     var showRenameModal by remember { mutableStateOf(false) }
     var renameInputText by remember { mutableStateOf("") }
@@ -92,7 +96,11 @@ fun DeviceDetailScreen(
                             val item = arr.getJSONObject(i)
                             val id = item.optString("deviceId", item.optString("device_id", ""))
                             if (id == deviceId) {
-                                deviceName = item.optString("deviceName", item.optString("device_name", "realme RMX5101 (Sentry)"))
+                                val fetchedName = item.optString("deviceName", item.optString("device_name", ""))
+                                if (fetchedName.isNotBlank()) {
+                                    deviceName = fetchedName
+                                    com.example.kinetix.cache.KinetixDeviceCache.saveDeviceName(context, deviceId, fetchedName)
+                                }
                                 osVersion = item.optString("osVersion", item.optString("os_version", "Android 16"))
                                 isOnline = item.optString("status", "ONLINE") == "ONLINE"
                                 val caps = item.optJSONObject("capabilities")
@@ -103,6 +111,10 @@ fun DeviceDetailScreen(
                                     micEnabled = caps.optBoolean("microphone", true)
                                     filesEnabled = caps.optBoolean("files", true)
                                     batteryEnabled = caps.optBoolean("battery", true)
+                                    com.example.kinetix.cache.KinetixDeviceCache.saveCapabilities(
+                                        context, deviceId, cameraEnabled, locationEnabled,
+                                        notificationEnabled, micEnabled, filesEnabled, batteryEnabled
+                                    )
                                 }
                                 break
                             }
@@ -115,6 +127,11 @@ fun DeviceDetailScreen(
                 if (battRes.isSuccess) {
                     val bObj = battRes.getOrNull()
                     if (bObj != null) {
+                        val serverDevName = bObj.optString("deviceName", "")
+                        if (serverDevName.isNotBlank()) {
+                            deviceName = serverDevName
+                            com.example.kinetix.cache.KinetixDeviceCache.saveDeviceName(context, deviceId, serverDevName)
+                        }
                         batteryPercentage = bObj.optInt("percentage", bObj.optInt("level", 44))
                         val isCharging = bObj.optBoolean("isCharging", false)
                         val status = bObj.optString("chargingStatus", "")
@@ -124,7 +141,11 @@ fun DeviceDetailScreen(
                         val wall = bObj.optString("wallpaper", "")
                         if (wall.isNotBlank()) {
                             wallpaperBase64 = wall
+                            com.example.kinetix.cache.KinetixDeviceCache.saveWallpaper(context, deviceId, wall)
                         }
+                        com.example.kinetix.cache.KinetixDeviceCache.saveTelemetry(
+                            context, deviceId, batteryPercentage, batteryStatusText, networkType, uptimeText
+                        )
                     }
                 }
             }
@@ -961,6 +982,7 @@ fun DeviceDetailScreen(
                                     client.updateDeviceName(deviceId, newName)
                                 }
                                 deviceName = newName
+                                com.example.kinetix.cache.KinetixDeviceCache.saveDeviceName(context, deviceId, newName)
                                 actionMessage = "Device renamed to \"$newName\""
                                 isRenaming = false
                                 showRenameModal = false

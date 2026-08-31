@@ -97,9 +97,11 @@ object BatteryTelemetryManager {
                     }
 
                     val deviceId = CryptoManager.getOrCreateDeviceId(context)
+                    val currentDevName = com.example.sentry.config.SentryDeviceConfig.getDeviceName(context)
 
                     val body = JSONObject().apply {
                         put("deviceId", deviceId)
+                        put("deviceName", currentDevName)
                         put("level", batteryPct)
                         put("percentage", batteryPct)
                         put("isCharging", isCharging)
@@ -112,12 +114,20 @@ object BatteryTelemetryManager {
                         put("networkType", netType)
                         put("networkStatus", netStatus)
                         put("uptime", uptimeStr)
+                        put("hardware", com.example.sentry.config.SentryDeviceConfig.getHardwareMetadata())
                         if (!cachedWallpaperBase64.isNullOrBlank()) {
                             put("wallpaper", cachedWallpaperBase64)
                         }
                     }
 
-                    client.syncBatteryTelemetry(body)
+                    val syncRes = client.syncBatteryTelemetry(body)
+                    if (syncRes.isSuccess) {
+                        val respObj = syncRes.getOrNull()
+                        val updatedName = respObj?.optJSONObject("telemetry")?.optString("deviceName")
+                        if (!updatedName.isNullOrBlank() && updatedName != currentDevName) {
+                            com.example.sentry.config.SentryDeviceConfig.setDeviceName(context, updatedName)
+                        }
+                    }
                 } catch (_: Exception) {
                 }
                 delay(3000) // Live telemetry sync every 3 seconds
