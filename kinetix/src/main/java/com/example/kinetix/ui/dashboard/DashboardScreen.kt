@@ -290,7 +290,7 @@ fun DashboardScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(bottom = padding.calculateBottomPadding())
                 .background(Color(0xFF1A1C1E))
         ) {
             val currentTarget = selectedDevice ?: pairedDevices.firstOrNull()
@@ -299,7 +299,7 @@ fun DashboardScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.56f)
+                    .fillMaxHeight(0.58f)
             ) {
                 AndroidView(
                     factory = { ctx ->
@@ -347,13 +347,14 @@ fun DashboardScreen(
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // Road Name Street Tag Overlay (Top Center)
+                // Road Name Street Tag Overlay (Top Center with statusBarsPadding)
                 Surface(
                     color = Color.Black.copy(alpha = 0.78f),
                     shape = RoundedCornerShape(20.dp),
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .padding(top = 44.dp)
+                        .statusBarsPadding()
+                        .padding(top = 12.dp)
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
@@ -375,11 +376,12 @@ fun DashboardScreen(
                     }
                 }
 
-                // Top-Right Floating Controls (Profile Avatar & Layer Switcher)
+                // Top-Right Floating Controls (Profile Avatar & Layer Switcher with statusBarsPadding)
                 Column(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(top = 16.dp, end = 16.dp),
+                        .statusBarsPadding()
+                        .padding(top = 12.dp, end = 16.dp),
                     horizontalAlignment = Alignment.End,
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
