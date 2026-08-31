@@ -67,22 +67,43 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
     fun triggerCapture(cam: String) {
         coroutineScope.launch {
             isCapturing = true
-            captureMessage = "Connecting to $cam camera..."
-            kotlinx.coroutines.delay(1000)
-            val newSnapshot = PhotoItem(
-                name = "SNAPSHOT_${cam.uppercase()}_${(1000..9999).random()}.jpg",
-                date = "Just now (Live Capture)",
-                size = "4.8 MB"
-            )
-            photos.add(0, newSnapshot)
-            captureMessage = "Photo captured successfully!"
-            isCapturing = false
-
-            // Sync with backend asynchronously
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            captureMessage = "Sending remote capture command to ${if (cam.equals("front", true)) "Front" else "Rear"} camera..."
+            
+            val sendResult = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 val client = com.example.kinetix.network.KinetixApiClient(context)
                 client.capturePhoto(deviceId, cam)
             }
+
+            if (sendResult.isFailure) {
+                captureMessage = "Failed to send command. Check device connection."
+                isCapturing = false
+                return@launch
+            }
+
+            captureMessage = "Target device capturing photo..."
+            
+            // Poll for uploaded snapshot with base64 over the next 10 seconds
+            var capturedReceived = false
+            for (attempt in 1..6) {
+                kotlinx.coroutines.delay(1800)
+                fetchPhotos()
+                val latest = photos.firstOrNull()
+                if (latest != null && latest.base64 != null) {
+                    capturedReceived = true
+                    break
+                }
+            }
+
+            if (capturedReceived) {
+                captureMessage = "Photo received successfully!"
+            } else {
+                fetchPhotos()
+                captureMessage = "Photo captured. Refreshed gallery."
+            }
+            isCapturing = false
+
+            kotlinx.coroutines.delay(3500)
+            captureMessage = null
         }
     }
 
