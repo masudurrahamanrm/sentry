@@ -13,9 +13,13 @@ import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -31,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -77,6 +82,15 @@ fun DashboardScreen(
     var activeTab by remember { mutableStateOf(0) }
     var actionFeedbackMessage by remember { mutableStateOf<String?>(null) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
+
+    var isBottomSheetExpanded by remember { mutableStateOf(true) }
+    var sheetDragOffset by remember { mutableFloatStateOf(0f) }
+
+    val sheetHeightFraction by animateFloatAsState(
+        targetValue = if (isBottomSheetExpanded) 0.50f else 0.11f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
+        label = "sheetHeight"
+    )
 
     // Current device real GPS coordinates
     var currentDeviceLat by remember { mutableDoubleStateOf(22.5726) }
@@ -295,11 +309,11 @@ fun DashboardScreen(
         ) {
             val currentTarget = selectedDevice ?: pairedDevices.firstOrNull()
 
-            // 1. Uber Multi-Device Map (Top 54% of Screen)
+            // 1. Uber Multi-Device Map (Expands up to 93% when sheet is swiped down)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.58f)
+                    .fillMaxHeight(if (isBottomSheetExpanded) 0.58f else 0.93f)
             ) {
                 AndroidView(
                     factory = { ctx ->
@@ -530,12 +544,27 @@ fun DashboardScreen(
                 }
             }
 
-            // 2. Google Find My Device Draggable Bottom Sheet (Bottom 48% of Screen)
+            // 2. Google Find My Device Draggable Bottom Sheet
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.48f)
-                    .align(Alignment.BottomCenter),
+                    .fillMaxHeight(sheetHeightFraction)
+                    .align(Alignment.BottomCenter)
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onDragEnd = {
+                                if (sheetDragOffset > 30f) {
+                                    isBottomSheetExpanded = false
+                                } else if (sheetDragOffset < -30f) {
+                                    isBottomSheetExpanded = true
+                                }
+                                sheetDragOffset = 0f
+                            },
+                            onVerticalDrag = { _, dragAmount ->
+                                sheetDragOffset += dragAmount
+                            }
+                        )
+                    },
                 shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
                 color = Color.White,
                 shadowElevation = 16.dp
@@ -543,19 +572,26 @@ fun DashboardScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                        .padding(horizontal = 20.dp, vertical = 10.dp)
                 ) {
-                    // Draggable Pill Handle
+                    // Draggable Pill Handle Touch Target
                     Box(
                         modifier = Modifier
-                            .width(36.dp)
-                            .height(4.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFE0E0E0))
-                            .align(Alignment.CenterHorizontally)
-                    )
+                            .fillMaxWidth()
+                            .clickable { isBottomSheetExpanded = !isBottomSheetExpanded }
+                            .padding(vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(40.dp)
+                                .height(5.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFD0D0D0))
+                        )
+                    }
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     if (showDeviceDetails && selectedDevice != null) {
                         // --- DETAILS VIEW ---
