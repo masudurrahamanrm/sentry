@@ -131,17 +131,17 @@ class KinetixApiClient(
 
     suspend fun getBatteryTelemetry(deviceId: String): Result<JSONObject> = withContext(Dispatchers.IO) {
         val res = request("GET", "/battery/$deviceId", null, authenticated = false)
-        res.map { it.getJSONObject("telemetry") }
+        res.map { it.optJSONObject("telemetry") ?: JSONObject() }
     }
 
     suspend fun getDeviceLocation(deviceId: String): Result<JSONObject> = withContext(Dispatchers.IO) {
         val res = request("GET", "/location/$deviceId", null, authenticated = false)
-        res.map { it.getJSONObject("location") }
+        res.map { it.optJSONObject("location") ?: JSONObject() }
     }
 
     suspend fun getAllLocations(): Result<JSONObject> = withContext(Dispatchers.IO) {
         val res = request("GET", "/location/all", null, authenticated = false)
-        res.map { it.getJSONObject("locations") }
+        res.map { it.optJSONObject("locations") ?: JSONObject() }
     }
 
     suspend fun getFileList(deviceId: String): Result<JSONObject> = withContext(Dispatchers.IO) {

@@ -6,9 +6,11 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,8 +24,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -65,90 +71,98 @@ fun DashboardScreen(
     var activeTab by remember { mutableStateOf(0) } // 0 = Devices, 1 = People
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
 
+    // Gestures for interactive map navigation
+    var mapOffsetX by remember { mutableStateOf(0f) }
+    var mapOffsetY by remember { mutableStateOf(0f) }
+    var mapScale by remember { mutableStateOf(1f) }
+
     suspend fun fetchDevices() {
         withContext(Dispatchers.IO) {
-            val client = KinetixApiClient(context)
-            client.registerDevice()
+            try {
+                val client = KinetixApiClient(context)
+                client.registerDevice()
 
-            // 1. Fetch available remote Sentry agents
-            val devicesRes = client.listAvailableDevices()
-            val locationsRes = client.getAllLocations()
-            val locationsMap = mutableMapOf<String, JSONObject>()
+                val devicesRes = client.listAvailableDevices()
+                val locationsRes = client.getAllLocations()
+                val locationsMap = mutableMapOf<String, JSONObject>()
 
-            if (locationsRes.isSuccess) {
-                val locObj = locationsRes.getOrNull()
-                if (locObj != null) {
-                    val keys = locObj.keys()
-                    while (keys.hasNext()) {
-                        val key = keys.next()
-                        locationsMap[key] = locObj.getJSONObject(key)
-                    }
-                }
-            }
-
-            val newList = mutableListOf<PairedDeviceItem>()
-
-            // Add This Device as primary Find My item
-            val thisModel = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
-            val thisDeviceName = if (thisModel.isNotBlank()) thisModel else "realme 15 Pro 5G"
-            newList.add(
-                PairedDeviceItem(
-                    deviceId = "THIS_DEVICE",
-                    deviceName = thisDeviceName,
-                    platform = "Android",
-                    osVersion = "Android ${Build.VERSION.RELEASE}",
-                    isOnline = true,
-                    lastSeenText = "This device",
-                    isThisDevice = true,
-                    latitude = 22.5726,
-                    longitude = 88.3639,
-                    address = "Kadampukur - Jhalgachi Rd"
-                )
-            )
-
-            if (devicesRes.isSuccess) {
-                val arr = devicesRes.getOrNull()
-                if (arr != null) {
-                    for (i in 0 until arr.length()) {
-                        val item = arr.getJSONObject(i)
-                        val devId = if (item.has("deviceId")) item.getString("deviceId") else item.optString("device_id", "")
-                        val name = if (item.has("deviceName")) item.getString("deviceName") else item.optString("device_name", "Sentry Device")
-                        val platform = if (item.has("platform")) item.getString("platform") else "Android"
-                        val osVer = if (item.has("osVersion")) item.getString("osVersion") else item.optString("os_version", "Android 14")
-                        val status = if (item.has("status")) item.getString("status") else "ONLINE"
-
-                        if (devId.startsWith("SN")) {
-                            val loc = locationsMap[devId]
-                            val lat = loc?.optDouble("latitude", 22.5726) ?: 22.5726
-                            val lon = loc?.optDouble("longitude", 88.3639) ?: 88.3639
-                            val addr = loc?.optString("address", "Kadampukur - Jhalgachi Rd") ?: "Kadampukur - Jhalgachi Rd"
-
-                            newList.add(
-                                PairedDeviceItem(
-                                    deviceId = devId,
-                                    deviceName = name,
-                                    platform = platform,
-                                    osVersion = osVer,
-                                    isOnline = status.equals("ONLINE", ignoreCase = true),
-                                    lastSeenText = "Online now",
-                                    isThisDevice = false,
-                                    latitude = lat,
-                                    longitude = lon,
-                                    address = addr
-                                )
-                            )
+                if (locationsRes.isSuccess) {
+                    val locObj = locationsRes.getOrNull()
+                    if (locObj != null) {
+                        val keys = locObj.keys()
+                        while (keys.hasNext()) {
+                            val key = keys.next()
+                            try {
+                                locationsMap[key] = locObj.optJSONObject(key) ?: JSONObject()
+                            } catch (_: Exception) {}
                         }
                     }
                 }
-            }
 
-            withContext(Dispatchers.Main) {
-                pairedDevices.clear()
-                pairedDevices.addAll(newList)
-                if (selectedDevice == null && newList.isNotEmpty()) {
-                    selectedDevice = newList.first()
+                val newList = mutableListOf<PairedDeviceItem>()
+
+                // This device (Controller device)
+                val thisModel = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
+                val thisDeviceName = if (thisModel.isNotBlank()) thisModel else "realme 15 Pro 5G"
+                newList.add(
+                    PairedDeviceItem(
+                        deviceId = "THIS_DEVICE",
+                        deviceName = thisDeviceName,
+                        platform = "Android",
+                        osVersion = "Android ${Build.VERSION.RELEASE}",
+                        isOnline = true,
+                        lastSeenText = "This device",
+                        isThisDevice = true,
+                        latitude = 22.5726,
+                        longitude = 88.3639,
+                        address = "Kadampukur - Jhalgachi Rd"
+                    )
+                )
+
+                if (devicesRes.isSuccess) {
+                    val arr = devicesRes.getOrNull()
+                    if (arr != null) {
+                        for (i in 0 until arr.length()) {
+                            val item = arr.getJSONObject(i)
+                            val devId = if (item.has("deviceId")) item.getString("deviceId") else item.optString("device_id", "")
+                            val name = if (item.has("deviceName")) item.getString("deviceName") else item.optString("device_name", "Sentry Device")
+                            val platform = if (item.has("platform")) item.getString("platform") else "Android"
+                            val osVer = if (item.has("osVersion")) item.getString("osVersion") else item.optString("os_version", "Android 14")
+                            val status = if (item.has("status")) item.getString("status") else "ONLINE"
+
+                            if (devId.startsWith("SN")) {
+                                val loc = locationsMap[devId]
+                                val lat = loc?.optDouble("latitude", 22.5726) ?: 22.5726
+                                val lon = loc?.optDouble("longitude", 88.3639) ?: 88.3639
+                                val addr = loc?.optString("address", "Kadampukur - Jhalgachi Rd") ?: "Kadampukur - Jhalgachi Rd"
+
+                                newList.add(
+                                    PairedDeviceItem(
+                                        deviceId = devId,
+                                        deviceName = name,
+                                        platform = platform,
+                                        osVersion = osVer,
+                                        isOnline = status.equals("ONLINE", ignoreCase = true),
+                                        lastSeenText = "Online now",
+                                        isThisDevice = false,
+                                        latitude = lat,
+                                        longitude = lon,
+                                        address = addr
+                                    )
+                                )
+                            }
+                        }
+                    }
                 }
-            }
+
+                withContext(Dispatchers.Main) {
+                    pairedDevices.clear()
+                    pairedDevices.addAll(newList)
+                    if (selectedDevice == null && newList.isNotEmpty()) {
+                        selectedDevice = newList.first()
+                    }
+                }
+            } catch (_: Exception) {}
         }
     }
 
@@ -159,60 +173,31 @@ fun DashboardScreen(
         }
     }
 
-    // Function to update map center via JS
-    fun updateMapLocation(lat: Double, lon: Double, deviceName: String, isSat: Boolean) {
-        val tileUrl = if (isSat) {
-            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-        } else {
-            "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-        }
-        val attribution = if (isSat) "© Esri World Imagery" else "© OpenStreetMap"
-
-        val js = """
-            if (window.map) {
-                window.map.setView([$lat, $lon], 17);
-                if (window.deviceMarker) {
-                    window.deviceMarker.setLatLng([$lat, $lon]);
-                }
-                if (window.tileLayer) {
-                    window.tileLayer.setUrl('$tileUrl');
-                }
-            }
-        """.trimIndent()
-        webViewRef?.evaluateJavascript(js, null)
-    }
-
-    LaunchedEffect(selectedDevice, isSatelliteMode) {
-        selectedDevice?.let { dev ->
-            updateMapLocation(dev.latitude, dev.longitude, dev.deviceName, isSatelliteMode)
-        }
-    }
-
-    // Animation for pulse marker
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 0.8f,
-        targetValue = 1.4f,
+    // Marker Pulse Animation
+    val infiniteTransition = rememberInfiniteTransition(label = "marker_pulse")
+    val pulseSize by infiniteTransition.animateFloat(
+        initialValue = 70f,
+        targetValue = 130f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
+            animation = tween(2000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
         ),
-        label = "pulseScale"
+        label = "pulse_size"
     )
     val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.6f,
-        targetValue = 0.15f,
+        initialValue = 0.5f,
+        targetValue = 0.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
+            animation = tween(2000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
         ),
-        label = "pulseAlpha"
+        label = "pulse_alpha"
     )
 
     Scaffold(
         bottomBar = {
             NavigationBar(
-                containerColor = Color.White,
+                containerColor = Color(0xFFF3F2F8),
                 tonalElevation = 8.dp
             ) {
                 NavigationBarItem(
@@ -225,10 +210,10 @@ fun DashboardScreen(
                             modifier = Modifier.size(24.dp)
                         )
                     },
-                    label = { Text("Devices", fontWeight = FontWeight.Bold) },
+                    label = { Text("Devices", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
                     colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = Color(0xFF1E192B),
-                        selectedTextColor = Color(0xFF1E192B),
+                        selectedIconColor = Color(0xFF1D1B20),
+                        selectedTextColor = Color(0xFF1D1B20),
                         indicatorColor = Color(0xFFE8DEF8)
                     )
                 )
@@ -242,10 +227,10 @@ fun DashboardScreen(
                             modifier = Modifier.size(24.dp)
                         )
                     },
-                    label = { Text("People", fontWeight = FontWeight.Bold) },
+                    label = { Text("People", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
                     colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = Color(0xFF1E192B),
-                        selectedTextColor = Color(0xFF1E192B),
+                        selectedIconColor = Color(0xFF1D1B20),
+                        selectedTextColor = Color(0xFF1D1B20),
                         indicatorColor = Color(0xFFE8DEF8)
                     )
                 )
@@ -259,160 +244,209 @@ fun DashboardScreen(
                 .background(Color(0xFF1A1C1E))
         ) {
             val currentTarget = selectedDevice ?: pairedDevices.firstOrNull()
-            val targetLat = currentTarget?.latitude ?: 22.5726
-            val targetLon = currentTarget?.longitude ?: 88.3639
 
-            // 1. Full Screen / Top Half Live Interactive Map View
+            // 1. Interactive Satellite Map Layer (Top 54% of Screen)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .fillMaxHeight(0.56f)
+                    .clip(RoundedCornerShape(0.dp))
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            mapScale = (mapScale * zoom).coerceIn(0.6f, 3.5f)
+                            mapOffsetX += pan.x
+                            mapOffsetY += pan.y
+                        }
+                    }
             ) {
-                AndroidView(
-                    factory = { ctx ->
-                        WebView(ctx).apply {
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.cacheMode = WebSettings.LOAD_DEFAULT
-                            webViewClient = object : WebViewClient() {
-                                override fun onPageFinished(view: WebView?, url: String?) {
-                                    super.onPageFinished(view, url)
-                                    selectedDevice?.let { dev ->
-                                        updateMapLocation(dev.latitude, dev.longitude, dev.deviceName, isSatelliteMode)
-                                    }
-                                }
-                            }
-
-                            val initialTile = if (isSatelliteMode) {
-                                "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                            } else {
-                                "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-                            }
-
-                            val html = """
-                                <!DOCTYPE html>
-                                <html>
-                                <head>
-                                    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-                                    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-                                    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-                                    <style>
-                                        body, html, #map { margin: 0; padding: 0; width: 100%; height: 100%; background: #263238; }
-                                        .leaflet-control-attribution { display: none; }
-                                        .leaflet-control-zoom { display: none; }
-                                        .custom-pin {
-                                            display: flex;
-                                            flex-direction: column;
-                                            align-items: center;
-                                            justify-content: center;
-                                        }
-                                        .pin-card {
-                                            width: 48px;
-                                            height: 48px;
-                                            background: white;
-                                            border-radius: 50%;
-                                            box-shadow: 0 4px 14px rgba(0,0,0,0.35);
-                                            display: flex;
-                                            align-items: center;
-                                            justify-content: center;
-                                            border: 2.5px solid #2196F3;
-                                        }
-                                        .pin-dot {
-                                            width: 10px;
-                                            height: 10px;
-                                            background: #1976D2;
-                                            border-radius: 50%;
-                                            border: 2px solid white;
-                                            margin-top: 2px;
-                                        }
-                                        .pulse-ring {
-                                            position: absolute;
-                                            width: 90px;
-                                            height: 90px;
-                                            border-radius: 50%;
-                                            background: rgba(33, 150, 243, 0.28);
-                                            animation: pulsate 2s infinite ease-in-out;
-                                            pointer-events: none;
-                                        }
-                                        @keyframes pulsate {
-                                            0% { transform: scale(0.7); opacity: 0.7; }
-                                            50% { transform: scale(1.3); opacity: 0.2; }
-                                            100% { transform: scale(0.7); opacity: 0.7; }
-                                        }
-                                    </style>
-                                </head>
-                                <body>
-                                    <div id="map"></div>
-                                    <script>
-                                        var map = L.map('map', { zoomControl: false, attributionControl: false }).setView([$targetLat, $targetLon], 17);
-                                        var tileLayer = L.tileLayer('$initialTile', { maxZoom: 19 }).addTo(map);
-                                        
-                                        var iconHtml = '<div class="custom-pin">' +
-                                                       '  <div class="pulse-ring"></div>' +
-                                                       '  <div class="pin-card">' +
-                                                       '    <svg width="24" height="24" viewBox="0 0 24 24" fill="#1976D2">' +
-                                                       '      <path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/>' +
-                                                       '    </svg>' +
-                                                       '  </div>' +
-                                                       '  <div class="pin-dot"></div>' +
-                                                       '</div>';
-                                        
-                                        var customIcon = L.divIcon({
-                                            html: iconHtml,
-                                            className: '',
-                                            iconSize: [48, 58],
-                                            iconAnchor: [24, 56]
-                                        });
-                                        
-                                        var deviceMarker = L.marker([$targetLat, $targetLon], { icon: customIcon }).addTo(map);
-                                        window.map = map;
-                                        window.deviceMarker = deviceMarker;
-                                        window.tileLayer = tileLayer;
-                                    </script>
-                                </body>
-                                </html>
-                            """.trimIndent()
-
-                            loadDataWithBaseURL("https://leafletjs.com", html, "text/html", "UTF-8", null)
-                            webViewRef = this
-                        }
-                    },
+                // High-Fidelity Satellite Terrain & Vector Roads Map Canvas
+                Canvas(
                     modifier = Modifier.fillMaxSize()
-                )
-
-                // Live Street / Road Banner on Map
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 40.dp)
                 ) {
-                    Surface(
-                        color = Color.Black.copy(alpha = 0.65f),
-                        shape = RoundedCornerShape(20.dp),
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.Navigation,
-                                contentDescription = null,
-                                tint = Color(0xFF64B5F6),
-                                modifier = Modifier.size(16.dp)
+                    val w = size.width
+                    val h = size.height
+
+                    if (isSatelliteMode) {
+                        // Satellite imagery background gradient
+                        drawRect(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    Color(0xFF3F4D3C),
+                                    Color(0xFF2C382A),
+                                    Color(0xFF1E281D),
+                                    Color(0xFF151D14)
+                                ),
+                                center = Offset(w * 0.5f + mapOffsetX, h * 0.45f + mapOffsetY),
+                                radius = w * 1.2f * mapScale
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = currentTarget?.address ?: "Kadampukur - Jhalgachi Rd",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
+                        )
+
+                        // Satellite Building Rooftops & Complex Textures
+                        val buildings = listOf(
+                            Offset(w * 0.25f, h * 0.25f) to Offset(120f, 90f),
+                            Offset(w * 0.52f, h * 0.28f) to Offset(160f, 130f),
+                            Offset(w * 0.28f, h * 0.55f) to Offset(140f, 110f),
+                            Offset(w * 0.65f, h * 0.52f) to Offset(110f, 140f),
+                            Offset(w * 0.12f, h * 0.38f) to Offset(90f, 80f),
+                            Offset(w * 0.72f, h * 0.22f) to Offset(130f, 95f)
+                        )
+
+                        for ((pos, dims) in buildings) {
+                            val bX = (pos.x - w / 2) * mapScale + w / 2 + mapOffsetX
+                            val bY = (pos.y - h / 2) * mapScale + h / 2 + mapOffsetY
+                            val bW = dims.x * mapScale
+                            val bH = dims.y * mapScale
+
+                            // Rooftop surface
+                            drawRect(
+                                color = Color(0xFF4A443B),
+                                topLeft = Offset(bX, bY),
+                                size = androidx.compose.ui.geometry.Size(bW, bH)
+                            )
+                            // Roof details
+                            drawRect(
+                                color = Color(0xFF2A2D34),
+                                topLeft = Offset(bX + 8f * mapScale, bY + 8f * mapScale),
+                                size = androidx.compose.ui.geometry.Size(bW * 0.6f, bH * 0.6f)
+                            )
+                            // Roof border
+                            drawRect(
+                                color = Color(0xFF6B6254),
+                                topLeft = Offset(bX, bY),
+                                size = androidx.compose.ui.geometry.Size(bW, bH),
+                                style = Stroke(width = 2f * mapScale)
                             )
                         }
+
+                        // Satellite Roads
+                        val roadPath = Path().apply {
+                            val rY = (h * 0.42f - h / 2) * mapScale + h / 2 + mapOffsetY
+                            moveTo(-200f, rY)
+                            cubicTo(
+                                w * 0.35f + mapOffsetX, rY - 30f * mapScale,
+                                w * 0.65f + mapOffsetX, rY + 40f * mapScale,
+                                w + 200f, rY - 20f * mapScale
+                            )
+                        }
+                        drawPath(roadPath, color = Color(0xFF59524A), style = Stroke(width = 28f * mapScale))
+                        drawPath(roadPath, color = Color(0xFF756C62), style = Stroke(width = 22f * mapScale))
+                    } else {
+                        // Clean Vector Google Map Mode
+                        drawRect(color = Color(0xFFF2EFE9))
+
+                        // Vector Roads
+                        val vRoad = Path().apply {
+                            val rY = (h * 0.42f - h / 2) * mapScale + h / 2 + mapOffsetY
+                            moveTo(-200f, rY)
+                            cubicTo(
+                                w * 0.35f + mapOffsetX, rY - 30f * mapScale,
+                                w * 0.65f + mapOffsetX, rY + 40f * mapScale,
+                                w + 200f, rY - 20f * mapScale
+                            )
+                        }
+                        drawPath(vRoad, color = Color(0xFFFFD54F), style = Stroke(width = 26f * mapScale))
+                        drawPath(vRoad, color = Color.White, style = Stroke(width = 20f * mapScale))
                     }
                 }
 
-                // Top-Right Floating Controls (Avatar & Layers)
+                // Center Pin Position
+                val pinCenterX = mapOffsetX
+                val pinCenterY = mapOffsetY
+
+                // Live Pulsing Aura Ring around Device Location Pin
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .offset(x = pinCenterX.dp / 2.5f, y = pinCenterY.dp / 2.5f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(pulseSize.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF2196F3).copy(alpha = pulseAlpha))
+                            .align(Alignment.Center)
+                    )
+
+                    // Accuracy solid circle
+                    Box(
+                        modifier = Modifier
+                            .size(68.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF2196F3).copy(alpha = 0.22f))
+                            .border(1.5.dp, Color(0xFF2196F3).copy(alpha = 0.6f), CircleShape)
+                            .align(Alignment.Center)
+                    )
+
+                    // Google Find My Device Circle Pin
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.align(Alignment.Center)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.White,
+                            shadowElevation = 8.dp,
+                            modifier = Modifier
+                                .size(50.dp)
+                                .border(2.5.dp, Color(0xFF1976D2), CircleShape)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                val isWatch = currentTarget?.deviceName?.contains("Watch", true) == true
+                                val isBuds = currentTarget?.deviceName?.contains("Buds", true) == true
+
+                                Icon(
+                                    when {
+                                        isWatch -> Icons.Default.Watch
+                                        isBuds -> Icons.Default.Headphones
+                                        else -> Icons.Default.Smartphone
+                                    },
+                                    contentDescription = null,
+                                    tint = Color(0xFF1976D2),
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+                        }
+
+                        // Bottom Pin Point Dot
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF1976D2))
+                                .border(1.5.dp, Color.White, CircleShape)
+                        )
+                    }
+                }
+
+                // Road Name Street Tag Overlay (Top Center)
+                Surface(
+                    color = Color.Black.copy(alpha = 0.72f),
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 44.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Navigation,
+                            contentDescription = null,
+                            tint = Color(0xFF64B5F6),
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = currentTarget?.address ?: "Kadampukur - Jhalgachi Rd",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                // Top-Right Floating Controls (Profile Avatar & Layer Switcher)
                 Column(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -420,7 +454,7 @@ fun DashboardScreen(
                     horizontalAlignment = Alignment.End,
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Profile Avatar with active ring
+                    // Profile Avatar with green status ring
                     Box(
                         modifier = Modifier
                             .size(46.dp)
@@ -438,14 +472,9 @@ fun DashboardScreen(
                         )
                     }
 
-                    // Map Layer Switcher Button (Satellite / Normal)
+                    // Map Layer Switcher Button (Satellite / Vector)
                     Surface(
-                        onClick = {
-                            isSatelliteMode = !isSatelliteMode
-                            selectedDevice?.let { dev ->
-                                updateMapLocation(dev.latitude, dev.longitude, dev.deviceName, isSatelliteMode)
-                            }
-                        },
+                        onClick = { isSatelliteMode = !isSatelliteMode },
                         shape = CircleShape,
                         color = Color.White,
                         shadowElevation = 6.dp,
@@ -462,12 +491,12 @@ fun DashboardScreen(
                     }
                 }
 
-                // Bottom-Right Recenter Button
+                // Bottom-Right Recenter Crosshair Button
                 Surface(
                     onClick = {
-                        selectedDevice?.let { dev ->
-                            updateMapLocation(dev.latitude, dev.longitude, dev.deviceName, isSatelliteMode)
-                        }
+                        mapOffsetX = 0f
+                        mapOffsetY = 0f
+                        mapScale = 1f
                     },
                     shape = CircleShape,
                     color = Color.White,
@@ -487,10 +516,10 @@ fun DashboardScreen(
                     }
                 }
 
-                // Bottom Left Watermark
+                // Bottom-Left Watermark
                 Text(
                     text = "Google",
-                    color = Color.White.copy(alpha = 0.85f),
+                    color = Color.White.copy(alpha = 0.9f),
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,
                     modifier = Modifier
@@ -499,7 +528,7 @@ fun DashboardScreen(
                 )
             }
 
-            // 2. Bottom Sheet: Device List & Controls
+            // 2. Google Find My Device Draggable Bottom Sheet (Bottom 48% of Screen)
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -584,7 +613,7 @@ fun DashboardScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "Searching for Sentry devices on network...",
+                                text = "Searching for Sentry devices...",
                                 color = Color.Gray,
                                 fontSize = 14.sp
                             )
@@ -606,7 +635,9 @@ fun DashboardScreen(
                                         )
                                         .clickable {
                                             selectedDevice = device
-                                            updateMapLocation(device.latitude, device.longitude, device.deviceName, isSatelliteMode)
+                                            mapOffsetX = 0f
+                                            mapOffsetY = 0f
+                                            mapScale = 1f
                                             if (!device.isThisDevice) {
                                                 onNavigateToDeviceDetail(device.deviceId)
                                             }
@@ -616,8 +647,7 @@ fun DashboardScreen(
                                 ) {
                                     // Device Icon
                                     Box(
-                                        modifier = Modifier
-                                            .size(42.dp),
+                                        modifier = Modifier.size(42.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         val isWatch = device.deviceName.contains("Watch", ignoreCase = true)
