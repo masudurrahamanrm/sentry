@@ -11,7 +11,7 @@
         .leaflet-control-attribution { display: none !important; }
         .leaflet-control-zoom { display: none !important; }
 
-        /* Uber Signature Map Pin */
+        /* Multi-Device Uber Pin Styles */
         .uber-pin {
             display: flex;
             flex-direction: column;
@@ -23,28 +23,23 @@
 
         .uber-pulse-ring {
             position: absolute;
-            width: 110px;
-            height: 110px;
+            width: 100px;
+            height: 100px;
             border-radius: 50%;
-            background: radial-gradient(circle, rgba(39, 110, 241, 0.45) 0%, rgba(39, 110, 241, 0.05) 70%, transparent 100%);
-            border: 1.5px solid rgba(39, 110, 241, 0.85);
             animation: uberPulse 2.2s infinite ease-out;
             pointer-events: none;
-            top: -28px;
-            left: -28px;
+            top: -23px;
+            left: -23px;
         }
 
-        .uber-pulse-inner {
-            position: absolute;
-            width: 70px;
-            height: 70px;
-            border-radius: 50%;
-            background: rgba(39, 110, 241, 0.25);
-            border: 1px solid rgba(255, 255, 255, 0.4);
-            animation: uberPulseInner 2.2s infinite ease-in-out;
-            pointer-events: none;
-            top: -8px;
-            left: -8px;
+        .uber-pulse-ring.this-device {
+            background: radial-gradient(circle, rgba(39, 110, 241, 0.45) 0%, rgba(39, 110, 241, 0.05) 70%, transparent 100%);
+            border: 1.5px solid rgba(39, 110, 241, 0.85);
+        }
+
+        .uber-pulse-ring.remote-device {
+            background: radial-gradient(circle, rgba(76, 175, 80, 0.45) 0%, rgba(76, 175, 80, 0.05) 70%, transparent 100%);
+            border: 1.5px solid rgba(76, 175, 80, 0.85);
         }
 
         @keyframes uberPulse {
@@ -53,59 +48,94 @@
             100% { transform: scale(0.6); opacity: 0.9; }
         }
 
-        @keyframes uberPulseInner {
-            0% { transform: scale(0.8); opacity: 0.7; }
-            50% { transform: scale(1.15); opacity: 0.3; }
-            100% { transform: scale(0.8); opacity: 0.7; }
-        }
-
         .uber-pin-badge {
-            width: 54px;
-            height: 54px;
+            width: 52px;
+            height: 52px;
             background: #000000;
             border-radius: 50%;
-            border: 3px solid #276EF1;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.75), 0 0 16px rgba(39, 110, 241, 0.6);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.75);
             display: flex;
             align-items: center;
             justify-content: center;
             z-index: 10;
         }
 
+        .uber-pin-badge.this-device {
+            border: 3px solid #276EF1;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.75), 0 0 16px rgba(39, 110, 241, 0.6);
+        }
+
+        .uber-pin-badge.remote-device {
+            border: 3px solid #4CAF50;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.75), 0 0 16px rgba(76, 175, 80, 0.6);
+        }
+
         .uber-pin-badge svg {
-            width: 28px;
-            height: 28px;
+            width: 26px;
+            height: 26px;
             fill: #FFFFFF;
         }
 
         .uber-pin-point {
             width: 12px;
             height: 12px;
-            background: #276EF1;
             border: 2px solid #FFFFFF;
             border-radius: 50%;
             margin-top: 3px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6), 0 0 8px rgba(39, 110, 241, 0.8);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
             z-index: 10;
+        }
+
+        .uber-pin-point.this-device {
+            background: #276EF1;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6), 0 0 8px rgba(39, 110, 241, 0.8);
+        }
+
+        .uber-pin-point.remote-device {
+            background: #4CAF50;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6), 0 0 8px rgba(76, 175, 80, 0.8);
+        }
+
+        /* Label Tag Above Pin */
+        .pin-label-tag {
+            position: absolute;
+            top: -30px;
+            background: rgba(0, 0, 0, 0.85);
+            color: #FFFFFF;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            white-space: nowrap;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            pointer-events: none;
+            z-index: 15;
+        }
+        .pin-label-tag.this-device {
+            border-color: #276EF1;
+            color: #64B5F6;
+        }
+        .pin-label-tag.remote-device {
+            border-color: #4CAF50;
+            color: #81C784;
         }
     </style>
 </head>
 <body>
     <div id="map"></div>
     <script>
-        // 1. Uber Signature Dark Theme Tiles (CartoDB Dark Matter)
         var uberDarkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png', {
             maxZoom: 20,
             subdomains: ['a', 'b', 'c', 'd']
         });
 
-        // 2. Uber Voyager (Day Mode Tiles)
         var uberDayLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
             maxZoom: 20,
             subdomains: ['a', 'b', 'c', 'd']
         });
 
-        // 3. Satellite Hybrid Tiles
         var satLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
             maxZoom: 21,
             subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
@@ -113,38 +143,87 @@
 
         var map = L.map('map', {
             center: [22.5726, 88.3639],
-            zoom: 17,
+            zoom: 16,
             zoomControl: false,
             attributionControl: false,
             layers: [uberDarkLayer]
         });
 
-        var currentLayer = uberDarkLayer;
+        var markersMap = {}; // deviceId -> L.marker
 
-        var pinHtml = '<div class="uber-pin" onclick="if(window.AndroidBridge) AndroidBridge.onMarkerClicked();">' +
-                      '  <div class="uber-pulse-ring"></div>' +
-                      '  <div class="uber-pulse-inner"></div>' +
-                      '  <div class="uber-pin-badge">' +
-                      '    <svg viewBox="0 0 24 24">' +
-                      '      <path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/>' +
-                      '    </svg>' +
-                      '  </div>' +
-                      '  <div class="uber-pin-point"></div>' +
-                      '</div>';
+        function createPinIcon(deviceId, name, isThisDevice) {
+            var typeClass = isThisDevice ? 'this-device' : 'remote-device';
+            var displayName = isThisDevice ? '📍 This Device' : name;
+            if (displayName.length > 18) displayName = displayName.substring(0, 16) + '...';
 
-        var pinIcon = L.divIcon({
-            html: pinHtml,
-            className: '',
-            iconSize: [54, 66],
-            iconAnchor: [27, 64]
-        });
+            var iconSvg = isThisDevice ?
+                '<svg viewBox="0 0 24 24"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>' :
+                '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>';
 
-        var marker = L.marker([22.5726, 88.3639], { icon: pinIcon }).addTo(map);
+            var html = '<div class="uber-pin" onclick="if(window.AndroidBridge) AndroidBridge.onMarkerClicked(\'' + deviceId + '\');">' +
+                       '  <div class="pin-label-tag ' + typeClass + '">' + displayName + '</div>' +
+                       '  <div class="uber-pulse-ring ' + typeClass + '"></div>' +
+                       '  <div class="uber-pin-badge ' + typeClass + '">' + iconSvg + '</div>' +
+                       '  <div class="uber-pin-point ' + typeClass + '"></div>' +
+                       '</div>';
 
-        window.updateDeviceLocation = function(lat, lon, name) {
-            if (map && marker) {
+            return L.divIcon({
+                html: html,
+                className: '',
+                iconSize: [52, 66],
+                iconAnchor: [26, 64]
+            });
+        }
+
+        // Render all devices simultaneously on the map
+        window.setAllDeviceLocations = function(devicesJson) {
+            try {
+                var devices = JSON.parse(devicesJson);
+                var latLngs = [];
+
+                for (var i = 0; i < devices.length; i++) {
+                    var dev = devices[i];
+                    var devId = dev.deviceId;
+                    var lat = dev.latitude;
+                    var lon = dev.longitude;
+                    var name = dev.deviceName;
+                    var isThis = dev.isThisDevice;
+
+                    latLngs.push([lat, lon]);
+
+                    if (markersMap[devId]) {
+                        markersMap[devId].setLatLng([lat, lon]);
+                    } else {
+                        var icon = createPinIcon(devId, name, isThis);
+                        var marker = L.marker([lat, lon], { icon: icon }).addTo(map);
+                        markersMap[devId] = marker;
+                    }
+                }
+
+                // If only 1 device or initial load
+                if (latLngs.length === 1) {
+                    map.setView(latLngs[0], 16);
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        };
+
+        window.focusDevice = function(lat, lon) {
+            if (map) {
                 map.flyTo([lat, lon], 17, { animate: true, duration: 1.0 });
-                marker.setLatLng([lat, lon]);
+            }
+        };
+
+        window.fitAllDevices = function() {
+            var bounds = [];
+            for (var key in markersMap) {
+                if (markersMap.hasOwnProperty(key)) {
+                    bounds.push(markersMap[key].getLatLng());
+                }
+            }
+            if (bounds.length > 1 && map) {
+                map.fitBounds(L.latLngBounds(bounds), { padding: [60, 60], maxZoom: 17 });
             }
         };
 
@@ -154,10 +233,6 @@
 
         window.mapZoomOut = function() {
             if (map) map.zoomOut();
-        };
-
-        window.recenterMap = function(lat, lon) {
-            if (map) map.flyTo([lat, lon], 17, { animate: true, duration: 0.8 });
         };
 
         window.toggleMapLayer = function(layerMode) {

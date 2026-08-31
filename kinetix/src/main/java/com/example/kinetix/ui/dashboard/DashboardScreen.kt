@@ -1,7 +1,13 @@
 package com.example.kinetix.ui.dashboard
 
 import android.annotation.SuppressLint
+import android.content.Context
+import android.location.Geocoder
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.os.Build
+import android.os.Bundle
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -34,7 +40,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Locale
 
 data class PairedDeviceItem(
     val deviceId: String,
@@ -66,14 +74,61 @@ fun DashboardScreen(
     var selectedDevice by remember { mutableStateOf<PairedDeviceItem?>(null) }
     var showDeviceDetails by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
-    var isSatelliteMode by remember { mutableStateOf(true) }
-    var activeTab by remember { mutableStateOf(0) } // 0 = Devices, 1 = People
+    var activeTab by remember { mutableStateOf(0) }
     var actionFeedbackMessage by remember { mutableStateOf<String?>(null) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
+
+    // Current device real GPS coordinates
+    var currentDeviceLat by remember { mutableDoubleStateOf(22.5726) }
+    var currentDeviceLon by remember { mutableDoubleStateOf(88.3639) }
+    var currentDeviceAddress by remember { mutableStateOf("Kadampukur - Jhalgachi Rd") }
+
+    // Query hardware GPS location of current phone
+    fun updateCurrentDeviceGps() {
+        try {
+            val locManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return
+            val hasFine = androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.ACCESS_FINE_LOCATION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            val hasCoarse = androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.ACCESS_COARSE_LOCATION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+            if (hasFine || hasCoarse) {
+                val gpsLoc = try { locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER) } catch (_: Exception) { null }
+                val netLoc = try { locManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER) } catch (_: Exception) { null }
+                val loc: Location? = gpsLoc ?: netLoc
+
+                if (loc != null) {
+                    currentDeviceLat = loc.latitude
+                    currentDeviceLon = loc.longitude
+
+                    try {
+                        val geocoder = Geocoder(context, Locale.getDefault())
+                        val list = geocoder.getFromLocation(loc.latitude, loc.longitude, 1)
+                        if (!list.isNullOrEmpty()) {
+                            val addr = list[0]
+                            val thoroughfare = addr.thoroughfare ?: addr.featureName ?: addr.locality ?: ""
+                            val subLocality = addr.subLocality ?: addr.subAdminArea ?: ""
+                            currentDeviceAddress = if (thoroughfare.isNotBlank() && subLocality.isNotBlank()) {
+                                "$thoroughfare, $subLocality"
+                            } else if (thoroughfare.isNotBlank()) {
+                                thoroughfare
+                            } else {
+                                addr.getAddressLine(0) ?: "Kadampukur - Jhalgachi Rd"
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+        } catch (_: Exception) {}
+    }
 
     suspend fun fetchDevices() {
         withContext(Dispatchers.IO) {
             try {
+                updateCurrentDeviceGps()
+
                 val client = KinetixApiClient(context)
                 client.registerDevice()
 
@@ -96,7 +151,7 @@ fun DashboardScreen(
 
                 val newList = mutableListOf<PairedDeviceItem>()
 
-                // This device (Controller device)
+                // 1. Current device (This Phone running Kinetix) with REAL GPS
                 val thisModel = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
                 val thisDeviceName = if (thisModel.isNotBlank()) thisModel else "realme 15 Pro 5G"
                 newList.add(
@@ -108,14 +163,15 @@ fun DashboardScreen(
                         isOnline = true,
                         lastSeenText = "This device",
                         isThisDevice = true,
-                        latitude = 22.5726,
-                        longitude = 88.3639,
-                        address = "Kadampukur - Jhalgachi Rd",
+                        latitude = currentDeviceLat,
+                        longitude = currentDeviceLon,
+                        address = currentDeviceAddress,
                         batteryLevel = 92,
                         batteryStatus = "Fast Charging (USB-PD)"
                     )
                 )
 
+                // 2. Discovered remote Sentry devices with their live backend locations
                 if (devicesRes.isSuccess) {
                     val arr = devicesRes.getOrNull()
                     if (arr != null) {
@@ -129,9 +185,10 @@ fun DashboardScreen(
 
                             if (devId.startsWith("SN")) {
                                 val loc = locationsMap[devId]
-                                val lat = loc?.optDouble("latitude", 22.5726) ?: 22.5726
-                                val lon = loc?.optDouble("longitude", 88.3639) ?: 88.3639
-                                val addr = loc?.optString("address", "Kadampukur - Jhalgachi Rd") ?: "Kadampukur - Jhalgachi Rd"
+                                // Default remote offset if same place or not set yet
+                                val lat = loc?.optDouble("latitude", currentDeviceLat + 0.0018) ?: (currentDeviceLat + 0.0018)
+                                val lon = loc?.optDouble("longitude", currentDeviceLon + 0.0022) ?: (currentDeviceLon + 0.0022)
+                                val addr = loc?.optString("address", currentDeviceAddress) ?: currentDeviceAddress
 
                                 newList.add(
                                     PairedDeviceItem(
@@ -160,6 +217,21 @@ fun DashboardScreen(
                     if (selectedDevice == null && newList.isNotEmpty()) {
                         selectedDevice = newList.first()
                     }
+
+                    // Push multi-device location data to Leaflet JS
+                    val jsonArr = JSONArray()
+                    for (d in newList) {
+                        val obj = JSONObject().apply {
+                            put("deviceId", d.deviceId)
+                            put("deviceName", d.deviceName)
+                            put("latitude", d.latitude)
+                            put("longitude", d.longitude)
+                            put("isThisDevice", d.isThisDevice)
+                        }
+                        jsonArr.put(obj)
+                    }
+                    val js = "if(window.setAllDeviceLocations) window.setAllDeviceLocations('${jsonArr.toString().replace("'", "\\'")}');"
+                    webViewRef?.evaluateJavascript(js, null)
                 }
             } catch (_: Exception) {}
         }
@@ -168,23 +240,7 @@ fun DashboardScreen(
     LaunchedEffect(Unit) {
         while (true) {
             fetchDevices()
-            delay(4000)
-        }
-    }
-
-    // Function to update map center and marker via JS
-    fun updateMapTarget(lat: Double, lon: Double, deviceName: String) {
-        val js = """
-            if (window.updateDeviceLocation) {
-                window.updateDeviceLocation($lat, $lon, '$deviceName');
-            }
-        """.trimIndent()
-        webViewRef?.evaluateJavascript(js, null)
-    }
-
-    LaunchedEffect(selectedDevice) {
-        selectedDevice?.let { dev ->
-            updateMapTarget(dev.latitude, dev.longitude, dev.deviceName)
+            delay(3500)
         }
     }
 
@@ -238,11 +294,8 @@ fun DashboardScreen(
                 .background(Color(0xFF1A1C1E))
         ) {
             val currentTarget = selectedDevice ?: pairedDevices.firstOrNull()
-            val targetLat = currentTarget?.latitude ?: 22.5726
-            val targetLon = currentTarget?.longitude ?: 88.3639
-            val targetName = currentTarget?.deviceName ?: "realme 15 Pro 5G"
 
-            // 1. Live Real Satellite Map (Top 54% of Screen)
+            // 1. Uber Multi-Device Map (Top 54% of Screen)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -264,18 +317,22 @@ fun DashboardScreen(
                             webViewClient = object : WebViewClient() {
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     super.onPageFinished(view, url)
-                                    selectedDevice?.let { dev ->
-                                        updateMapTarget(dev.latitude, dev.longitude, dev.deviceName)
+                                    coroutineScope.launch {
+                                        fetchDevices()
                                     }
                                 }
                             }
 
-                            // Inject JavaScript Bridge to handle clicks on the map pin
+                            // JavaScript Bridge for interactive marker clicks
                             addJavascriptInterface(object {
                                 @JavascriptInterface
-                                fun onMarkerClicked() {
+                                fun onMarkerClicked(devId: String) {
                                     coroutineScope.launch(Dispatchers.Main) {
-                                        showDeviceDetails = true
+                                        val match = pairedDevices.firstOrNull { it.deviceId == devId }
+                                        if (match != null) {
+                                            selectedDevice = match
+                                            showDeviceDetails = true
+                                        }
                                     }
                                 }
                             }, "AndroidBridge")
@@ -289,7 +346,7 @@ fun DashboardScreen(
 
                 // Road Name Street Tag Overlay (Top Center)
                 Surface(
-                    color = Color.Black.copy(alpha = 0.72f),
+                    color = Color.Black.copy(alpha = 0.78f),
                     shape = RoundedCornerShape(20.dp),
                     modifier = Modifier
                         .align(Alignment.TopCenter)
@@ -302,12 +359,12 @@ fun DashboardScreen(
                         Icon(
                             Icons.Default.Navigation,
                             contentDescription = null,
-                            tint = Color(0xFF64B5F6),
+                            tint = Color(0xFF276EF1),
                             modifier = Modifier.size(15.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = currentTarget?.address ?: "Kadampukur - Jhalgachi Rd",
+                            text = currentTarget?.address ?: currentDeviceAddress,
                             color = Color.White,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
@@ -328,7 +385,7 @@ fun DashboardScreen(
                         modifier = Modifier
                             .size(46.dp)
                             .clip(CircleShape)
-                            .background(Color.White)
+                            .background(Color(0xFF1E1E1E))
                             .border(2.5.dp, Color(0xFF4CAF50), CircleShape)
                             .clickable { onNavigateToSettings() },
                         contentAlignment = Alignment.Center
@@ -336,13 +393,13 @@ fun DashboardScreen(
                         Icon(
                             Icons.Default.AccountCircle,
                             contentDescription = "Profile",
-                            tint = Color(0xFF5C6BC0),
-                            modifier = Modifier.size(40.dp)
+                            tint = Color(0xFF276EF1),
+                            modifier = Modifier.size(38.dp)
                         )
                     }
 
                     // Map Layer Switcher Button (Uber Dark / Uber Day / Satellite)
-                    var currentLayerIndex by remember { mutableIntStateOf(0) } // 0 = dark, 1 = day, 2 = sat
+                    var currentLayerIndex by remember { mutableIntStateOf(0) }
                     Surface(
                         onClick = {
                             currentLayerIndex = (currentLayerIndex + 1) % 3
@@ -373,7 +430,7 @@ fun DashboardScreen(
                     }
                 }
 
-                // Bottom-Right Map Controls: Zoom In (+), Zoom Out (-), Recenter (🎯)
+                // Bottom-Right Map Controls: Zoom In (+), Zoom Out (-), Fit All (🌐), Recenter (🎯)
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -425,7 +482,7 @@ fun DashboardScreen(
                     Surface(
                         onClick = {
                             selectedDevice?.let { dev ->
-                                webViewRef?.evaluateJavascript("window.recenterMap(${dev.latitude}, ${dev.longitude})", null)
+                                webViewRef?.evaluateJavascript("window.focusDevice(${dev.latitude}, ${dev.longitude})", null)
                             }
                         },
                         shape = CircleShape,
@@ -534,10 +591,15 @@ fun DashboardScreen(
                                 modifier = Modifier
                                     .size(48.dp)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0xFFECE6F8)),
+                                    .background(if (dev.isThisDevice) Color(0xFFE3F2FD) else Color(0xFFE8F5E9)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.Smartphone, contentDescription = null, tint = Color(0xFF6750A4), modifier = Modifier.size(28.dp))
+                                Icon(
+                                    Icons.Default.Smartphone,
+                                    contentDescription = null,
+                                    tint = if (dev.isThisDevice) Color(0xFF1976D2) else Color(0xFF2E7D32),
+                                    modifier = Modifier.size(28.dp)
+                                )
                             }
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
@@ -694,7 +756,8 @@ fun DashboardScreen(
                                             .clickable {
                                                 selectedDevice = device
                                                 showDeviceDetails = true
-                                                updateMapTarget(device.latitude, device.longitude, device.deviceName)
+                                                val js = "if(window.focusDevice) window.focusDevice(${device.latitude}, ${device.longitude});"
+                                                webViewRef?.evaluateJavascript(js, null)
                                             }
                                             .padding(horizontal = 8.dp, vertical = 12.dp),
                                         verticalAlignment = Alignment.CenterVertically
@@ -713,7 +776,7 @@ fun DashboardScreen(
                                                     else -> Icons.Default.Smartphone
                                                 },
                                                 contentDescription = null,
-                                                tint = if (device.isThisDevice) Color(0xFF1976D2) else Color(0xFF49454F),
+                                                tint = if (device.isThisDevice) Color(0xFF1976D2) else Color(0xFF2E7D32),
                                                 modifier = Modifier.size(28.dp)
                                             )
                                         }
@@ -729,7 +792,7 @@ fun DashboardScreen(
                                             )
                                             Spacer(modifier = Modifier.height(2.dp))
                                             Text(
-                                                text = if (device.isThisDevice) "This device" else "${device.osVersion} • ${device.lastSeenText}",
+                                                text = if (device.isThisDevice) "This device • ${device.address}" else "${device.osVersion} • ${device.lastSeenText}",
                                                 color = if (device.isThisDevice) Color(0xFF1976D2) else Color(0xFF49454F),
                                                 fontSize = 13.sp,
                                                 fontWeight = if (device.isThisDevice) FontWeight.Medium else FontWeight.Normal
