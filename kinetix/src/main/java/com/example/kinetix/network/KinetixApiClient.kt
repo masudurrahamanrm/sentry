@@ -134,6 +134,16 @@ class KinetixApiClient(
         res.map { it.getJSONObject("telemetry") }
     }
 
+    suspend fun getDeviceLocation(deviceId: String): Result<JSONObject> = withContext(Dispatchers.IO) {
+        val res = request("GET", "/location/$deviceId", null, authenticated = false)
+        res.map { it.getJSONObject("location") }
+    }
+
+    suspend fun getAllLocations(): Result<JSONObject> = withContext(Dispatchers.IO) {
+        val res = request("GET", "/location/all", null, authenticated = false)
+        res.map { it.getJSONObject("locations") }
+    }
+
     suspend fun getFileList(deviceId: String): Result<JSONObject> = withContext(Dispatchers.IO) {
         request("GET", "/files/list/$deviceId", null, authenticated = false)
     }

