@@ -46,6 +46,7 @@ fun DeviceDetailScreen(
     onNavigateToLocation: () -> Unit,
     onNavigateToBattery: () -> Unit,
     onNavigateToAudio: () -> Unit,
+    onNavigateToActivity: () -> Unit,
     onUnpaired: () -> Unit
 ) {
     val context = LocalContext.current
@@ -138,7 +139,10 @@ fun DeviceDetailScreen(
                 )
                 NavigationBarItem(
                     selected = activeBottomTab == 1,
-                    onClick = { activeBottomTab = 1 },
+                    onClick = {
+                        activeBottomTab = 1
+                        onNavigateToActivity()
+                    },
                     icon = {
                         Icon(
                             Icons.Outlined.AccessTime,

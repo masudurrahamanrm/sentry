@@ -43,7 +43,14 @@ fun MainNavigation() {
                     onNavigateToLocation = { backStack.add(FeatureLocation(key.deviceId)) },
                     onNavigateToBattery = { backStack.add(FeatureBattery(key.deviceId)) },
                     onNavigateToAudio = { backStack.add(FeatureAudio(key.deviceId)) },
+                    onNavigateToActivity = { backStack.add(FeatureActivity(key.deviceId)) },
                     onUnpaired = { backStack.removeLastOrNull() }
+                )
+            }
+            entry<FeatureActivity> { key ->
+                com.example.kinetix.ui.features.ActivityScreen(
+                    deviceId = key.deviceId,
+                    onBack = { backStack.removeLastOrNull() }
                 )
             }
             entry<FeatureNotifications> { key ->

@@ -31,4 +31,7 @@ data class FeatureBattery(val deviceId: String) : NavKey
 data class FeatureAudio(val deviceId: String) : NavKey
 
 @Serializable
+data class FeatureActivity(val deviceId: String) : NavKey
+
+@Serializable
 data object Settings : NavKey
