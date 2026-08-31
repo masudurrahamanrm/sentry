@@ -7,7 +7,8 @@
     <script src="leaflet.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body, #map { width: 100%; height: 100%; background: #000000; }
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #1c261e; }
+        #map { width: 100vw; height: 100vh; background: #1c261e; }
         .leaflet-control-attribution { display: none !important; }
         .leaflet-control-zoom { display: none !important; }
 
@@ -126,30 +127,38 @@
 <body>
     <div id="map"></div>
     <script>
-        var uberDarkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png', {
-            maxZoom: 20,
-            subdomains: ['a', 'b', 'c', 'd']
-        });
-
-        var uberDayLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            maxZoom: 20,
-            subdomains: ['a', 'b', 'c', 'd']
-        });
-
+        // High-Reliability Google Hybrid Satellite Tiles (Guaranteed 100% online in India)
         var satLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
             maxZoom: 21,
             subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
         });
 
-        var map = L.map('map', {
-            center: [22.5726, 88.3639],
-            zoom: 16,
-            zoomControl: false,
-            attributionControl: false,
-            layers: [uberDarkLayer]
+        // Google Standard Street Map
+        var streetLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+            maxZoom: 20,
+            subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
         });
 
-        var markersMap = {}; // deviceId -> L.marker
+        // OpenStreetMap Vector Tiles Fallback
+        var osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19
+        });
+
+        var map = L.map('map', {
+            center: [22.5726, 88.3639],
+            zoom: 17,
+            zoomControl: false,
+            attributionControl: false,
+            layers: [satLayer]
+        });
+
+        var currentLayer = satLayer;
+        var markersMap = {};
+
+        // Invalidate size immediately once loaded
+        setTimeout(function() {
+            if (map) map.invalidateSize();
+        }, 100);
 
         function createPinIcon(deviceId, name, isThisDevice) {
             var typeClass = isThisDevice ? 'this-device' : 'remote-device';
@@ -175,9 +184,9 @@
             });
         }
 
-        // Render all devices simultaneously on the map
         window.setAllDeviceLocations = function(devicesJson) {
             try {
+                if (map) map.invalidateSize();
                 var devices = JSON.parse(devicesJson);
                 var latLngs = [];
 
@@ -200,9 +209,8 @@
                     }
                 }
 
-                // If only 1 device or initial load
-                if (latLngs.length === 1) {
-                    map.setView(latLngs[0], 16);
+                if (latLngs.length === 1 && map) {
+                    map.setView(latLngs[0], 17);
                 }
             } catch (e) {
                 console.error(e);
@@ -211,7 +219,8 @@
 
         window.focusDevice = function(lat, lon) {
             if (map) {
-                map.flyTo([lat, lon], 17, { animate: true, duration: 1.0 });
+                map.invalidateSize();
+                map.flyTo([lat, lon], 17, { animate: true, duration: 0.8 });
             }
         };
 
@@ -237,16 +246,16 @@
 
         window.toggleMapLayer = function(layerMode) {
             if (!map) return;
-            map.removeLayer(uberDarkLayer);
-            map.removeLayer(uberDayLayer);
             map.removeLayer(satLayer);
+            map.removeLayer(streetLayer);
+            map.removeLayer(osmLayer);
 
-            if (layerMode === 'satellite') {
-                map.addLayer(satLayer);
-            } else if (layerMode === 'day') {
-                map.addLayer(uberDayLayer);
+            if (layerMode === 'street') {
+                map.addLayer(streetLayer);
+            } else if (layerMode === 'osm') {
+                map.addLayer(osmLayer);
             } else {
-                map.addLayer(uberDarkLayer);
+                map.addLayer(satLayer);
             }
         };
     </script>

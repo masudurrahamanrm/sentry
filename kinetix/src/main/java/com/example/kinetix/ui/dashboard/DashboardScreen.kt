@@ -309,6 +309,8 @@ fun DashboardScreen(
                             settings.databaseEnabled = true
                             settings.allowFileAccess = true
                             settings.allowContentAccess = true
+                            settings.allowFileAccessFromFileURLs = true
+                            settings.allowUniversalAccessFromFileURLs = true
                             settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                             settings.cacheMode = WebSettings.LOAD_DEFAULT
                             settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
@@ -317,6 +319,7 @@ fun DashboardScreen(
                             webViewClient = object : WebViewClient() {
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     super.onPageFinished(view, url)
+                                    view?.evaluateJavascript("if(window.map) window.map.invalidateSize();", null)
                                     coroutineScope.launch {
                                         fetchDevices()
                                     }
@@ -398,15 +401,15 @@ fun DashboardScreen(
                         )
                     }
 
-                    // Map Layer Switcher Button (Uber Dark / Uber Day / Satellite)
+                    // Map Layer Switcher Button (Satellite / Street / OSM)
                     var currentLayerIndex by remember { mutableIntStateOf(0) }
                     Surface(
                         onClick = {
                             currentLayerIndex = (currentLayerIndex + 1) % 3
                             val layerName = when (currentLayerIndex) {
-                                0 -> "dark"
-                                1 -> "day"
-                                else -> "satellite"
+                                0 -> "satellite"
+                                1 -> "street"
+                                else -> "osm"
                             }
                             webViewRef?.evaluateJavascript("window.toggleMapLayer('$layerName')", null)
                         },
@@ -420,9 +423,9 @@ fun DashboardScreen(
                                 Icons.Default.Layers,
                                 contentDescription = "Toggle Layer",
                                 tint = when (currentLayerIndex) {
-                                    0 -> Color(0xFF276EF1)
-                                    1 -> Color(0xFFFFC107)
-                                    else -> Color(0xFF4CAF50)
+                                    0 -> Color(0xFF4CAF50)
+                                    1 -> Color(0xFF276EF1)
+                                    else -> Color(0xFFFFC107)
                                 },
                                 modifier = Modifier.size(22.dp)
                             )
