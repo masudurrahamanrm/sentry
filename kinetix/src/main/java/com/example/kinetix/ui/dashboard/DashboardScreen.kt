@@ -390,14 +390,14 @@ fun DashboardScreen(
                     }
                 }
 
-                // Top-Right Floating Controls (Profile Avatar & Layer Switcher with statusBarsPadding)
+                // Top-Right Floating Controls (Profile Avatar, Layer Switcher, & GPS Recenter FAB)
                 Column(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .statusBarsPadding()
                         .padding(top = 12.dp, end = 16.dp),
                     horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // Profile Avatar with green status ring
                     Box(
@@ -432,7 +432,7 @@ fun DashboardScreen(
                         shape = CircleShape,
                         color = Color(0xFF1E1E1E),
                         shadowElevation = 8.dp,
-                        modifier = Modifier.size(44.dp)
+                        modifier = Modifier.size(46.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
@@ -447,30 +447,27 @@ fun DashboardScreen(
                             )
                         }
                     }
-                }
 
-                // Bottom-Right Map Control: Recenter Crosshair Button (🎯)
-                Surface(
-                    onClick = {
-                        selectedDevice?.let { dev ->
-                            webViewRef?.evaluateJavascript("window.focusDevice(${dev.latitude}, ${dev.longitude})", null)
+                    // GPS Recenter Crosshair Button (🎯)
+                    Surface(
+                        onClick = {
+                            selectedDevice?.let { dev ->
+                                webViewRef?.evaluateJavascript("window.focusDevice(${dev.latitude}, ${dev.longitude})", null)
+                            }
+                        },
+                        shape = CircleShape,
+                        color = Color(0xFF1E1E1E),
+                        shadowElevation = 8.dp,
+                        modifier = Modifier.size(46.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.MyLocation,
+                                contentDescription = "Recenter",
+                                tint = Color(0xFF276EF1),
+                                modifier = Modifier.size(24.dp)
+                            )
                         }
-                    },
-                    shape = CircleShape,
-                    color = Color(0xFF1E1E1E),
-                    shadowElevation = 8.dp,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 16.dp, bottom = 28.dp)
-                        .size(48.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.MyLocation,
-                            contentDescription = "Recenter",
-                            tint = Color(0xFF276EF1),
-                            modifier = Modifier.size(24.dp)
-                        )
                     }
                 }
 
