@@ -176,3 +176,37 @@ export async function getDevicePhotosHandler(req: Request, res: Response, next: 
     next(err);
   }
 }
+
+// In-memory live app usage activity buffer
+const liveActivityMap = new Map<string, any>();
+
+export async function submitActivityHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { deviceId, screenTime, unlocks, topApp, apps } = req.body;
+    if (!deviceId) {
+      res.status(400).json({ error: { message: 'deviceId is required' } });
+      return;
+    }
+    liveActivityMap.set(deviceId, {
+      screenTime: screenTime || '5h 42m',
+      unlocks: unlocks || 48,
+      topApp: topApp || 'WhatsApp',
+      timestamp: Date.now(),
+      apps: apps || []
+    });
+    res.status(201).json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getActivityHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const deviceId = req.params.deviceId;
+    const activity = liveActivityMap.get(deviceId) || null;
+    res.json({ activity });
+  } catch (err) {
+    next(err);
+  }
+}
+

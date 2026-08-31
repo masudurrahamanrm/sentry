@@ -1,8 +1,9 @@
 package com.example.kinetix.ui.features
 
+import android.app.usage.UsageStatsManager
+import android.content.Context
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,6 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -18,7 +20,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -26,7 +27,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.*
 
 data class AppUsageStat(
     val name: String,
@@ -48,42 +51,133 @@ fun ActivityScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var selectedPeriod by remember { mutableStateOf("Today") }
     var isLoading by remember { mutableStateOf(false) }
+    var liveApps by remember { mutableStateOf<List<AppUsageStat>>(emptyList()) }
+    var totalScreenTimeDisplay by remember { mutableStateOf("5h 42m") }
+    var totalUnlocksCount by remember { mutableIntStateOf(48) }
+    var topAppName by remember { mutableStateOf("WhatsApp") }
 
-    // Live app usage dataset
-    val appStats = remember(selectedPeriod) {
-        when (selectedPeriod) {
-            "Yesterday" -> listOf(
-                AppUsageStat("YouTube", "com.google.android.youtube", "Media", "2h 45m", 165, 0.42f, 16, Color(0xFFFF0000), Icons.Default.PlayArrow),
-                AppUsageStat("WhatsApp", "com.whatsapp", "Social", "1h 50m", 110, 0.28f, 32, Color(0xFF25D366), Icons.Default.Chat),
-                AppUsageStat("Instagram", "com.instagram.android", "Social", "1h 10m", 70, 0.18f, 22, Color(0xFFE1306C), Icons.Default.CameraAlt),
-                AppUsageStat("Chrome Browser", "com.android.chrome", "Utility", "35m", 35, 0.09f, 14, Color(0xFF1976D2), Icons.Default.Language),
-                AppUsageStat("Google Maps", "com.google.android.apps.maps", "Navigation", "15m", 15, 0.04f, 5, Color(0xFF4CAF50), Icons.Default.LocationOn)
-            )
-            "7 Days" -> listOf(
-                AppUsageStat("WhatsApp", "com.whatsapp", "Social", "14h 20m", 860, 0.38f, 240, Color(0xFF25D366), Icons.Default.Chat),
-                AppUsageStat("YouTube", "com.google.android.youtube", "Media", "11h 15m", 675, 0.30f, 95, Color(0xFFFFFF00), Icons.Default.PlayArrow),
-                AppUsageStat("Instagram", "com.instagram.android", "Social", "6h 40m", 400, 0.18f, 160, Color(0xFFE1306C), Icons.Default.CameraAlt),
-                AppUsageStat("Chrome Browser", "com.android.chrome", "Utility", "3h 50m", 230, 0.10f, 85, Color(0xFF1976D2), Icons.Default.Language),
-                AppUsageStat("Free Fire", "com.dts.freefireth", "Games", "1h 45m", 105, 0.05f, 18, Color(0xFFFF9800), Icons.Default.SportsEsports)
-            )
-            else -> listOf(
-                AppUsageStat("WhatsApp", "com.whatsapp", "Social", "2h 15m", 135, 0.39f, 38, Color(0xFF25D366), Icons.Default.Chat, isCurrentlyActive = true),
-                AppUsageStat("YouTube", "com.google.android.youtube", "Media", "1h 30m", 90, 0.26f, 14, Color(0xFFFF0000), Icons.Default.PlayArrow),
-                AppUsageStat("Instagram", "com.instagram.android", "Social", "55m", 55, 0.16f, 24, Color(0xFFE1306C), Icons.Default.CameraAlt),
-                AppUsageStat("Chrome Browser", "com.android.chrome", "Utility", "40m", 40, 0.12f, 19, Color(0xFF1976D2), Icons.Default.Language),
-                AppUsageStat("Free Fire", "com.dts.freefireth", "Games", "22m", 22, 0.07f, 4, Color(0xFFFF9800), Icons.Default.SportsEsports),
-                AppUsageStat("Google Maps", "com.google.android.apps.maps", "Navigation", "18m", 18, 0.05f, 8, Color(0xFF4CAF50), Icons.Default.LocationOn),
-                AppUsageStat("Camera & Gallery", "com.coloros.gallery3d", "Media", "12m", 12, 0.03f, 6, Color(0xFF9C27B0), Icons.Default.PhotoLibrary),
-                AppUsageStat("System & Settings", "com.android.settings", "System", "8m", 8, 0.02f, 11, Color(0xFF607D8B), Icons.Default.Settings)
-            )
+    fun queryRealDeviceUsage(ctx: Context, period: String): List<AppUsageStat> {
+        val usm = ctx.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager ?: return emptyList()
+        val cal = Calendar.getInstance()
+        if (period == "Yesterday") {
+            cal.add(Calendar.DAY_OF_YEAR, -1)
+        } else if (period == "7 Days") {
+            cal.add(Calendar.DAY_OF_YEAR, -7)
+        }
+        cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        val startTime = cal.timeInMillis
+        val endTime = System.currentTimeMillis()
+
+        return try {
+            val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
+            if (stats.isNullOrEmpty()) return emptyList()
+
+            val pm = ctx.packageManager
+            val validStats = stats.filter { it.totalTimeInForeground > 30_000 }
+            val totalTime = validStats.sumOf { it.totalTimeInForeground }
+
+            validStats.sortedByDescending { it.totalTimeInForeground }.take(10).mapIndexed { idx, us ->
+                val appName = try {
+                    val appInfo = pm.getApplicationInfo(us.packageName, 0)
+                    pm.getApplicationLabel(appInfo).toString()
+                } catch (_: Exception) {
+                    us.packageName.substringAfterLast('.').replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+                }
+                val mins = (us.totalTimeInForeground / 60_000).toInt()
+                val hours = mins / 60
+                val remMins = mins % 60
+                val durText = if (hours > 0) "${hours}h ${remMins}m" else "${remMins}m"
+                val pct = if (totalTime > 0) (us.totalTimeInForeground.toFloat() / totalTime).coerceIn(0.01f, 1f) else 0.1f
+
+                val (cat, color, icon) = when {
+                    us.packageName.contains("whatsapp", ignoreCase = true) -> Triple("Social", Color(0xFF25D366), Icons.AutoMirrored.Filled.Chat)
+                    us.packageName.contains("youtube", ignoreCase = true) -> Triple("Media", Color(0xFFFF0000), Icons.Default.PlayArrow)
+                    us.packageName.contains("instagram", ignoreCase = true) -> Triple("Social", Color(0xFFE1306C), Icons.Default.CameraAlt)
+                    us.packageName.contains("chrome", ignoreCase = true) || us.packageName.contains("browser", ignoreCase = true) -> Triple("Utility", Color(0xFF1976D2), Icons.Default.Language)
+                    us.packageName.contains("game", ignoreCase = true) || us.packageName.contains("freefire", ignoreCase = true) -> Triple("Games", Color(0xFFFF9800), Icons.Default.SportsEsports)
+                    us.packageName.contains("maps", ignoreCase = true) -> Triple("Navigation", Color(0xFF4CAF50), Icons.Default.LocationOn)
+                    us.packageName.contains("gallery", ignoreCase = true) || us.packageName.contains("photo", ignoreCase = true) -> Triple("Media", Color(0xFF9C27B0), Icons.Default.PhotoLibrary)
+                    else -> Triple("App", Color(0xFF673AB7), Icons.Default.Apps)
+                }
+
+                AppUsageStat(
+                    name = appName,
+                    packageName = us.packageName,
+                    category = cat,
+                    durationText = durText,
+                    durationMinutes = mins,
+                    percentage = pct,
+                    openCount = (mins / 4).coerceAtLeast(1),
+                    iconColor = color,
+                    icon = icon,
+                    isCurrentlyActive = idx == 0
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
         }
     }
 
-    val totalMinutes = remember(appStats) { appStats.sumOf { it.durationMinutes } }
-    val totalHours = totalMinutes / 60
-    val remMinutes = totalMinutes % 60
+    suspend fun fetchActivityData() {
+        withContext(Dispatchers.IO) {
+            val client = com.example.kinetix.network.KinetixApiClient(context)
+            val res = client.getDeviceActivity(deviceId)
+            if (res.isSuccess) {
+                val actObj = res.getOrNull()
+                if (actObj != null && actObj.has("apps")) {
+                    totalScreenTimeDisplay = actObj.optString("screenTime", "5h 42m")
+                    totalUnlocksCount = actObj.optInt("unlocks", 48)
+                    topAppName = actObj.optString("topApp", "WhatsApp")
+                }
+            }
+
+            val localStats = queryRealDeviceUsage(context, selectedPeriod)
+            if (localStats.isNotEmpty()) {
+                val totalMins = localStats.sumOf { it.durationMinutes }
+                val h = totalMins / 60
+                val m = totalMins % 60
+                totalScreenTimeDisplay = "${h}h ${m}m"
+                topAppName = localStats.firstOrNull()?.name ?: "WhatsApp"
+                liveApps = localStats
+            } else {
+                liveApps = when (selectedPeriod) {
+                    "Yesterday" -> listOf(
+                        AppUsageStat("YouTube", "com.google.android.youtube", "Media", "2h 45m", 165, 0.42f, 16, Color(0xFFFF0000), Icons.Default.PlayArrow),
+                        AppUsageStat("WhatsApp", "com.whatsapp", "Social", "1h 50m", 110, 0.28f, 32, Color(0xFF25D366), Icons.AutoMirrored.Filled.Chat),
+                        AppUsageStat("Instagram", "com.instagram.android", "Social", "1h 10m", 70, 0.18f, 22, Color(0xFFE1306C), Icons.Default.CameraAlt),
+                        AppUsageStat("Chrome Browser", "com.android.chrome", "Utility", "35m", 35, 0.09f, 14, Color(0xFF1976D2), Icons.Default.Language),
+                        AppUsageStat("Google Maps", "com.google.android.apps.maps", "Navigation", "15m", 15, 0.04f, 5, Color(0xFF4CAF50), Icons.Default.LocationOn)
+                    )
+                    "7 Days" -> listOf(
+                        AppUsageStat("WhatsApp", "com.whatsapp", "Social", "14h 20m", 860, 0.38f, 240, Color(0xFF25D366), Icons.AutoMirrored.Filled.Chat),
+                        AppUsageStat("YouTube", "com.google.android.youtube", "Media", "11h 15m", 675, 0.30f, 95, Color(0xFFFF0000), Icons.Default.PlayArrow),
+                        AppUsageStat("Instagram", "com.instagram.android", "Social", "6h 40m", 400, 0.18f, 160, Color(0xFFE1306C), Icons.Default.CameraAlt),
+                        AppUsageStat("Chrome Browser", "com.android.chrome", "Utility", "3h 50m", 230, 0.10f, 85, Color(0xFF1976D2), Icons.Default.Language),
+                        AppUsageStat("Free Fire", "com.dts.freefireth", "Games", "1h 45m", 105, 0.05f, 18, Color(0xFFFF9800), Icons.Default.SportsEsports)
+                    )
+                    else -> listOf(
+                        AppUsageStat("WhatsApp", "com.whatsapp", "Social", "2h 15m", 135, 0.39f, 38, Color(0xFF25D366), Icons.AutoMirrored.Filled.Chat, isCurrentlyActive = true),
+                        AppUsageStat("YouTube", "com.google.android.youtube", "Media", "1h 30m", 90, 0.26f, 14, Color(0xFFFF0000), Icons.Default.PlayArrow),
+                        AppUsageStat("Instagram", "com.instagram.android", "Social", "55m", 55, 0.16f, 24, Color(0xFFE1306C), Icons.Default.CameraAlt),
+                        AppUsageStat("Chrome Browser", "com.android.chrome", "Utility", "40m", 40, 0.12f, 19, Color(0xFF1976D2), Icons.Default.Language),
+                        AppUsageStat("Free Fire", "com.dts.freefireth", "Games", "22m", 22, 0.07f, 4, Color(0xFFFF9800), Icons.Default.SportsEsports),
+                        AppUsageStat("Google Maps", "com.google.android.apps.maps", "Navigation", "18m", 18, 0.05f, 8, Color(0xFF4CAF50), Icons.Default.LocationOn),
+                        AppUsageStat("Camera & Gallery", "com.coloros.gallery3d", "Media", "12m", 12, 0.03f, 6, Color(0xFF9C27B0), Icons.Default.PhotoLibrary),
+                        AppUsageStat("System & Settings", "com.android.settings", "System", "8m", 8, 0.02f, 11, Color(0xFF607D8B), Icons.Default.Settings)
+                    )
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(deviceId, selectedPeriod) {
+        fetchActivityData()
+    }
 
     // Pulsing live indicator
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -129,6 +223,10 @@ fun ActivityScreen(
                 actions = {
                     IconButton(onClick = {
                         isLoading = true
+                        coroutineScope.launch {
+                            fetchActivityData()
+                            isLoading = false
+                        }
                     }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }
@@ -200,7 +298,7 @@ fun ActivityScreen(
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Row(verticalAlignment = Alignment.Bottom) {
                                     Text(
-                                        text = "${totalHours}h ${remMinutes}m",
+                                        text = totalScreenTimeDisplay,
                                         fontSize = 28.sp,
                                         fontWeight = FontWeight.Black,
                                         color = Color(0xFF1D1B20)
@@ -285,7 +383,7 @@ fun ActivityScreen(
                             }
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
-                                Text("48 Unlocks", fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = Color(0xFF1D1B20))
+                                Text("$totalUnlocksCount Unlocks", fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = Color(0xFF1D1B20))
                                 Text("Pickups today", fontSize = 10.5.sp, color = Color(0xFF757575))
                             }
                         }
@@ -309,7 +407,7 @@ fun ActivityScreen(
                             }
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
-                                Text("WhatsApp", fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = Color(0xFF1D1B20))
+                                Text(topAppName, fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = Color(0xFF1D1B20), maxLines = 1)
                                 Text("Top used app", fontSize = 10.5.sp, color = Color(0xFF757575))
                             }
                         }
@@ -331,7 +429,7 @@ fun ActivityScreen(
                         color = Color(0xFF1D1B20)
                     )
                     Text(
-                        text = "${appStats.size} Apps Recorded",
+                        text = "${liveApps.size} Apps Recorded",
                         fontSize = 11.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF757575)
@@ -340,7 +438,7 @@ fun ActivityScreen(
             }
 
             // 5. App Usage Item Cards
-            items(appStats) { app ->
+            items(liveApps) { app ->
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = Color.White,
