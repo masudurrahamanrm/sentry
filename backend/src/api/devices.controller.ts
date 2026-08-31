@@ -60,7 +60,7 @@ const liveNotificationsMap = new Map<string, Array<any>>();
 
 export async function submitNotificationHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { deviceId, packageName, title, body, timestamp } = req.body;
+    const { deviceId, packageName, title, body, timestamp, image } = req.body;
     if (!deviceId) {
       res.status(400).json({ error: { message: 'deviceId is required' } });
       return;
@@ -84,6 +84,7 @@ export async function submitNotificationHandler(req: Request, res: Response, nex
         packageName: newPkg,
         title: newTitle,
         body: newBody,
+        image: image || null,
         timestamp: timestamp || Date.now(),
       });
       if (list.length > 50) list.pop(); // Keep latest 50

