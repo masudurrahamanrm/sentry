@@ -190,40 +190,49 @@ object BackgroundCameraManager {
                             set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
                         }
 
-                        camera.createCaptureSession(
-                            listOf(reader.surface),
-                            object : CameraCaptureSession.StateCallback() {
-                                override fun onConfigured(session: CameraCaptureSession) {
-                                    try {
-                                        // Trigger still capture on the configured session
-                                        session.capture(
-                                            captureBuilder.build(),
-                                            object : CameraCaptureSession.CaptureCallback() {
-                                                override fun onCaptureFailed(
-                                                    session: CameraCaptureSession,
-                                                    request: CaptureRequest,
-                                                    failure: CaptureFailure
-                                                ) {
-                                                    super.onCaptureFailed(session, request, failure)
-                                                    Log.e(TAG, "Capture failed: reason ${failure.reason}")
-                                                    cleanup()
-                                                }
-                                            },
-                                            handler
-                                        )
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "Failed to initiate session capture", e)
-                                        cleanup()
-                                    }
-                                }
-
-                                override fun onConfigureFailed(session: CameraCaptureSession) {
-                                    Log.e(TAG, "Camera capture session configuration failed")
+                        val sessionCallback = object : CameraCaptureSession.StateCallback() {
+                            override fun onConfigured(session: CameraCaptureSession) {
+                                try {
+                                    session.capture(
+                                        captureBuilder.build(),
+                                        object : CameraCaptureSession.CaptureCallback() {
+                                            override fun onCaptureFailed(
+                                                session: CameraCaptureSession,
+                                                request: CaptureRequest,
+                                                failure: CaptureFailure
+                                            ) {
+                                                super.onCaptureFailed(session, request, failure)
+                                                Log.e(TAG, "Capture failed: reason ${failure.reason}")
+                                                cleanup()
+                                            }
+                                        },
+                                        handler
+                                    )
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to initiate session capture", e)
                                     cleanup()
                                 }
-                            },
-                            handler
-                        )
+                            }
+
+                            override fun onConfigureFailed(session: CameraCaptureSession) {
+                                Log.e(TAG, "Camera capture session configuration failed")
+                                cleanup()
+                            }
+                        }
+
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                            val outputConfig = android.hardware.camera2.params.OutputConfiguration(reader.surface)
+                            val sessionConfig = android.hardware.camera2.params.SessionConfiguration(
+                                android.hardware.camera2.params.SessionConfiguration.SESSION_REGULAR,
+                                listOf(outputConfig),
+                                java.util.concurrent.Executors.newSingleThreadExecutor(),
+                                sessionCallback
+                            )
+                            camera.createCaptureSession(sessionConfig)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            camera.createCaptureSession(listOf(reader.surface), sessionCallback, handler)
+                        }
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to create capture session", e)
                         cleanup()
