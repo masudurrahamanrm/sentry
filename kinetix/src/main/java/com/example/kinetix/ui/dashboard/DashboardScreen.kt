@@ -2,14 +2,15 @@ package com.example.kinetix.ui.dashboard
 
 import android.annotation.SuppressLint
 import android.os.Build
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -17,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -33,7 +35,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.example.kinetix.network.KinetixApiClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -51,7 +52,9 @@ data class PairedDeviceItem(
     val isThisDevice: Boolean = false,
     val latitude: Double = 22.5726,
     val longitude: Double = 88.3639,
-    val address: String = "Kadampukur - Jhalgachi Rd"
+    val address: String = "Kadampukur - Jhalgachi Rd",
+    val batteryLevel: Int = 87,
+    val batteryStatus: String = "Fast Charging (USB-PD 33W)"
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,12 +69,13 @@ fun DashboardScreen(
 
     val pairedDevices = remember { mutableStateListOf<PairedDeviceItem>() }
     var selectedDevice by remember { mutableStateOf<PairedDeviceItem?>(null) }
+    var showDeviceDetails by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
     var isSatelliteMode by remember { mutableStateOf(true) }
     var activeTab by remember { mutableStateOf(0) } // 0 = Devices, 1 = People
-    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    var actionFeedbackMessage by remember { mutableStateOf<String?>(null) }
 
-    // Gestures for interactive map navigation
+    // Map gesture state
     var mapOffsetX by remember { mutableStateOf(0f) }
     var mapOffsetY by remember { mutableStateOf(0f) }
     var mapScale by remember { mutableStateOf(1f) }
@@ -115,7 +119,9 @@ fun DashboardScreen(
                         isThisDevice = true,
                         latitude = 22.5726,
                         longitude = 88.3639,
-                        address = "Kadampukur - Jhalgachi Rd"
+                        address = "Kadampukur - Jhalgachi Rd",
+                        batteryLevel = 92,
+                        batteryStatus = "Fast Charging (USB-PD)"
                     )
                 )
 
@@ -147,7 +153,9 @@ fun DashboardScreen(
                                         isThisDevice = false,
                                         latitude = lat,
                                         longitude = lon,
-                                        address = addr
+                                        address = addr,
+                                        batteryLevel = 87,
+                                        batteryStatus = "Optimal Health (Good)"
                                     )
                                 )
                             }
@@ -173,7 +181,7 @@ fun DashboardScreen(
         }
     }
 
-    // Marker Pulse Animation
+    // Pulse Animation
     val infiniteTransition = rememberInfiniteTransition(label = "marker_pulse")
     val pulseSize by infiniteTransition.animateFloat(
         initialValue = 70f,
@@ -253,10 +261,17 @@ fun DashboardScreen(
                     .clip(RoundedCornerShape(0.dp))
                     .pointerInput(Unit) {
                         detectTransformGestures { _, pan, zoom, _ ->
-                            mapScale = (mapScale * zoom).coerceIn(0.6f, 3.5f)
+                            mapScale = (mapScale * zoom).coerceIn(0.5f, 4.0f)
                             mapOffsetX += pan.x
                             mapOffsetY += pan.y
                         }
+                    }
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onDoubleTap = {
+                                mapScale = if (mapScale > 1.8f) 1.0f else (mapScale + 0.8f).coerceAtMost(4.0f)
+                            }
+                        )
                     }
             ) {
                 // High-Fidelity Satellite Terrain & Vector Roads Map Canvas
@@ -297,19 +312,16 @@ fun DashboardScreen(
                             val bW = dims.x * mapScale
                             val bH = dims.y * mapScale
 
-                            // Rooftop surface
                             drawRect(
                                 color = Color(0xFF4A443B),
                                 topLeft = Offset(bX, bY),
                                 size = androidx.compose.ui.geometry.Size(bW, bH)
                             )
-                            // Roof details
                             drawRect(
                                 color = Color(0xFF2A2D34),
                                 topLeft = Offset(bX + 8f * mapScale, bY + 8f * mapScale),
                                 size = androidx.compose.ui.geometry.Size(bW * 0.6f, bH * 0.6f)
                             )
-                            // Roof border
                             drawRect(
                                 color = Color(0xFF6B6254),
                                 topLeft = Offset(bX, bY),
@@ -334,7 +346,6 @@ fun DashboardScreen(
                         // Clean Vector Google Map Mode
                         drawRect(color = Color(0xFFF2EFE9))
 
-                        // Vector Roads
                         val vRoad = Path().apply {
                             val rY = (h * 0.42f - h / 2) * mapScale + h / 2 + mapOffsetY
                             moveTo(-200f, rY)
@@ -358,6 +369,7 @@ fun DashboardScreen(
                     modifier = Modifier
                         .align(Alignment.Center)
                         .offset(x = pinCenterX.dp / 2.5f, y = pinCenterY.dp / 2.5f)
+                        .clickable { showDeviceDetails = true }
                 ) {
                     Box(
                         modifier = Modifier
@@ -387,7 +399,7 @@ fun DashboardScreen(
                             color = Color.White,
                             shadowElevation = 8.dp,
                             modifier = Modifier
-                                .size(50.dp)
+                                .size(52.dp)
                                 .border(2.5.dp, Color(0xFF1976D2), CircleShape)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
@@ -402,7 +414,7 @@ fun DashboardScreen(
                                     },
                                     contentDescription = null,
                                     tint = Color(0xFF1976D2),
-                                    modifier = Modifier.size(26.dp)
+                                    modifier = Modifier.size(28.dp)
                                 )
                             }
                         }
@@ -491,28 +503,74 @@ fun DashboardScreen(
                     }
                 }
 
-                // Bottom-Right Recenter Crosshair Button
-                Surface(
-                    onClick = {
-                        mapOffsetX = 0f
-                        mapOffsetY = 0f
-                        mapScale = 1f
-                    },
-                    shape = CircleShape,
-                    color = Color.White,
-                    shadowElevation = 8.dp,
+                // Bottom-Right Map Control Stack: Zoom In (+), Zoom Out (-), Recenter (🎯)
+                Column(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = 16.dp, bottom = 28.dp)
-                        .size(48.dp)
+                        .padding(end = 16.dp, bottom = 28.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.MyLocation,
-                            contentDescription = "Recenter",
-                            tint = Color(0xFF1976D2),
-                            modifier = Modifier.size(24.dp)
-                        )
+                    // Zoom In Button (+)
+                    Surface(
+                        onClick = {
+                            mapScale = (mapScale + 0.4f).coerceAtMost(4.0f)
+                        },
+                        shape = CircleShape,
+                        color = Color.White,
+                        shadowElevation = 6.dp,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = "Zoom In",
+                                tint = Color(0xFF1976D2),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
+                    // Zoom Out Button (-)
+                    Surface(
+                        onClick = {
+                            mapScale = (mapScale - 0.4f).coerceAtLeast(0.5f)
+                        },
+                        shape = CircleShape,
+                        color = Color.White,
+                        shadowElevation = 6.dp,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.Remove,
+                                contentDescription = "Zoom Out",
+                                tint = Color(0xFF1976D2),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
+                    // Recenter Crosshair Button
+                    Surface(
+                        onClick = {
+                            mapOffsetX = 0f
+                            mapOffsetY = 0f
+                            mapScale = 1f
+                        },
+                        shape = CircleShape,
+                        color = Color.White,
+                        shadowElevation = 8.dp,
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.MyLocation,
+                                contentDescription = "Recenter",
+                                tint = Color(0xFF1976D2),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
                     }
                 }
 
@@ -555,135 +613,249 @@ fun DashboardScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // "✓ My devices" Header & Refresh Row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            color = Color(0xFFECE6F8),
-                            shape = RoundedCornerShape(12.dp)
+                    if (showDeviceDetails && selectedDevice != null) {
+                        // --- DETAILS VIEW ---
+                        val dev = selectedDevice!!
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            TextButton(
+                                onClick = { showDeviceDetails = false },
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("All devices", fontWeight = FontWeight.Bold)
+                            }
+
+                            Surface(
+                                color = if (dev.isOnline) Color(0xFFE8F5E9) else Color(0xFFECEFF1),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = if (dev.isOnline) "• Online now" else "• Offline",
+                                    color = if (dev.isOnline) Color(0xFF2E7D32) else Color(0xFF546E7A),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Device Header Card
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFFECE6F8)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Smartphone, contentDescription = null, tint = Color(0xFF6750A4), modifier = Modifier.size(28.dp))
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(dev.deviceName, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = Color(0xFF1D1B20))
+                                Text(if (dev.isThisDevice) "This device • ${dev.osVersion}" else "${dev.deviceId} • ${dev.osVersion}", fontSize = 12.sp, color = Color.Gray)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Telemetry Info Chips (Battery & GPS)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Surface(
+                                color = Color(0xFFF3EDF7),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.BatteryChargingFull, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("${dev.batteryLevel}% • Charging", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                            Surface(
+                                color = Color(0xFFF3EDF7),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.GpsFixed, contentDescription = null, tint = Color(0xFF1976D2), modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("±3m • GPS Live", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+
+                        if (actionFeedbackMessage != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(actionFeedbackMessage!!, color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Quick Action Buttons Grid
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button(
+                                onClick = {
+                                    actionFeedbackMessage = "Playing loud alarm on ${dev.deviceName}..."
+                                    coroutineScope.launch {
+                                        delay(3000)
+                                        actionFeedbackMessage = null
+                                    }
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2))
+                            ) {
+                                Icon(Icons.Default.VolumeUp, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Play Sound", fontSize = 12.sp)
+                            }
+
+                            if (!dev.isThisDevice) {
+                                Button(
+                                    onClick = { onNavigateToDeviceDetail(dev.deviceId) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4))
+                                ) {
+                                    Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Control Hub", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    } else {
+                        // --- DEVICE LIST VIEW ---
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                color = Color(0xFFECE6F8),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = Color(0xFF21005D),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "My devices",
+                                        color = Color(0xFF21005D),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            }
+
+                            IconButton(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        isRefreshing = true
+                                        fetchDevices()
+                                        delay(500)
+                                        isRefreshing = false
+                                    }
+                                }
                             ) {
                                 Icon(
-                                    Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = Color(0xFF21005D),
-                                    modifier = Modifier.size(18.dp)
+                                    Icons.Default.Refresh,
+                                    contentDescription = "Refresh",
+                                    tint = Color(0xFF49454F),
+                                    modifier = Modifier.size(24.dp)
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        if (pairedDevices.isEmpty()) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
                                 Text(
-                                    text = "My devices",
-                                    color = Color(0xFF21005D),
-                                    fontWeight = FontWeight.Bold,
+                                    text = "Searching for Sentry devices...",
+                                    color = Color.Gray,
                                     fontSize = 14.sp
                                 )
                             }
-                        }
+                        } else {
+                            LazyColumn(
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                items(pairedDevices) { device ->
+                                    val isSelected = selectedDevice?.deviceId == device.deviceId
 
-                        IconButton(
-                            onClick = {
-                                coroutineScope.launch {
-                                    isRefreshing = true
-                                    fetchDevices()
-                                    delay(500)
-                                    isRefreshing = false
-                                }
-                            }
-                        ) {
-                            Icon(
-                                Icons.Default.Refresh,
-                                contentDescription = "Refresh",
-                                tint = Color(0xFF49454F),
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Devices List
-                    if (pairedDevices.isEmpty()) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Searching for Sentry devices...",
-                                color = Color.Gray,
-                                fontSize = 14.sp
-                            )
-                        }
-                    } else {
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            items(pairedDevices) { device ->
-                                val isSelected = selectedDevice?.deviceId == device.deviceId
-
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(
-                                            if (isSelected) Color(0xFFF3EDF7) else Color.Transparent
-                                        )
-                                        .clickable {
-                                            selectedDevice = device
-                                            mapOffsetX = 0f
-                                            mapOffsetY = 0f
-                                            mapScale = 1f
-                                            if (!device.isThisDevice) {
-                                                onNavigateToDeviceDetail(device.deviceId)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .background(
+                                                if (isSelected) Color(0xFFF3EDF7) else Color.Transparent
+                                            )
+                                            .clickable {
+                                                selectedDevice = device
+                                                showDeviceDetails = true
+                                                mapOffsetX = 0f
+                                                mapOffsetY = 0f
+                                                mapScale = 1f
                                             }
-                                        }
-                                        .padding(horizontal = 8.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Device Icon
-                                    Box(
-                                        modifier = Modifier.size(42.dp),
-                                        contentAlignment = Alignment.Center
+                                            .padding(horizontal = 8.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        val isWatch = device.deviceName.contains("Watch", ignoreCase = true)
-                                        val isBuds = device.deviceName.contains("Buds", ignoreCase = true) || device.deviceName.contains("AirPods", ignoreCase = true)
+                                        Box(
+                                            modifier = Modifier.size(42.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            val isWatch = device.deviceName.contains("Watch", ignoreCase = true)
+                                            val isBuds = device.deviceName.contains("Buds", ignoreCase = true) || device.deviceName.contains("AirPods", ignoreCase = true)
 
-                                        Icon(
-                                            when {
-                                                isWatch -> Icons.Default.Watch
-                                                isBuds -> Icons.Default.Headphones
-                                                else -> Icons.Default.Smartphone
-                                            },
-                                            contentDescription = null,
-                                            tint = if (device.isThisDevice) Color(0xFF1976D2) else Color(0xFF49454F),
-                                            modifier = Modifier.size(28.dp)
-                                        )
-                                    }
+                                            Icon(
+                                                when {
+                                                    isWatch -> Icons.Default.Watch
+                                                    isBuds -> Icons.Default.Headphones
+                                                    else -> Icons.Default.Smartphone
+                                                },
+                                                contentDescription = null,
+                                                tint = if (device.isThisDevice) Color(0xFF1976D2) else Color(0xFF49454F),
+                                                modifier = Modifier.size(28.dp)
+                                            )
+                                        }
 
-                                    Spacer(modifier = Modifier.width(14.dp))
+                                        Spacer(modifier = Modifier.width(14.dp))
 
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = device.deviceName,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp,
-                                            color = Color(0xFF1D1B20)
-                                        )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(
-                                            text = if (device.isThisDevice) "This device" else "${device.osVersion} • ${device.lastSeenText}",
-                                            color = if (device.isThisDevice) Color(0xFF1976D2) else Color(0xFF49454F),
-                                            fontSize = 13.sp,
-                                            fontWeight = if (device.isThisDevice) FontWeight.Medium else FontWeight.Normal
-                                        )
-                                    }
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = device.deviceName,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 15.sp,
+                                                color = Color(0xFF1D1B20)
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = if (device.isThisDevice) "This device" else "${device.osVersion} • ${device.lastSeenText}",
+                                                color = if (device.isThisDevice) Color(0xFF1976D2) else Color(0xFF49454F),
+                                                fontSize = 13.sp,
+                                                fontWeight = if (device.isThisDevice) FontWeight.Medium else FontWeight.Normal
+                                            )
+                                        }
 
-                                    if (!device.isThisDevice) {
                                         Icon(
                                             Icons.Default.ChevronRight,
                                             contentDescription = "Details",

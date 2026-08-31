@@ -117,6 +117,7 @@ object BackgroundLocationManager {
                     }
 
                     client.syncLocation(body)
+                    SentryPersistentService.updateLocationNotification(context, address, lat, lon)
                 } catch (_: Exception) {
                 }
                 delay(4000)

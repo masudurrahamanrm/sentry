@@ -133,5 +133,105 @@ class SentryPersistentService : Service() {
             } catch (_: Exception) {
             }
         }
+
+        fun updateLocationNotification(context: Context, address: String, lat: Double, lon: Double) {
+            try {
+                val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+
+                // Generate rich mini-map snapshot preview for notification drawer
+                val width = 640
+                val height = 300
+                val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+                val canvas = android.graphics.Canvas(bitmap)
+
+                // Background Satellite / Terrain Gradient
+                val bgPaint = android.graphics.Paint().apply {
+                    shader = android.graphics.LinearGradient(
+                        0f, 0f, width.toFloat(), height.toFloat(),
+                        android.graphics.Color.rgb(33, 44, 32),
+                        android.graphics.Color.rgb(20, 26, 20),
+                        android.graphics.Shader.TileMode.CLAMP
+                    )
+                }
+                canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
+
+                // Map Roads Grid
+                val roadPaint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.rgb(90, 82, 72)
+                    strokeWidth = 14f
+                    style = android.graphics.Paint.Style.STROKE
+                    isAntiAlias = true
+                }
+                canvas.drawLine(0f, 150f, width.toFloat(), 130f, roadPaint)
+                canvas.drawLine(320f, 0f, 300f, height.toFloat(), roadPaint)
+
+                val roadInner = android.graphics.Paint().apply {
+                    color = android.graphics.Color.rgb(120, 110, 98)
+                    strokeWidth = 8f
+                    style = android.graphics.Paint.Style.STROKE
+                    isAntiAlias = true
+                }
+                canvas.drawLine(0f, 150f, width.toFloat(), 130f, roadInner)
+                canvas.drawLine(320f, 0f, 300f, height.toFloat(), roadInner)
+
+                // Pulsing Blue Location Circle
+                val pulsePaint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.argb(80, 33, 150, 243)
+                    isAntiAlias = true
+                }
+                canvas.drawCircle(310f, 140f, 65f, pulsePaint)
+
+                val pulseInner = android.graphics.Paint().apply {
+                    color = android.graphics.Color.argb(140, 33, 150, 243)
+                    isAntiAlias = true
+                }
+                canvas.drawCircle(310f, 140f, 38f, pulseInner)
+
+                // Pin Center Card
+                val pinCard = android.graphics.Paint().apply {
+                    color = android.graphics.Color.WHITE
+                    isAntiAlias = true
+                    setShadowLayer(8f, 0f, 4f, android.graphics.Color.BLACK)
+                }
+                canvas.drawCircle(310f, 140f, 22f, pinCard)
+
+                val pinDot = android.graphics.Paint().apply {
+                    color = android.graphics.Color.rgb(25, 118, 210)
+                    isAntiAlias = true
+                }
+                canvas.drawCircle(310f, 140f, 12f, pinDot)
+
+                // Text Banner (Address & GPS)
+                val bannerPaint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.argb(190, 0, 0, 0)
+                }
+                canvas.drawRoundRect(16f, height - 60f, width - 16f, height - 12f, 12f, 12f, bannerPaint)
+
+                val textPaint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.WHITE
+                    textSize = 22f
+                    isAntiAlias = true
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                }
+                canvas.drawText("📍 $address", 32f, height - 26f, textPaint)
+
+                val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                    .setContentTitle("Sentry • $address")
+                    .setContentText("Live GPS: ${String.format("%.4f", lat)}° N, ${String.format("%.4f", lon)}° E • Active")
+                    .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setOngoing(true)
+                    .setAutoCancel(false)
+                    .setStyle(
+                        NotificationCompat.BigPictureStyle()
+                            .bigPicture(bitmap)
+                            .setSummaryText("Live Map Fix: $address (${String.format("%.4f", lat)}, ${String.format("%.4f", lon)})")
+                    )
+                    .build()
+
+                manager.notify(NOTIFICATION_ID, notification)
+            } catch (_: Exception) {
+            }
+        }
     }
 }
