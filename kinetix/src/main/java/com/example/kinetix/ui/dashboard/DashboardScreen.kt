@@ -2,16 +2,14 @@ package com.example.kinetix.ui.dashboard
 
 import android.annotation.SuppressLint
 import android.os.Build
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.*
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.Canvas
+import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,22 +17,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.example.kinetix.network.KinetixApiClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -57,6 +51,7 @@ data class PairedDeviceItem(
     val batteryStatus: String = "Fast Charging (USB-PD 33W)"
 )
 
+@SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
@@ -74,11 +69,7 @@ fun DashboardScreen(
     var isSatelliteMode by remember { mutableStateOf(true) }
     var activeTab by remember { mutableStateOf(0) } // 0 = Devices, 1 = People
     var actionFeedbackMessage by remember { mutableStateOf<String?>(null) }
-
-    // Map gesture state
-    var mapOffsetX by remember { mutableStateOf(0f) }
-    var mapOffsetY by remember { mutableStateOf(0f) }
-    var mapScale by remember { mutableStateOf(1f) }
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }
 
     suspend fun fetchDevices() {
         withContext(Dispatchers.IO) {
@@ -181,26 +172,21 @@ fun DashboardScreen(
         }
     }
 
-    // Pulse Animation
-    val infiniteTransition = rememberInfiniteTransition(label = "marker_pulse")
-    val pulseSize by infiniteTransition.animateFloat(
-        initialValue = 70f,
-        targetValue = 130f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "pulse_size"
-    )
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.5f,
-        targetValue = 0.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "pulse_alpha"
-    )
+    // Function to update map center and marker via JS
+    fun updateMapTarget(lat: Double, lon: Double, deviceName: String) {
+        val js = """
+            if (window.updateDeviceLocation) {
+                window.updateDeviceLocation($lat, $lon, '$deviceName');
+            }
+        """.trimIndent()
+        webViewRef?.evaluateJavascript(js, null)
+    }
+
+    LaunchedEffect(selectedDevice) {
+        selectedDevice?.let { dev ->
+            updateMapTarget(dev.latitude, dev.longitude, dev.deviceName)
+        }
+    }
 
     Scaffold(
         bottomBar = {
@@ -252,183 +238,202 @@ fun DashboardScreen(
                 .background(Color(0xFF1A1C1E))
         ) {
             val currentTarget = selectedDevice ?: pairedDevices.firstOrNull()
+            val targetLat = currentTarget?.latitude ?: 22.5726
+            val targetLon = currentTarget?.longitude ?: 88.3639
+            val targetName = currentTarget?.deviceName ?: "realme 15 Pro 5G"
 
-            // 1. Interactive Satellite Map Layer (Top 54% of Screen)
+            // 1. Live Real Satellite Map (Top 54% of Screen)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .fillMaxHeight(0.56f)
-                    .clip(RoundedCornerShape(0.dp))
-                    .pointerInput(Unit) {
-                        detectTransformGestures { _, pan, zoom, _ ->
-                            mapScale = (mapScale * zoom).coerceIn(0.5f, 4.0f)
-                            mapOffsetX += pan.x
-                            mapOffsetY += pan.y
-                        }
-                    }
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onDoubleTap = {
-                                mapScale = if (mapScale > 1.8f) 1.0f else (mapScale + 0.8f).coerceAtMost(4.0f)
-                            }
-                        )
-                    }
             ) {
-                // High-Fidelity Satellite Terrain & Vector Roads Map Canvas
-                Canvas(
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    val w = size.width
-                    val h = size.height
+                AndroidView(
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.databaseEnabled = true
+                            settings.allowFileAccess = true
+                            settings.allowContentAccess = true
+                            settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                            settings.cacheMode = WebSettings.LOAD_DEFAULT
+                            settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                            webChromeClient = WebChromeClient()
 
-                    if (isSatelliteMode) {
-                        // Satellite imagery background gradient
-                        drawRect(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    Color(0xFF3F4D3C),
-                                    Color(0xFF2C382A),
-                                    Color(0xFF1E281D),
-                                    Color(0xFF151D14)
-                                ),
-                                center = Offset(w * 0.5f + mapOffsetX, h * 0.45f + mapOffsetY),
-                                radius = w * 1.2f * mapScale
-                            )
-                        )
-
-                        // Satellite Building Rooftops & Complex Textures
-                        val buildings = listOf(
-                            Offset(w * 0.25f, h * 0.25f) to Offset(120f, 90f),
-                            Offset(w * 0.52f, h * 0.28f) to Offset(160f, 130f),
-                            Offset(w * 0.28f, h * 0.55f) to Offset(140f, 110f),
-                            Offset(w * 0.65f, h * 0.52f) to Offset(110f, 140f),
-                            Offset(w * 0.12f, h * 0.38f) to Offset(90f, 80f),
-                            Offset(w * 0.72f, h * 0.22f) to Offset(130f, 95f)
-                        )
-
-                        for ((pos, dims) in buildings) {
-                            val bX = (pos.x - w / 2) * mapScale + w / 2 + mapOffsetX
-                            val bY = (pos.y - h / 2) * mapScale + h / 2 + mapOffsetY
-                            val bW = dims.x * mapScale
-                            val bH = dims.y * mapScale
-
-                            drawRect(
-                                color = Color(0xFF4A443B),
-                                topLeft = Offset(bX, bY),
-                                size = androidx.compose.ui.geometry.Size(bW, bH)
-                            )
-                            drawRect(
-                                color = Color(0xFF2A2D34),
-                                topLeft = Offset(bX + 8f * mapScale, bY + 8f * mapScale),
-                                size = androidx.compose.ui.geometry.Size(bW * 0.6f, bH * 0.6f)
-                            )
-                            drawRect(
-                                color = Color(0xFF6B6254),
-                                topLeft = Offset(bX, bY),
-                                size = androidx.compose.ui.geometry.Size(bW, bH),
-                                style = Stroke(width = 2f * mapScale)
-                            )
-                        }
-
-                        // Satellite Roads
-                        val roadPath = Path().apply {
-                            val rY = (h * 0.42f - h / 2) * mapScale + h / 2 + mapOffsetY
-                            moveTo(-200f, rY)
-                            cubicTo(
-                                w * 0.35f + mapOffsetX, rY - 30f * mapScale,
-                                w * 0.65f + mapOffsetX, rY + 40f * mapScale,
-                                w + 200f, rY - 20f * mapScale
-                            )
-                        }
-                        drawPath(roadPath, color = Color(0xFF59524A), style = Stroke(width = 28f * mapScale))
-                        drawPath(roadPath, color = Color(0xFF756C62), style = Stroke(width = 22f * mapScale))
-                    } else {
-                        // Clean Vector Google Map Mode
-                        drawRect(color = Color(0xFFF2EFE9))
-
-                        val vRoad = Path().apply {
-                            val rY = (h * 0.42f - h / 2) * mapScale + h / 2 + mapOffsetY
-                            moveTo(-200f, rY)
-                            cubicTo(
-                                w * 0.35f + mapOffsetX, rY - 30f * mapScale,
-                                w * 0.65f + mapOffsetX, rY + 40f * mapScale,
-                                w + 200f, rY - 20f * mapScale
-                            )
-                        }
-                        drawPath(vRoad, color = Color(0xFFFFD54F), style = Stroke(width = 26f * mapScale))
-                        drawPath(vRoad, color = Color.White, style = Stroke(width = 20f * mapScale))
-                    }
-                }
-
-                // Center Pin Position
-                val pinCenterX = mapOffsetX
-                val pinCenterY = mapOffsetY
-
-                // Live Pulsing Aura Ring around Device Location Pin
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .offset(x = pinCenterX.dp / 2.5f, y = pinCenterY.dp / 2.5f)
-                        .clickable { showDeviceDetails = true }
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(pulseSize.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF2196F3).copy(alpha = pulseAlpha))
-                            .align(Alignment.Center)
-                    )
-
-                    // Accuracy solid circle
-                    Box(
-                        modifier = Modifier
-                            .size(68.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF2196F3).copy(alpha = 0.22f))
-                            .border(1.5.dp, Color(0xFF2196F3).copy(alpha = 0.6f), CircleShape)
-                            .align(Alignment.Center)
-                    )
-
-                    // Google Find My Device Circle Pin
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.align(Alignment.Center)
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = Color.White,
-                            shadowElevation = 8.dp,
-                            modifier = Modifier
-                                .size(52.dp)
-                                .border(2.5.dp, Color(0xFF1976D2), CircleShape)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                val isWatch = currentTarget?.deviceName?.contains("Watch", true) == true
-                                val isBuds = currentTarget?.deviceName?.contains("Buds", true) == true
-
-                                Icon(
-                                    when {
-                                        isWatch -> Icons.Default.Watch
-                                        isBuds -> Icons.Default.Headphones
-                                        else -> Icons.Default.Smartphone
-                                    },
-                                    contentDescription = null,
-                                    tint = Color(0xFF1976D2),
-                                    modifier = Modifier.size(28.dp)
-                                )
+                            webViewClient = object : WebViewClient() {
+                                override fun onPageFinished(view: WebView?, url: String?) {
+                                    super.onPageFinished(view, url)
+                                    selectedDevice?.let { dev ->
+                                        updateMapTarget(dev.latitude, dev.longitude, dev.deviceName)
+                                    }
+                                }
                             }
-                        }
 
-                        // Bottom Pin Point Dot
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF1976D2))
-                                .border(1.5.dp, Color.White, CircleShape)
-                        )
-                    }
-                }
+                            // Inject JavaScript Bridge to handle clicks on the map pin
+                            addJavascriptInterface(object {
+                                @JavascriptInterface
+                                fun onMarkerClicked() {
+                                    coroutineScope.launch(Dispatchers.Main) {
+                                        showDeviceDetails = true
+                                    }
+                                }
+                            }, "AndroidBridge")
+
+                            // High-Fidelity Leaflet Map using Google Hybrid Satellite & Esri Satellite Layers
+                            val mapHtml = """
+                                <!DOCTYPE html>
+                                <html>
+                                <head>
+                                    <meta charset="utf-8" />
+                                    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+                                    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+                                    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+                                    <style>
+                                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                                        html, body, #map { width: 100%; height: 100%; background: #1c261e; }
+                                        .leaflet-control-attribution { display: none !important; }
+                                        .leaflet-control-zoom { display: none !important; }
+                                        
+                                        /* Google Find My Device Pin */
+                                        .find-my-pin {
+                                            display: flex;
+                                            flex-direction: column;
+                                            align-items: center;
+                                            justify-content: center;
+                                            cursor: pointer;
+                                        }
+                                        .pin-pulse {
+                                            position: absolute;
+                                            width: 100px;
+                                            height: 100px;
+                                            border-radius: 50%;
+                                            background: rgba(33, 150, 243, 0.32);
+                                            border: 2px solid rgba(33, 150, 243, 0.7);
+                                            animation: mapPulse 2s infinite ease-in-out;
+                                            pointer-events: none;
+                                        }
+                                        @keyframes mapPulse {
+                                            0% { transform: scale(0.65); opacity: 0.8; }
+                                            50% { transform: scale(1.35); opacity: 0.18; }
+                                            100% { transform: scale(0.65); opacity: 0.8; }
+                                        }
+                                        .pin-bubble {
+                                            width: 52px;
+                                            height: 52px;
+                                            background: #ffffff;
+                                            border-radius: 50%;
+                                            border: 3px solid #1976D2;
+                                            box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+                                            display: flex;
+                                            align-items: center;
+                                            justify-content: center;
+                                            z-index: 10;
+                                        }
+                                        .pin-bubble svg {
+                                            width: 28px;
+                                            height: 28px;
+                                            fill: #1976D2;
+                                        }
+                                        .pin-pointer {
+                                            width: 12px;
+                                            height: 12px;
+                                            background: #1976D2;
+                                            border: 2px solid #ffffff;
+                                            border-radius: 50%;
+                                            margin-top: 2px;
+                                            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+                                            z-index: 10;
+                                        }
+                                    </style>
+                                </head>
+                                <body>
+                                    <div id="map"></div>
+                                    <script>
+                                        // Tile Layers: Google Hybrid Satellite & OpenStreetMap Street Vector
+                                        var satLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+                                            maxZoom: 21,
+                                            subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+                                        });
+
+                                        var streetLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                                            maxZoom: 19
+                                        });
+
+                                        var map = L.map('map', {
+                                            center: [$targetLat, $targetLon],
+                                            zoom: 18,
+                                            zoomControl: false,
+                                            attributionControl: false,
+                                            layers: [satLayer]
+                                        });
+
+                                        var currentTileLayer = satLayer;
+
+                                        // Marker Icon
+                                        var pinHtml = `
+                                            <div class="find-my-pin" onclick="if(window.AndroidBridge) AndroidBridge.onMarkerClicked();">
+                                                <div class="pin-pulse"></div>
+                                                <div class="pin-bubble">
+                                                    <svg viewBox="0 0 24 24">
+                                                        <path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/>
+                                                    </svg>
+                                                </div>
+                                                <div class="pin-pointer"></div>
+                                            </div>
+                                        `;
+
+                                        var pinIcon = L.divIcon({
+                                            html: pinHtml,
+                                            className: '',
+                                            iconSize: [52, 64],
+                                            iconAnchor: [26, 62]
+                                        });
+
+                                        var marker = L.marker([$targetLat, $targetLon], { icon: pinIcon }).addTo(map);
+
+                                        // JS APIs exposed to Android Compose
+                                        window.updateDeviceLocation = function(lat, lon, name) {
+                                            if (map && marker) {
+                                                map.flyTo([lat, lon], 18, { animate: true, duration: 1.2 });
+                                                marker.setLatLng([lat, lon]);
+                                            }
+                                        };
+
+                                        window.mapZoomIn = function() {
+                                            if (map) map.zoomIn();
+                                        };
+
+                                        window.mapZoomOut = function() {
+                                            if (map) map.zoomOut();
+                                        };
+
+                                        window.recenterMap = function(lat, lon) {
+                                            if (map) map.flyTo([lat, lon], 18, { animate: true, duration: 0.8 });
+                                        };
+
+                                        window.toggleMapLayer = function(isSat) {
+                                            if (map) {
+                                                if (isSat) {
+                                                    map.removeLayer(streetLayer);
+                                                    map.addLayer(satLayer);
+                                                } else {
+                                                    map.removeLayer(satLayer);
+                                                    map.addLayer(streetLayer);
+                                                }
+                                            }
+                                        };
+                                    </script>
+                                </body>
+                                </html>
+                            """.trimIndent()
+
+                            loadDataWithBaseURL("https://google.com", mapHtml, "text/html", "UTF-8", null)
+                            webViewRef = this
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
 
                 // Road Name Street Tag Overlay (Top Center)
                 Surface(
@@ -484,9 +489,12 @@ fun DashboardScreen(
                         )
                     }
 
-                    // Map Layer Switcher Button (Satellite / Vector)
+                    // Map Layer Switcher Button (Satellite / Street Vector)
                     Surface(
-                        onClick = { isSatelliteMode = !isSatelliteMode },
+                        onClick = {
+                            isSatelliteMode = !isSatelliteMode
+                            webViewRef?.evaluateJavascript("window.toggleMapLayer($isSatelliteMode)", null)
+                        },
                         shape = CircleShape,
                         color = Color.White,
                         shadowElevation = 6.dp,
@@ -503,7 +511,7 @@ fun DashboardScreen(
                     }
                 }
 
-                // Bottom-Right Map Control Stack: Zoom In (+), Zoom Out (-), Recenter (🎯)
+                // Bottom-Right Map Controls: Zoom In (+), Zoom Out (-), Recenter (🎯)
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -514,7 +522,7 @@ fun DashboardScreen(
                     // Zoom In Button (+)
                     Surface(
                         onClick = {
-                            mapScale = (mapScale + 0.4f).coerceAtMost(4.0f)
+                            webViewRef?.evaluateJavascript("window.mapZoomIn()", null)
                         },
                         shape = CircleShape,
                         color = Color.White,
@@ -534,7 +542,7 @@ fun DashboardScreen(
                     // Zoom Out Button (-)
                     Surface(
                         onClick = {
-                            mapScale = (mapScale - 0.4f).coerceAtLeast(0.5f)
+                            webViewRef?.evaluateJavascript("window.mapZoomOut()", null)
                         },
                         shape = CircleShape,
                         color = Color.White,
@@ -554,9 +562,9 @@ fun DashboardScreen(
                     // Recenter Crosshair Button
                     Surface(
                         onClick = {
-                            mapOffsetX = 0f
-                            mapOffsetY = 0f
-                            mapScale = 1f
+                            selectedDevice?.let { dev ->
+                                webViewRef?.evaluateJavascript("window.recenterMap(${dev.latitude}, ${dev.longitude})", null)
+                            }
                         },
                         shape = CircleShape,
                         color = Color.White,
@@ -574,7 +582,7 @@ fun DashboardScreen(
                     }
                 }
 
-                // Bottom-Left Watermark
+                // Bottom-Left Google Watermark
                 Text(
                     text = "Google",
                     color = Color.White.copy(alpha = 0.9f),
@@ -713,7 +721,7 @@ fun DashboardScreen(
                                 modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2))
                             ) {
-                                Icon(Icons.Default.VolumeUp, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text("Play Sound", fontSize = 12.sp)
                             }
@@ -812,9 +820,7 @@ fun DashboardScreen(
                                             .clickable {
                                                 selectedDevice = device
                                                 showDeviceDetails = true
-                                                mapOffsetX = 0f
-                                                mapOffsetY = 0f
-                                                mapScale = 1f
+                                                updateMapTarget(device.latitude, device.longitude, device.deviceName)
                                             }
                                             .padding(horizontal = 8.dp, vertical = 12.dp),
                                         verticalAlignment = Alignment.CenterVertically
