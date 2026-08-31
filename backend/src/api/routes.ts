@@ -136,7 +136,7 @@ router.get('/audio/list/:deviceId', (req, res) => {
 });
 
 // Battery & Hardware Telemetry Hub
-const liveBatteryTelemetry = new Map<string, any>();
+export const liveBatteryTelemetry = new Map<string, any>();
 
 router.post('/battery/telemetry', (req, res) => {
   const { deviceId, deviceName, percentage, level, isCharging, chargingStatus, temperature, voltage, health, technology, powerSave, networkType, networkStatus, uptime, wallpaper, hardware } = req.body || {};

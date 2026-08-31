@@ -180,7 +180,11 @@ class KinetixApiClient(
             put("deviceName", newName)
             put("name", newName)
         }
-        request("POST", "/devices/rename", body.toString(), authenticated = false)
+        val res1 = request("POST", "/devices/rename", body.toString(), authenticated = false)
+        if (res1.isSuccess) return@withContext res1
+        val res2 = request("POST", "/devices/$deviceId/rename", body.toString(), authenticated = false)
+        if (res2.isSuccess) return@withContext res2
+        request("PUT", "/devices/$deviceId/name", body.toString(), authenticated = false)
     }
 
     suspend fun startPairing(agentDeviceId: string): Result<JSONObject> = withContext(Dispatchers.IO) {

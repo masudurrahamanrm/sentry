@@ -192,7 +192,9 @@ fun DashboardScreen(
                         for (i in 0 until arr.length()) {
                             val item = arr.getJSONObject(i)
                             val devId = if (item.has("deviceId")) item.getString("deviceId") else item.optString("device_id", "")
-                            val name = if (item.has("deviceName")) item.getString("deviceName") else item.optString("device_name", "Sentry Device")
+                            val cachedName = com.example.kinetix.cache.KinetixDeviceCache.getDeviceName(context, devId, "")
+                            val serverName = if (item.has("deviceName")) item.getString("deviceName") else item.optString("device_name", "Sentry Device")
+                            val name = if (cachedName.isNotBlank()) cachedName else serverName
                             val platform = if (item.has("platform")) item.getString("platform") else "Android"
                             val osVer = if (item.has("osVersion")) item.getString("osVersion") else item.optString("os_version", "Android 14")
                             val status = if (item.has("status")) item.getString("status") else "ONLINE"
