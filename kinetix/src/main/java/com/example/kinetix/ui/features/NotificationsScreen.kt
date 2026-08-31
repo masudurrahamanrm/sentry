@@ -137,9 +137,10 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                         )
                     }
 
+                    val distinctList = list.distinctBy { "${it.packageName}|${it.title}|${it.body}" }
                     withContext(Dispatchers.Main) {
                         notifications.clear()
-                        notifications.addAll(list)
+                        notifications.addAll(distinctList)
                     }
                 }
             }

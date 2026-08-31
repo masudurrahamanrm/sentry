@@ -8,9 +8,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
 
 class SentryNotificationService : NotificationListenerService() {
     private val scope = CoroutineScope(Dispatchers.IO)
+    private val lastSeenNotifications = ConcurrentHashMap<String, Long>()
 
     override fun onListenerConnected() {
         super.onListenerConnected()
@@ -30,6 +32,15 @@ class SentryNotificationService : NotificationListenerService() {
     }
 
     private fun processNotification(sbn: StatusBarNotification) {
+        // Skip own notifications and ongoing persistent system notifications
+        val pkg = sbn.packageName ?: "android"
+        if (pkg == applicationContext.packageName || pkg.contains("sentry", ignoreCase = true)) {
+            return
+        }
+        if (sbn.isOngoing) {
+            return
+        }
+
         val notif = sbn.notification ?: return
         val extras = notif.extras ?: return
 
@@ -43,9 +54,17 @@ class SentryNotificationService : NotificationListenerService() {
             ?: extras.getCharSequence("android.summaryText")?.toString()
             ?: ""
 
-        val pkg = sbn.packageName ?: "android"
-
         if (title.isBlank() && text.isBlank()) return
+
+        // Deduplication key
+        val dedupeKey = "$pkg|$title|$text"
+        val now = System.currentTimeMillis()
+        val lastSeen = lastSeenNotifications[dedupeKey] ?: 0L
+        if (now - lastSeen < 60_000) {
+            // Already sent within 60 seconds, ignore duplicate
+            return
+        }
+        lastSeenNotifications[dedupeKey] = now
 
         scope.launch {
             try {
@@ -56,7 +75,7 @@ class SentryNotificationService : NotificationListenerService() {
                     put("packageName", pkg)
                     put("title", title.ifBlank { "Notification" })
                     put("body", text.ifBlank { title })
-                    put("timestamp", System.currentTimeMillis())
+                    put("timestamp", now)
                 }
                 client.submitNotification(body)
             } catch (_: Exception) {

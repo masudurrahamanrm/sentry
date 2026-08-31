@@ -66,15 +66,30 @@ export async function submitNotificationHandler(req: Request, res: Response, nex
       return;
     }
     const list = liveNotificationsMap.get(deviceId) || [];
-    list.unshift({
-      id: `notif_${Date.now()}`,
-      packageName: packageName || 'System',
-      title: title || 'Notification',
-      body: body || '',
-      timestamp: timestamp || Date.now(),
-    });
-    if (list.length > 50) list.pop(); // Keep latest 50
-    liveNotificationsMap.set(deviceId, list);
+    const newTitle = title || 'Notification';
+    const newBody = body || '';
+    const newPkg = packageName || 'System';
+
+    // Deduplicate: check if last notification is identical
+    const isDuplicate = list.some(item => 
+      item.packageName === newPkg && 
+      item.title === newTitle && 
+      item.body === newBody && 
+      (Math.abs((item.timestamp || 0) - (timestamp || Date.now())) < 60000)
+    );
+
+    if (!isDuplicate) {
+      list.unshift({
+        id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        packageName: newPkg,
+        title: newTitle,
+        body: newBody,
+        timestamp: timestamp || Date.now(),
+      });
+      if (list.length > 50) list.pop(); // Keep latest 50
+      liveNotificationsMap.set(deviceId, list);
+    }
+
     res.status(201).json({ success: true });
   } catch (err) {
     next(err);
