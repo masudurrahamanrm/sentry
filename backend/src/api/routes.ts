@@ -139,17 +139,22 @@ router.get('/audio/list/:deviceId', (req, res) => {
 const liveBatteryTelemetry = new Map<string, any>();
 
 router.post('/battery/telemetry', (req, res) => {
-  const { deviceId, level, isCharging, chargingStatus, temperature, voltage, health, technology, powerSave } = req.body || {};
+  const { deviceId, percentage, level, isCharging, chargingStatus, temperature, voltage, health, technology, powerSave, networkType, networkStatus, uptime, wallpaper } = req.body || {};
   const devId = deviceId || 'SN-U5ZY-78QZ';
   const data = {
-    level: level ?? 100,
+    level: level ?? percentage ?? 100,
+    percentage: percentage ?? level ?? 100,
     isCharging: isCharging ?? false,
-    chargingStatus: chargingStatus || 'Discharging',
+    chargingStatus: chargingStatus || 'Good',
     temperature: temperature || '32.0 °C',
     voltage: voltage || '4,100 mV',
-    health: health || 'Good (Healthy)',
+    health: health || 'Good',
     technology: technology || 'Li-ion',
     powerSave: powerSave ? 'Enabled' : 'Disabled',
+    networkType: networkType || '5G+',
+    networkStatus: networkStatus || 'Strong',
+    uptime: uptime || '2h 14m',
+    wallpaper: wallpaper || null,
     timestamp: Date.now()
   };
   liveBatteryTelemetry.set(devId, data);
@@ -159,14 +164,19 @@ router.post('/battery/telemetry', (req, res) => {
 router.get('/battery/:deviceId', (req, res) => {
   const devId = req.params.deviceId;
   const telemetry = liveBatteryTelemetry.get(devId) || {
-    level: 87,
-    isCharging: true,
-    chargingStatus: 'Fast Charging (USB-PD 33W)',
-    temperature: '34.2 °C (Optimal)',
+    level: 44,
+    percentage: 44,
+    isCharging: false,
+    chargingStatus: 'Good',
+    temperature: '34.2 °C',
     voltage: '4,210 mV',
-    health: 'Good (98% Capacity)',
-    technology: 'Li-Polymer 5000 mAh',
-    powerSave: 'Disabled'
+    health: 'Good',
+    technology: 'Li-ion',
+    powerSave: 'Disabled',
+    networkType: '5G+',
+    networkStatus: 'Strong',
+    uptime: '2h 14m',
+    wallpaper: null
   };
   res.json({ telemetry });
 });

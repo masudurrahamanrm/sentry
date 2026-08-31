@@ -1,8 +1,11 @@
 package com.example.kinetix.ui.devicedetail
 
+import android.graphics.BitmapFactory
+import android.util.Base64
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -59,6 +64,7 @@ fun DeviceDetailScreen(
     var batteryStatusText by remember { mutableStateOf("Good") }
     var networkType by remember { mutableStateOf("5G+") }
     var uptimeText by remember { mutableStateOf("2h 14m") }
+    var wallpaperBase64 by remember { mutableStateOf<String?>(null) }
     var cameraEnabled by remember { mutableStateOf(true) }
     var locationEnabled by remember { mutableStateOf(true) }
     var notificationEnabled by remember { mutableStateOf(true) }
@@ -70,44 +76,54 @@ fun DeviceDetailScreen(
     var activeBottomTab by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(deviceId) {
-        withContext(Dispatchers.IO) {
-            val client = com.example.kinetix.network.KinetixApiClient(context)
-            val res = client.listAvailableDevices()
-            if (res.isSuccess) {
-                val arr = res.getOrNull()
-                if (arr != null) {
-                    for (i in 0 until arr.length()) {
-                        val item = arr.getJSONObject(i)
-                        val id = item.optString("deviceId", item.optString("device_id", ""))
-                        if (id == deviceId) {
-                            deviceName = item.optString("deviceName", item.optString("device_name", "realme RMX5101 (Sentry)"))
-                            osVersion = item.optString("osVersion", item.optString("os_version", "Android 16"))
-                            isOnline = item.optString("status", "ONLINE") == "ONLINE"
-                            val caps = item.optJSONObject("capabilities")
-                            if (caps != null) {
-                                cameraEnabled = caps.optBoolean("camera", true)
-                                locationEnabled = caps.optBoolean("location", true)
-                                notificationEnabled = caps.optBoolean("notifications", true)
-                                micEnabled = caps.optBoolean("microphone", true)
-                                filesEnabled = caps.optBoolean("files", true)
-                                batteryEnabled = caps.optBoolean("battery", true)
+        while (true) {
+            withContext(Dispatchers.IO) {
+                val client = com.example.kinetix.network.KinetixApiClient(context)
+                val res = client.listAvailableDevices()
+                if (res.isSuccess) {
+                    val arr = res.getOrNull()
+                    if (arr != null) {
+                        for (i in 0 until arr.length()) {
+                            val item = arr.getJSONObject(i)
+                            val id = item.optString("deviceId", item.optString("device_id", ""))
+                            if (id == deviceId) {
+                                deviceName = item.optString("deviceName", item.optString("device_name", "realme RMX5101 (Sentry)"))
+                                osVersion = item.optString("osVersion", item.optString("os_version", "Android 16"))
+                                isOnline = item.optString("status", "ONLINE") == "ONLINE"
+                                val caps = item.optJSONObject("capabilities")
+                                if (caps != null) {
+                                    cameraEnabled = caps.optBoolean("camera", true)
+                                    locationEnabled = caps.optBoolean("location", true)
+                                    notificationEnabled = caps.optBoolean("notifications", true)
+                                    micEnabled = caps.optBoolean("microphone", true)
+                                    filesEnabled = caps.optBoolean("files", true)
+                                    batteryEnabled = caps.optBoolean("battery", true)
+                                }
+                                break
                             }
-                            break
+                        }
+                    }
+                }
+
+                // Fetch live battery & hardware telemetry (percentage, network, uptime, wallpaper)
+                val battRes = client.getBatteryTelemetry(deviceId)
+                if (battRes.isSuccess) {
+                    val bObj = battRes.getOrNull()
+                    if (bObj != null) {
+                        batteryPercentage = bObj.optInt("percentage", bObj.optInt("level", 44))
+                        val isCharging = bObj.optBoolean("isCharging", false)
+                        val status = bObj.optString("chargingStatus", "")
+                        batteryStatusText = if (status.isNotBlank()) status else (if (isCharging) "Charging" else "Good")
+                        networkType = bObj.optString("networkType", "5G+")
+                        uptimeText = bObj.optString("uptime", "2h 14m")
+                        val wall = bObj.optString("wallpaper", "")
+                        if (wall.isNotBlank()) {
+                            wallpaperBase64 = wall
                         }
                     }
                 }
             }
-
-            // Fetch live battery telemetry if available
-            val battRes = client.getBatteryTelemetry(deviceId)
-            if (battRes.isSuccess) {
-                val bObj = battRes.getOrNull()
-                if (bObj != null && bObj.has("percentage")) {
-                    batteryPercentage = bObj.optInt("percentage", 44)
-                    val isCharging = bObj.optBoolean("isCharging", false)
-                    batteryStatusText = if (isCharging) "Charging" else "Good"
-                }
-            }
+            delay(2500)
         }
     }
 
@@ -330,26 +346,58 @@ fun DeviceDetailScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // Phone Graphic Thumbnail
+                    // Phone Graphic Thumbnail showing Live Target Device Wallpaper
+                    val wallBitmap = remember(wallpaperBase64) {
+                        if (!wallpaperBase64.isNullOrBlank()) {
+                            try {
+                                val bytes = Base64.decode(wallpaperBase64, Base64.DEFAULT)
+                                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                            } catch (_: Exception) {
+                                null
+                            }
+                        } else {
+                            null
+                        }
+                    }
+
                     Box(
                         modifier = Modifier
                             .width(46.dp)
                             .height(76.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(Color(0xFF3F51B5), Color(0xFF7B1FA2), Color(0xFFE91E63))
-                                )
-                            )
-                            .border(1.5.dp, Color(0xFF212121), RoundedCornerShape(8.dp)),
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(Color(0xFF1E1E1E))
+                            .border(1.5.dp, Color(0xFF2E2E2E), RoundedCornerShape(9.dp)),
                         contentAlignment = Alignment.Center
                     ) {
+                        if (wallBitmap != null) {
+                            Image(
+                                bitmap = wallBitmap,
+                                contentDescription = "Live Wallpaper",
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(
+                                        Brush.verticalGradient(
+                                            listOf(Color(0xFF3F51B5), Color(0xFF7B1FA2), Color(0xFFE91E63))
+                                        )
+                                    )
+                            )
+                        }
+
+                        // Top camera punch-hole notch
                         Box(
                             modifier = Modifier
-                                .width(14.dp)
-                                .height(2.5.dp)
+                                .padding(top = 4.dp)
+                                .size(4.dp)
                                 .clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.6f))
+                                .background(Color.Black.copy(alpha = 0.85f))
                                 .align(Alignment.TopCenter)
                         )
                     }
