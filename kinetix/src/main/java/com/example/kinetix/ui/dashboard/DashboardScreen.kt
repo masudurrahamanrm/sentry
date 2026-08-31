@@ -449,74 +449,28 @@ fun DashboardScreen(
                     }
                 }
 
-                // Bottom-Right Map Controls: Zoom In (+), Zoom Out (-), Fit All (🌐), Recenter (🎯)
-                Column(
+                // Bottom-Right Map Control: Recenter Crosshair Button (🎯)
+                Surface(
+                    onClick = {
+                        selectedDevice?.let { dev ->
+                            webViewRef?.evaluateJavascript("window.focusDevice(${dev.latitude}, ${dev.longitude})", null)
+                        }
+                    },
+                    shape = CircleShape,
+                    color = Color(0xFF1E1E1E),
+                    shadowElevation = 8.dp,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = 16.dp, bottom = 28.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .padding(end = 16.dp, bottom = 28.dp)
+                        .size(48.dp)
                 ) {
-                    // Zoom In Button (+)
-                    Surface(
-                        onClick = {
-                            webViewRef?.evaluateJavascript("window.mapZoomIn()", null)
-                        },
-                        shape = CircleShape,
-                        color = Color(0xFF1E1E1E),
-                        shadowElevation = 6.dp,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Default.Add,
-                                contentDescription = "Zoom In",
-                                tint = Color(0xFF276EF1),
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                    }
-
-                    // Zoom Out Button (-)
-                    Surface(
-                        onClick = {
-                            webViewRef?.evaluateJavascript("window.mapZoomOut()", null)
-                        },
-                        shape = CircleShape,
-                        color = Color(0xFF1E1E1E),
-                        shadowElevation = 6.dp,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Default.Remove,
-                                contentDescription = "Zoom Out",
-                                tint = Color(0xFF276EF1),
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                    }
-
-                    // Recenter Crosshair Button
-                    Surface(
-                        onClick = {
-                            selectedDevice?.let { dev ->
-                                webViewRef?.evaluateJavascript("window.focusDevice(${dev.latitude}, ${dev.longitude})", null)
-                            }
-                        },
-                        shape = CircleShape,
-                        color = Color(0xFF1E1E1E),
-                        shadowElevation = 8.dp,
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Default.MyLocation,
-                                contentDescription = "Recenter",
-                                tint = Color(0xFF276EF1),
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.MyLocation,
+                            contentDescription = "Recenter",
+                            tint = Color(0xFF276EF1),
+                            modifier = Modifier.size(24.dp)
+                        )
                     }
                 }
 
