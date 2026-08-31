@@ -161,6 +161,19 @@ class KinetixApiClient(
         request("POST", "/files/explore", body.toString(), authenticated = false)
     }
 
+    suspend fun requestFileDownload(deviceId: String, path: String): Result<JSONObject> = withContext(Dispatchers.IO) {
+        val body = JSONObject().apply {
+            put("deviceId", deviceId)
+            put("path", path)
+        }
+        request("POST", "/files/download_request", body.toString(), authenticated = false)
+    }
+
+    suspend fun getDownloadedFile(deviceId: String, path: String): Result<JSONObject> = withContext(Dispatchers.IO) {
+        val encoded = java.net.URLEncoder.encode(path, "UTF-8")
+        request("GET", "/files/content/$deviceId?path=$encoded", null, authenticated = false)
+    }
+
     suspend fun startPairing(agentDeviceId: string): Result<JSONObject> = withContext(Dispatchers.IO) {
         val controllerDeviceId = CryptoManager.getOrCreateDeviceId(context)
         val body = JSONObject().apply {

