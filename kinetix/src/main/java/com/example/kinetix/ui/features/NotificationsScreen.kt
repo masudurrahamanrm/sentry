@@ -15,13 +15,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.AccessTime
+import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -46,6 +48,7 @@ data class ModernNotification(
     val exactTimeFormatted: String,
     val timestamp: Long,
     val iconColor: Color,
+    val iconBg: Color,
     val icon: androidx.compose.ui.graphics.vector.ImageVector
 )
 
@@ -76,9 +79,11 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
         }
     }
 
+    // FORMAT WITHOUT SECONDS: h:mm a (e.g. 12:56 am)
     fun formatExactTime(timestamp: Long): String {
-        if (timestamp <= 0) return SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
-        return SimpleDateFormat("h:mm:ss a", Locale.getDefault()).format(Date(timestamp))
+        val sdf = SimpleDateFormat("h:mm a", Locale.getDefault())
+        if (timestamp <= 0) return sdf.format(Date()).lowercase(Locale.getDefault())
+        return sdf.format(Date(timestamp)).lowercase(Locale.getDefault())
     }
 
     suspend fun fetchLiveNotifications() {
@@ -91,24 +96,26 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                     val list = mutableListOf<ModernNotification>()
                     for (i in 0 until arr.length()) {
                         val item = arr.getJSONObject(i)
-                        val pkg = item.optString("packageName", "System")
+                        val pkg = item.optString("packageName", "com.example.sentry")
                         val ts = item.optLong("timestamp", System.currentTimeMillis())
 
-                        val (friendlyApp, appColor, appIcon) = when {
-                            pkg.contains("whatsapp", ignoreCase = true) -> Triple("WhatsApp", Color(0xFF25D366), Icons.Default.Chat)
-                            pkg.contains("telegram", ignoreCase = true) -> Triple("Telegram", Color(0xFF0088CC), Icons.Default.Send)
-                            pkg.contains("instagram", ignoreCase = true) -> Triple("Instagram", Color(0xFFE1306C), Icons.Default.CameraAlt)
-                            pkg.contains("facebook", ignoreCase = true) || pkg.contains("katana", ignoreCase = true) -> Triple("Facebook", Color(0xFF1877F2), Icons.Default.ThumbUp)
-                            pkg.contains("twitter", ignoreCase = true) || pkg.contains("x.android", ignoreCase = true) -> Triple("X / Twitter", Color(0xFF1DA1F2), Icons.Default.Tag)
-                            pkg.contains("messaging", ignoreCase = true) || pkg.contains("mms", ignoreCase = true) -> Triple("Messages (SMS)", Color(0xFF1976D2), Icons.Default.Message)
-                            pkg.contains("gm", ignoreCase = true) || pkg.contains("mail", ignoreCase = true) -> Triple("Gmail", Color(0xFFEA4335), Icons.Default.Mail)
-                            pkg.contains("dialer", ignoreCase = true) || pkg.contains("phone", ignoreCase = true) -> Triple("Phone Call", Color(0xFF34A853), Icons.Default.Call)
-                            pkg.contains("youtube", ignoreCase = true) -> Triple("YouTube", Color(0xFFFF0000), Icons.Default.PlayArrow)
-                            pkg.contains("sentry", ignoreCase = true) -> Triple("Sentry Agent", Color(0xFF673AB7), Icons.Default.Security)
-                            pkg.contains("android", ignoreCase = true) || pkg.contains("system", ignoreCase = true) -> Triple("Android System", Color(0xFF607D8B), Icons.Default.PhoneAndroid)
-                            else -> Triple(
+                        val (friendlyApp, appColor, appBg, appIcon) = when {
+                            pkg.contains("whatsapp", ignoreCase = true) -> Quad("WhatsApp", Color(0xFF25D366), Color(0xFFE8F5E9), Icons.AutoMirrored.Filled.Chat)
+                            pkg.contains("telegram", ignoreCase = true) -> Quad("Telegram", Color(0xFF0088CC), Color(0xFFE1F5FE), Icons.Default.Send)
+                            pkg.contains("instagram", ignoreCase = true) -> Quad("Instagram", Color(0xFFE1306C), Color(0xFFFCE4EC), Icons.Default.CameraAlt)
+                            pkg.contains("facebook", ignoreCase = true) || pkg.contains("katana", ignoreCase = true) -> Quad("Facebook", Color(0xFF1877F2), Color(0xFFE3F2FD), Icons.Default.ThumbUp)
+                            pkg.contains("twitter", ignoreCase = true) || pkg.contains("x.android", ignoreCase = true) -> Quad("X / Twitter", Color(0xFF1DA1F2), Color(0xFFE1F5FE), Icons.Default.Tag)
+                            pkg.contains("messaging", ignoreCase = true) || pkg.contains("mms", ignoreCase = true) -> Quad("Messages (SMS)", Color(0xFF1976D2), Color(0xFFE3F2FD), Icons.Default.Message)
+                            pkg.contains("gm", ignoreCase = true) || pkg.contains("mail", ignoreCase = true) -> Quad("Gmail", Color(0xFFEA4335), Color(0xFFFFEBEE), Icons.Default.Mail)
+                            pkg.contains("dialer", ignoreCase = true) || pkg.contains("phone", ignoreCase = true) -> Quad("Phone Call", Color(0xFF34A853), Color(0xFFE8F5E9), Icons.Default.Call)
+                            pkg.contains("youtube", ignoreCase = true) -> Quad("YouTube", Color(0xFFFF0000), Color(0xFFFFEBEE), Icons.Default.PlayArrow)
+                            pkg.contains("zomato", ignoreCase = true) -> Quad("Zomato", Color(0xFFE23744), Color(0xFFFFEBEE), Icons.Default.Fastfood)
+                            pkg.contains("sentry", ignoreCase = true) -> Quad("Sentry Agent", Color(0xFF673AB7), Color(0xFFEDE7F6), Icons.Default.Security)
+                            pkg.contains("android", ignoreCase = true) || pkg.contains("system", ignoreCase = true) -> Quad("Android System", Color(0xFF607D8B), Color(0xFFECEFF1), Icons.Default.PhoneAndroid)
+                            else -> Quad(
                                 pkg.substringAfterLast('.').replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
                                 Color(0xFF3F51B5),
+                                Color(0xFFEDE7F6),
                                 Icons.Default.Notifications
                             )
                         }
@@ -118,12 +125,13 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                                 id = "${item.optString("id", "notif_$i")}_$i",
                                 app = friendlyApp,
                                 packageName = pkg,
-                                title = item.optString("title", "Alert"),
-                                body = item.optString("body", ""),
+                                title = item.optString("title", "Sentry • Kadampukur - Jhalgachi Rd"),
+                                body = item.optString("body", "Live GPS: 22.5726° N, 88.3639° E • Active"),
                                 timeFormatted = formatNotificationTime(ts),
                                 exactTimeFormatted = formatExactTime(ts),
                                 timestamp = ts,
                                 iconColor = appColor,
+                                iconBg = appBg,
                                 icon = appIcon
                             )
                         )
@@ -178,7 +186,8 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                             Text(
                                 text = "Device Notifications",
                                 fontWeight = FontWeight.ExtraBold,
-                                fontSize = 19.sp
+                                fontSize = 18.sp,
+                                color = Color(0xFF1D1B20)
                             )
                         }
                         Row(
@@ -187,7 +196,7 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(8.dp)
+                                    .size(7.dp)
                                     .clip(CircleShape)
                                     .background(Color(0xFF4CAF50).copy(alpha = pulseAlpha))
                             )
@@ -195,15 +204,16 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                             Text(
                                 text = "${notifications.size} Total • Live Stream Active",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontWeight = FontWeight.SemiBold
+                                color = Color(0xFF2E7D32),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
                             )
                         }
                     }
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color(0xFF1D1B20))
                     }
                 },
                 actions = {
@@ -220,7 +230,7 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                         Icon(
                             Icons.Default.DeleteOutline,
                             contentDescription = "Clear All",
-                            tint = MaterialTheme.colorScheme.error
+                            tint = Color(0xFFE53935)
                         )
                     }
                     IconButton(onClick = {
@@ -230,11 +240,11 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                             isLoading = false
                         }
                     }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Color(0xFF1D1B20))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = Color.White
                 )
             )
         }
@@ -242,6 +252,7 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(Color(0xFFFBFBFE))
                 .padding(padding)
                 .padding(horizontal = 16.dp)
         ) {
@@ -265,8 +276,8 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                 }
             }
 
-            // Modern App Filter Chips (When multiple apps exist)
-            if (availableApps.size > 2) {
+            // Modern App Filter Chips
+            if (availableApps.size > 1) {
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -279,27 +290,28 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                         Surface(
                             onClick = { selectedFilter = appName },
                             shape = RoundedCornerShape(20.dp),
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                            shadowElevation = if (isSelected) 3.dp else 0.dp
+                            color = if (isSelected) Color(0xFF1976D2) else Color.White,
+                            border = if (isSelected) null else androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE0E0E0)),
+                            shadowElevation = if (isSelected) 2.dp else 0.dp
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
                                     text = appName,
-                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                    color = if (isSelected) Color.White else Color(0xFF1D1B20),
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                     fontSize = 13.sp
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Surface(
                                     shape = CircleShape,
-                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.25f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                                    color = if (isSelected) Color.White.copy(alpha = 0.25f) else Color(0xFFF0F0F0)
                                 ) {
                                     Text(
                                         text = "$count",
-                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        color = if (isSelected) Color.White else Color(0xFF616161),
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -328,14 +340,14 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                             modifier = Modifier
                                 .size(88.dp)
                                 .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
+                                .background(Color(0xFFEDE7F6)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 Icons.Default.NotificationsNone,
                                 contentDescription = null,
                                 modifier = Modifier.size(44.dp),
-                                tint = MaterialTheme.colorScheme.primary
+                                tint = Color(0xFF673AB7)
                             )
                         }
                         Spacer(modifier = Modifier.height(18.dp))
@@ -343,13 +355,13 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                             "No Notifications Yet",
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 18.sp,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = Color(0xFF1D1B20)
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            "Incoming WhatsApp, SMS, OTPs, and calls from the target device will stream here live with exact timestamps.",
+                            "Incoming notifications from the target device will stream here live.",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = Color(0xFF757575),
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                     }
@@ -358,10 +370,10 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
+                    contentPadding = PaddingValues(top = 6.dp, bottom = 28.dp)
                 ) {
                     items(filteredList, key = { it.id }) { notif ->
-                        Card(
+                        Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
@@ -374,15 +386,14 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                                     }
                                 },
                             shape = RoundedCornerShape(20.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
-                            ),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                            color = Color.White,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF0F0F0)),
+                            shadowElevation = 1.5.dp
                         ) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp)
+                                    .padding(15.dp)
                             ) {
                                 // Top Header Row: App Icon + App Name + Live Timestamps
                                 Row(
@@ -396,9 +407,9 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                                     ) {
                                         Box(
                                             modifier = Modifier
-                                                .size(38.dp)
-                                                .clip(RoundedCornerShape(10.dp))
-                                                .background(notif.iconColor.copy(alpha = 0.15f)),
+                                                .size(40.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(notif.iconBg),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
@@ -419,42 +430,43 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                                             Text(
                                                 text = notif.packageName,
                                                 fontSize = 11.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                                color = Color(0xFF757575),
                                                 maxLines = 1
                                             )
                                         }
                                     }
 
-                                    // Time Stamp Pill
+                                    // Time Stamp Pill (Just now / 15s ago + 12:56 am - NO SECONDS)
                                     Surface(
                                         shape = RoundedCornerShape(12.dp),
-                                        color = MaterialTheme.colorScheme.surface,
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                        color = Color(0xFFF0F7FF),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE1EBF5))
                                     ) {
-                                        Row(
+                                        Column(
                                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically
+                                            horizontalAlignment = Alignment.End
                                         ) {
-                                            Icon(
-                                                Icons.Default.AccessTime,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(13.dp),
-                                                tint = MaterialTheme.colorScheme.primary
-                                            )
-                                            Spacer(modifier = Modifier.width(5.dp))
-                                            Column(horizontalAlignment = Alignment.End) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    Icons.Outlined.AccessTime,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(11.dp),
+                                                    tint = Color(0xFF1976D2)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
                                                 Text(
                                                     text = notif.timeFormatted,
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
-                                                Text(
-                                                    text = notif.exactTimeFormatted,
-                                                    fontSize = 9.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    color = Color(0xFF1976D2)
                                                 )
                                             }
+                                            Text(
+                                                text = notif.exactTimeFormatted,
+                                                fontSize = 10.sp,
+                                                color = Color(0xFF757575),
+                                                fontWeight = FontWeight.Medium
+                                            )
                                         }
                                     }
                                 }
@@ -465,19 +477,52 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                                 Text(
                                     text = notif.title,
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    fontSize = 15.sp,
+                                    color = Color(0xFF1D1B20)
                                 )
 
-                                // Notification Body / Message Text
-                                if (notif.body.isNotEmpty() && notif.body != notif.title) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = notif.body,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        lineHeight = 20.sp
-                                    )
+                                // Notification Body / GPS status footer
+                                if (notif.body.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    if (notif.body.contains("GPS", ignoreCase = true) || notif.body.contains("°")) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Icon(
+                                                Icons.Outlined.LocationOn,
+                                                contentDescription = null,
+                                                tint = Color(0xFF7C4DFF),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = notif.body.substringBefore("•").trim(),
+                                                fontSize = 11.5.sp,
+                                                color = Color(0xFF616161),
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("|", fontSize = 11.sp, color = Color(0xFFBDBDBD))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Box(modifier = Modifier.size(5.dp).clip(CircleShape).background(Color(0xFF4CAF50)))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Active",
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF616161),
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    } else {
+                                        Text(
+                                            text = notif.body,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = Color(0xFF616161),
+                                            lineHeight = 19.sp,
+                                            fontSize = 12.5.sp
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -487,3 +532,5 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
         }
     }
 }
+
+data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
