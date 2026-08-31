@@ -7,12 +7,12 @@
     <script src="leaflet.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body, #map { width: 100%; height: 100%; background: #1c261e; }
+        html, body, #map { width: 100%; height: 100%; background: #000000; }
         .leaflet-control-attribution { display: none !important; }
         .leaflet-control-zoom { display: none !important; }
-        
-        /* Custom Google Find My Device Pin */
-        .find-my-pin {
+
+        /* Uber Signature Map Pin */
+        .uber-pin {
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -20,48 +20,72 @@
             cursor: pointer;
             position: relative;
         }
-        .pin-pulse {
+
+        .uber-pulse-ring {
             position: absolute;
-            width: 100px;
-            height: 100px;
+            width: 110px;
+            height: 110px;
             border-radius: 50%;
-            background: rgba(33, 150, 243, 0.35);
-            border: 2px solid rgba(33, 150, 243, 0.8);
-            animation: mapPulse 2s infinite ease-in-out;
+            background: radial-gradient(circle, rgba(39, 110, 241, 0.45) 0%, rgba(39, 110, 241, 0.05) 70%, transparent 100%);
+            border: 1.5px solid rgba(39, 110, 241, 0.85);
+            animation: uberPulse 2.2s infinite ease-out;
             pointer-events: none;
-            top: -24px;
-            left: -24px;
+            top: -28px;
+            left: -28px;
         }
-        @keyframes mapPulse {
-            0% { transform: scale(0.65); opacity: 0.8; }
-            50% { transform: scale(1.35); opacity: 0.18; }
-            100% { transform: scale(0.65); opacity: 0.8; }
-        }
-        .pin-bubble {
-            width: 52px;
-            height: 52px;
-            background: #ffffff;
+
+        .uber-pulse-inner {
+            position: absolute;
+            width: 70px;
+            height: 70px;
             border-radius: 50%;
-            border: 3px solid #1976D2;
-            box-shadow: 0 6px 18px rgba(0,0,0,0.55);
+            background: rgba(39, 110, 241, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            animation: uberPulseInner 2.2s infinite ease-in-out;
+            pointer-events: none;
+            top: -8px;
+            left: -8px;
+        }
+
+        @keyframes uberPulse {
+            0% { transform: scale(0.6); opacity: 0.9; }
+            50% { transform: scale(1.3); opacity: 0.25; }
+            100% { transform: scale(0.6); opacity: 0.9; }
+        }
+
+        @keyframes uberPulseInner {
+            0% { transform: scale(0.8); opacity: 0.7; }
+            50% { transform: scale(1.15); opacity: 0.3; }
+            100% { transform: scale(0.8); opacity: 0.7; }
+        }
+
+        .uber-pin-badge {
+            width: 54px;
+            height: 54px;
+            background: #000000;
+            border-radius: 50%;
+            border: 3px solid #276EF1;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.75), 0 0 16px rgba(39, 110, 241, 0.6);
             display: flex;
             align-items: center;
             justify-content: center;
             z-index: 10;
         }
-        .pin-bubble svg {
+
+        .uber-pin-badge svg {
             width: 28px;
             height: 28px;
-            fill: #1976D2;
+            fill: #FFFFFF;
         }
-        .pin-pointer {
+
+        .uber-pin-point {
             width: 12px;
             height: 12px;
-            background: #1976D2;
-            border: 2px solid #ffffff;
+            background: #276EF1;
+            border: 2px solid #FFFFFF;
             border-radius: 50%;
-            margin-top: 2px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+            margin-top: 3px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6), 0 0 8px rgba(39, 110, 241, 0.8);
             z-index: 10;
         }
     </style>
@@ -69,13 +93,21 @@
 <body>
     <div id="map"></div>
     <script>
-        var satLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-            maxZoom: 21,
-            subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+        // 1. Uber Signature Dark Theme Tiles (CartoDB Dark Matter)
+        var uberDarkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png', {
+            maxZoom: 20,
+            subdomains: ['a', 'b', 'c', 'd']
         });
 
-        var streetLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        // 2. Uber Voyager (Day Mode Tiles)
+        var uberDayLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
             maxZoom: 20,
+            subdomains: ['a', 'b', 'c', 'd']
+        });
+
+        // 3. Satellite Hybrid Tiles
+        var satLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+            maxZoom: 21,
             subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
         });
 
@@ -84,24 +116,27 @@
             zoom: 17,
             zoomControl: false,
             attributionControl: false,
-            layers: [satLayer]
+            layers: [uberDarkLayer]
         });
 
-        var pinHtml = '<div class="find-my-pin" onclick="if(window.AndroidBridge) AndroidBridge.onMarkerClicked();">' +
-                      '  <div class="pin-pulse"></div>' +
-                      '  <div class="pin-bubble">' +
+        var currentLayer = uberDarkLayer;
+
+        var pinHtml = '<div class="uber-pin" onclick="if(window.AndroidBridge) AndroidBridge.onMarkerClicked();">' +
+                      '  <div class="uber-pulse-ring"></div>' +
+                      '  <div class="uber-pulse-inner"></div>' +
+                      '  <div class="uber-pin-badge">' +
                       '    <svg viewBox="0 0 24 24">' +
                       '      <path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/>' +
                       '    </svg>' +
                       '  </div>' +
-                      '  <div class="pin-pointer"></div>' +
+                      '  <div class="uber-pin-point"></div>' +
                       '</div>';
 
         var pinIcon = L.divIcon({
             html: pinHtml,
             className: '',
-            iconSize: [52, 64],
-            iconAnchor: [26, 62]
+            iconSize: [54, 66],
+            iconAnchor: [27, 64]
         });
 
         var marker = L.marker([22.5726, 88.3639], { icon: pinIcon }).addTo(map);
@@ -125,15 +160,18 @@
             if (map) map.flyTo([lat, lon], 17, { animate: true, duration: 0.8 });
         };
 
-        window.toggleMapLayer = function(isSat) {
-            if (map) {
-                if (isSat) {
-                    map.removeLayer(streetLayer);
-                    map.addLayer(satLayer);
-                } else {
-                    map.removeLayer(satLayer);
-                    map.addLayer(streetLayer);
-                }
+        window.toggleMapLayer = function(layerMode) {
+            if (!map) return;
+            map.removeLayer(uberDarkLayer);
+            map.removeLayer(uberDayLayer);
+            map.removeLayer(satLayer);
+
+            if (layerMode === 'satellite') {
+                map.addLayer(satLayer);
+            } else if (layerMode === 'day') {
+                map.addLayer(uberDayLayer);
+            } else {
+                map.addLayer(uberDarkLayer);
             }
         };
     </script>

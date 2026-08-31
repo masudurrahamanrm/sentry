@@ -341,22 +341,32 @@ fun DashboardScreen(
                         )
                     }
 
-                    // Map Layer Switcher Button (Satellite / Street Vector)
+                    // Map Layer Switcher Button (Uber Dark / Uber Day / Satellite)
+                    var currentLayerIndex by remember { mutableIntStateOf(0) } // 0 = dark, 1 = day, 2 = sat
                     Surface(
                         onClick = {
-                            isSatelliteMode = !isSatelliteMode
-                            webViewRef?.evaluateJavascript("window.toggleMapLayer($isSatelliteMode)", null)
+                            currentLayerIndex = (currentLayerIndex + 1) % 3
+                            val layerName = when (currentLayerIndex) {
+                                0 -> "dark"
+                                1 -> "day"
+                                else -> "satellite"
+                            }
+                            webViewRef?.evaluateJavascript("window.toggleMapLayer('$layerName')", null)
                         },
                         shape = CircleShape,
-                        color = Color.White,
-                        shadowElevation = 6.dp,
+                        color = Color(0xFF1E1E1E),
+                        shadowElevation = 8.dp,
                         modifier = Modifier.size(44.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 Icons.Default.Layers,
-                                contentDescription = "Toggle Satellite",
-                                tint = if (isSatelliteMode) Color(0xFF1976D2) else Color(0xFF555555),
+                                contentDescription = "Toggle Layer",
+                                tint = when (currentLayerIndex) {
+                                    0 -> Color(0xFF276EF1)
+                                    1 -> Color(0xFFFFC107)
+                                    else -> Color(0xFF4CAF50)
+                                },
                                 modifier = Modifier.size(22.dp)
                             )
                         }
@@ -377,7 +387,7 @@ fun DashboardScreen(
                             webViewRef?.evaluateJavascript("window.mapZoomIn()", null)
                         },
                         shape = CircleShape,
-                        color = Color.White,
+                        color = Color(0xFF1E1E1E),
                         shadowElevation = 6.dp,
                         modifier = Modifier.size(40.dp)
                     ) {
@@ -385,7 +395,7 @@ fun DashboardScreen(
                             Icon(
                                 Icons.Default.Add,
                                 contentDescription = "Zoom In",
-                                tint = Color(0xFF1976D2),
+                                tint = Color(0xFF276EF1),
                                 modifier = Modifier.size(22.dp)
                             )
                         }
@@ -397,7 +407,7 @@ fun DashboardScreen(
                             webViewRef?.evaluateJavascript("window.mapZoomOut()", null)
                         },
                         shape = CircleShape,
-                        color = Color.White,
+                        color = Color(0xFF1E1E1E),
                         shadowElevation = 6.dp,
                         modifier = Modifier.size(40.dp)
                     ) {
@@ -405,7 +415,7 @@ fun DashboardScreen(
                             Icon(
                                 Icons.Default.Remove,
                                 contentDescription = "Zoom Out",
-                                tint = Color(0xFF1976D2),
+                                tint = Color(0xFF276EF1),
                                 modifier = Modifier.size(22.dp)
                             )
                         }
@@ -419,7 +429,7 @@ fun DashboardScreen(
                             }
                         },
                         shape = CircleShape,
-                        color = Color.White,
+                        color = Color(0xFF1E1E1E),
                         shadowElevation = 8.dp,
                         modifier = Modifier.size(48.dp)
                     ) {
@@ -427,23 +437,35 @@ fun DashboardScreen(
                             Icon(
                                 Icons.Default.MyLocation,
                                 contentDescription = "Recenter",
-                                tint = Color(0xFF1976D2),
+                                tint = Color(0xFF276EF1),
                                 modifier = Modifier.size(24.dp)
                             )
                         }
                     }
                 }
 
-                // Bottom-Left Google Watermark
-                Text(
-                    text = "Google",
-                    color = Color.White.copy(alpha = 0.9f),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
+                // Bottom-Left Uber Watermark
+                Row(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .padding(start = 16.dp, bottom = 32.dp)
-                )
+                        .padding(start = 16.dp, bottom = 32.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Uber",
+                        color = Color.White,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 18.sp,
+                        letterSpacing = (-0.5).sp
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Maps",
+                        color = Color(0xFF276EF1),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
             }
 
             // 2. Google Find My Device Draggable Bottom Sheet (Bottom 48% of Screen)
