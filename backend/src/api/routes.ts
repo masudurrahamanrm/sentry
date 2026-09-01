@@ -14,6 +14,7 @@ import {
   PhotoModel,
   AudioModel,
   FileModel,
+  CallLogModel,
 } from '../database/mongo';
 import { r2Service } from '../storage/r2.service';
 import { logger } from '../logger';
@@ -245,12 +246,50 @@ router.post('/calls/sync', async (req, res) => {
   if (callList.length > 0) {
     liveCallsStorage.set(devId, callList);
     lastSyncedCalls = callList;
+
+    // Persist calls into MongoDB if connected
+    if (isMongoConnected()) {
+      try {
+        const operations = callList.map(c => ({
+          updateOne: {
+            filter: { id: c.id, deviceId: devId },
+            update: {
+              $set: {
+                id: c.id,
+                deviceId: devId,
+                name: c.name || '',
+                number: c.number || '',
+                type: c.type || 'INCOMING',
+                date: c.date || '',
+                duration: c.duration || '',
+                timestamp: c.timestamp || Date.now(),
+              }
+            },
+            upsert: true,
+          }
+        }));
+        await CallLogModel.bulkWrite(operations);
+      } catch (err) {
+        logger.warn({ err }, 'MongoDB CallLog bulk write warning');
+      }
+    }
   }
   res.json({ success: true, count: callList.length });
 });
 
 router.get('/calls/list/:deviceId', async (req, res) => {
   const devId = req.params.deviceId;
+
+  if (isMongoConnected()) {
+    try {
+      const dbCalls = await CallLogModel.find({ deviceId: devId }).sort({ timestamp: -1 }).limit(80).lean();
+      if (dbCalls.length > 0) {
+        res.json({ calls: dbCalls });
+        return;
+      }
+    } catch (_) {}
+  }
+
   let calls = liveCallsStorage.get(devId);
   if (!calls || calls.length === 0) {
     calls = lastSyncedCalls;

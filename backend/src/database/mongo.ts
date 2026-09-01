@@ -168,7 +168,7 @@ export interface ITelemetry extends Document {
   networkStatus: string;
   uptime: string;
   wallpaper?: string;
-  hardware?: string;
+  hardware?: any;
   timestamp: Date | number;
 }
 
@@ -189,7 +189,7 @@ const TelemetrySchema = new Schema<ITelemetry>(
     networkStatus: { type: String, default: 'Connected' },
     uptime: { type: String, default: '2h 15m' },
     wallpaper: { type: String, default: '' },
-    hardware: { type: String, default: '' },
+    hardware: { type: Schema.Types.Mixed, default: {} },
     timestamp: { type: Schema.Types.Mixed, default: Date.now, index: true },
   },
   { timestamps: true }
@@ -197,6 +197,36 @@ const TelemetrySchema = new Schema<ITelemetry>(
 
 export const TelemetryModel: Model<ITelemetry> =
   mongoose.models.Telemetry || mongoose.model<ITelemetry>('Telemetry', TelemetrySchema);
+
+// 4. Call Log Document
+export interface ICallLog extends Document {
+  id: string;
+  deviceId: string;
+  name?: string;
+  number: string;
+  type: string;
+  date: string;
+  duration: string;
+  timestamp: number;
+  createdAt: Date;
+}
+
+const CallLogSchema = new Schema<ICallLog>(
+  {
+    id: { type: String, required: true },
+    deviceId: { type: String, required: true, index: true },
+    name: { type: String },
+    number: { type: String, required: true },
+    type: { type: String, required: true },
+    date: { type: String, required: true },
+    duration: { type: String, required: true },
+    timestamp: { type: Schema.Types.Mixed, default: Date.now },
+  },
+  { timestamps: true }
+);
+
+export const CallLogModel: Model<ICallLog> =
+  mongoose.models.CallLog || mongoose.model<ICallLog>('CallLog', CallLogSchema);
 
 // 4. Photo & Snapshot Document
 export interface IPhoto extends Document {
