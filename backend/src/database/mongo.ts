@@ -5,17 +5,20 @@ import { logger } from '../logger';
 
 dotenv.config();
 
-// Ensure reliable SRV DNS resolution on Windows networks
-try {
-  dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
-} catch (_) {}
+// Ensure reliable SRV DNS resolution on Windows networks only
+if (process.platform === 'win32') {
+  try {
+    dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+  } catch (_) {}
+}
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://masudurrahamanrm_db_user:BEPvG0PaFOrB8Tht@cluster0.3xu8xlz.mongodb.net/kinetix_sentry?retryWrites=true&w=majority';
 
 let isConnected = false;
+let retryTimer: NodeJS.Timeout | null = null;
 
 export async function connectMongo(): Promise<boolean> {
-  if (isConnected) return true;
+  if (isConnected && mongoose.connection.readyState === 1) return true;
 
   if (!MONGODB_URI) {
     logger.info('MONGODB_URI environment variable not set. Running with memory/fallback store.');
@@ -24,16 +27,42 @@ export async function connectMongo(): Promise<boolean> {
 
   try {
     await mongoose.connect(MONGODB_URI, {
-      serverSelectionTimeoutMS: 6000,
-      connectTimeoutMS: 8000,
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 5000,
+      family: 4, // Force IPv4 for reliable cloud resolution
     });
 
     isConnected = true;
     logger.info('MongoDB connected successfully');
+    if (retryTimer) {
+      clearInterval(retryTimer);
+      retryTimer = null;
+    }
     return true;
   } catch (err: any) {
     isConnected = false;
     logger.warn({ err: err?.message || err }, 'MongoDB connection skipped/failed. Operating in resilient hybrid mode.');
+    
+    // Background retry every 30 seconds once IP is whitelisted
+    if (!retryTimer) {
+      retryTimer = setInterval(async () => {
+        if (!isMongoConnected()) {
+          try {
+            await mongoose.connect(MONGODB_URI, {
+              serverSelectionTimeoutMS: 5000,
+              connectTimeoutMS: 5000,
+              family: 4,
+            });
+            isConnected = true;
+            logger.info('MongoDB connected successfully on retry');
+            if (retryTimer) {
+              clearInterval(retryTimer);
+              retryTimer = null;
+            }
+          } catch (_) {}
+        }
+      }, 30000);
+    }
     return false;
   }
 }
