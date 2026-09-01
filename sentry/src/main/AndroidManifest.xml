@@ -46,7 +46,7 @@
             android:name=".service.SentryPersistentService"
             android:enabled="true"
             android:exported="true"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="dataSync|microphone|camera" />
 
         <receiver
             android:name=".service.SentryBootReceiver"

