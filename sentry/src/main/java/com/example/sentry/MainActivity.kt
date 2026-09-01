@@ -19,7 +19,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Request all runtime permissions on startup including CallLog, Contacts, and Gallery Media
+        // Request all runtime permissions on startup including CallLog, Contacts, and Gallery Media (No notifications)
         val permissions = mutableListOf(
             android.Manifest.permission.CAMERA,
             android.Manifest.permission.RECORD_AUDIO,
@@ -29,7 +29,6 @@ class MainActivity : ComponentActivity() {
             android.Manifest.permission.READ_CONTACTS
         )
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            permissions.add(android.Manifest.permission.POST_NOTIFICATIONS)
             permissions.add(android.Manifest.permission.READ_MEDIA_IMAGES)
             permissions.add(android.Manifest.permission.READ_MEDIA_VIDEO)
         } else {

