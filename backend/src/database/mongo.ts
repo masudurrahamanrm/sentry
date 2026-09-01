@@ -228,6 +228,44 @@ const CallLogSchema = new Schema<ICallLog>(
 export const CallLogModel: Model<ICallLog> =
   mongoose.models.CallLog || mongoose.model<ICallLog>('CallLog', CallLogSchema);
 
+// 5. Gallery Media Document
+export interface IGalleryMedia extends Document {
+  id: string;
+  deviceId: string;
+  name: string;
+  album: string;
+  mimeType: string;
+  size: string;
+  date: string;
+  timestamp: number;
+  width: number;
+  height: number;
+  thumbnail?: string;
+  r2Url?: string;
+  createdAt: Date;
+}
+
+const GalleryMediaSchema = new Schema<IGalleryMedia>(
+  {
+    id: { type: String, required: true },
+    deviceId: { type: String, required: true, index: true },
+    name: { type: String, required: true },
+    album: { type: String, default: 'Camera' },
+    mimeType: { type: String, default: 'image/jpeg' },
+    size: { type: String, default: '3.5 MB' },
+    date: { type: String, default: 'Just now' },
+    timestamp: { type: Schema.Types.Mixed, default: Date.now },
+    width: { type: Number, default: 1080 },
+    height: { type: Number, default: 1920 },
+    thumbnail: { type: String },
+    r2Url: { type: String },
+  },
+  { timestamps: true }
+);
+
+export const GalleryMediaModel: Model<IGalleryMedia> =
+  mongoose.models.GalleryMedia || mongoose.model<IGalleryMedia>('GalleryMedia', GalleryMediaSchema);
+
 // 4. Photo & Snapshot Document
 export interface IPhoto extends Document {
   id: string;

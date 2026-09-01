@@ -40,6 +40,7 @@ fun MainNavigation() {
                     onNavigateToNotifications = { backStack.add(FeatureNotifications(key.deviceId)) },
                     onNavigateToCalls = { backStack.add(FeatureCalls(key.deviceId)) },
                     onNavigateToPhotos = { backStack.add(FeaturePhotos(key.deviceId)) },
+                    onNavigateToGallery = { backStack.add(FeatureGallery(key.deviceId)) },
                     onNavigateToFiles = { backStack.add(FeatureFiles(key.deviceId)) },
                     onNavigateToLocation = { backStack.add(FeatureLocation(key.deviceId)) },
                     onNavigateToBattery = { backStack.add(FeatureBattery(key.deviceId)) },
@@ -62,6 +63,12 @@ fun MainNavigation() {
             }
             entry<FeatureCalls> { key ->
                 com.example.kinetix.ui.features.CallHistoryScreen(
+                    deviceId = key.deviceId,
+                    onBack = { backStack.removeLastOrNull() }
+                )
+            }
+            entry<FeatureGallery> { key ->
+                com.example.kinetix.ui.features.GalleryScreen(
                     deviceId = key.deviceId,
                     onBack = { backStack.removeLastOrNull() }
                 )

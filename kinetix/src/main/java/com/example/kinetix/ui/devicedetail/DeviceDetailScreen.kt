@@ -50,6 +50,7 @@ fun DeviceDetailScreen(
     onNavigateToNotifications: () -> Unit,
     onNavigateToCalls: () -> Unit = {},
     onNavigateToPhotos: () -> Unit,
+    onNavigateToGallery: () -> Unit = {},
     onNavigateToFiles: () -> Unit,
     onNavigateToLocation: () -> Unit,
     onNavigateToBattery: () -> Unit,
@@ -644,15 +645,15 @@ fun DeviceDetailScreen(
                 )
                 SentryModernToolCard(
                     modifier = Modifier.weight(1f),
-                    title = "Cloud Gallery",
-                    subtitle = "R2 Media Hub",
+                    title = "Gallery",
+                    subtitle = "Photos & Media",
                     icon = Icons.Default.PhotoLibrary,
                     badgeColor = Color(0xFF8B5CF6),
                     badgeBg = Color(0xFFF3E8FF),
-                    tagText = "R2",
+                    tagText = "Live",
                     tagColor = Color(0xFF7C3AED),
                     tagBg = Color(0xFFEDE9FE),
-                    onClick = onNavigateToPhotos
+                    onClick = onNavigateToGallery
                 )
             }
 
