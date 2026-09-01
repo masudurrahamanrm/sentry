@@ -36,6 +36,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import kotlin.random.Random
 
 data class AudioItem(
@@ -150,7 +152,7 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
             AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build()
                 )
@@ -167,7 +169,7 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
         } else {
             @Suppress("DEPRECATION")
             AudioTrack(
-                AudioManager.STREAM_MUSIC,
+                AudioManager.STREAM_VOICE_CALL,
                 sampleRate,
                 AudioFormat.CHANNEL_OUT_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,
@@ -199,23 +201,25 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
                                 currentDecibels = db
                             }
 
-                            // Write PCM audio data straight to AudioTrack hardware mixer
+                            // Write clean 16-bit PCM ShortArray to AudioTrack
                             if (status == "STREAMING" && seq > lastPlayedSequence && !chunkB64.isNullOrBlank() && chunkB64 != "null") {
                                 lastPlayedSequence = seq
                                 val pcmBytes = Base64.decode(chunkB64, Base64.DEFAULT)
 
-                                // Apply audio volume gain boost
-                                if (audioGainBoost != 1.0f) {
-                                    for (i in 0 until pcmBytes.size step 2) {
-                                        var sample = (pcmBytes[i].toInt() and 0xFF) or (pcmBytes[i + 1].toInt() shl 8)
-                                        if (sample > 32767) sample -= 65536
-                                        sample = (sample * audioGainBoost).toInt().coerceIn(-32768, 32767)
-                                        pcmBytes[i] = (sample and 0xFF).toByte()
-                                        pcmBytes[i + 1] = ((sample shr 8) and 0xFF).toByte()
-                                    }
-                                }
+                                if (pcmBytes.size >= 2) {
+                                    val shortBuf = ByteBuffer.wrap(pcmBytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+                                    val shortArray = ShortArray(shortBuf.remaining())
+                                    shortBuf.get(shortArray)
 
-                                track.write(pcmBytes, 0, pcmBytes.size)
+                                    // Apply smooth digital volume gain boost if configured
+                                    if (audioGainBoost != 1.0f) {
+                                        for (i in shortArray.indices) {
+                                            shortArray[i] = (shortArray[i] * audioGainBoost).toInt().coerceIn(-32768, 32767).toShort()
+                                        }
+                                    }
+
+                                    track.write(shortArray, 0, shortArray.size)
+                                }
                             }
                         }
                     }

