@@ -2,20 +2,16 @@ import express from 'express';
 import http from 'http';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import pino from 'pino';
+import { logger } from './logger';
 
 dotenv.config();
-
-const logger = pino({
-  transport: {
-    target: 'pino-pretty',
-    options: { colorize: true },
-  },
-});
 
 import apiRouter from './api/routes';
 import { errorHandler } from './middleware/errorHandler';
 import { setupWebSocketServer } from './websocket';
+
+import { connectMongo, isMongoConnected } from './database/mongo';
+import { r2Service } from './storage/r2.service';
 
 const app = express();
 const server = http.createServer(app);
@@ -29,6 +25,10 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'HEALTHY',
     service: 'kinetix-sentry-backend',
+    storage: {
+      mongoConnected: isMongoConnected(),
+      r2Configured: r2Service.isConfigured(),
+    },
     timestamp: new Date().toISOString(),
   });
 });
@@ -42,8 +42,9 @@ app.use(errorHandler);
 const wsGateway = setupWebSocketServer(server);
 
 if (process.env.NODE_ENV !== 'test') {
-  server.listen(PORT, () => {
+  server.listen(PORT, async () => {
     logger.info(`Kinetix-Sentry Backend server running on port ${PORT}`);
+    await connectMongo();
   });
 }
 

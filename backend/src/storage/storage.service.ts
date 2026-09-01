@@ -1,6 +1,9 @@
 import { query } from '../database/db';
 import { AppError } from '../middleware/errorHandler';
 import { generateNonce } from '@kinetix-sentry/crypto';
+import { r2Service } from './r2.service';
+import { isMongoConnected, FileModel } from '../database/mongo';
+import { logger } from '../logger';
 
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
 const SIGNED_URL_TTL_SECONDS = 900; // 15 minutes
@@ -14,6 +17,8 @@ interface StoredFileMetadata {
   filename: string;
   fileSize: number;
   contentType: string;
+  r2Key?: string;
+  r2Url?: string;
   createdAt: number;
 }
 
@@ -26,7 +31,7 @@ export class StorageService {
     filename: string,
     fileSize: number,
     contentType: string = 'application/octet-stream'
-  ): Promise<{ fileId: string; uploadUrl: string; expiresInSeconds: number }> {
+  ): Promise<{ fileId: string; uploadUrl: string; expiresInSeconds: number; publicUrl?: string }> {
     // 1. Verify file size limit
     if (fileSize > MAX_FILE_SIZE_BYTES) {
       throw new AppError(
@@ -53,23 +58,60 @@ export class StorageService {
     const fileId = `file_${Date.now()}_${generateNonce(8)}`;
     const objectKey = `${pairingId}/${fileId}/${encodeURIComponent(filename)}`;
 
-    // Generate signed upload endpoint
-    const uploadUrl = `${STORAGE_ENDPOINT}/${STORAGE_BUCKET}/${objectKey}?token=${generateNonce(16)}&expires=${Date.now() + SIGNED_URL_TTL_SECONDS * 1000}`;
+    let uploadUrl: string;
+    let publicUrl: string | undefined;
 
-    fileMetadataMap.set(fileId, {
+    // Use Cloudflare R2 presigned URL if configured
+    if (r2Service.isConfigured()) {
+      try {
+        const presigned = await r2Service.generatePresignedUploadUrl(objectKey, contentType, SIGNED_URL_TTL_SECONDS);
+        uploadUrl = presigned.uploadUrl;
+        publicUrl = presigned.publicUrl;
+      } catch (err) {
+        logger.warn({ err }, 'R2 presigned upload failed, falling back to local endpoint');
+        uploadUrl = `${STORAGE_ENDPOINT}/${STORAGE_BUCKET}/${objectKey}?token=${generateNonce(16)}&expires=${Date.now() + SIGNED_URL_TTL_SECONDS * 1000}`;
+      }
+    } else {
+      uploadUrl = `${STORAGE_ENDPOINT}/${STORAGE_BUCKET}/${objectKey}?token=${generateNonce(16)}&expires=${Date.now() + SIGNED_URL_TTL_SECONDS * 1000}`;
+    }
+
+    const meta: StoredFileMetadata = {
       fileId,
       pairingId,
       uploaderDeviceId,
       filename,
       fileSize,
       contentType,
+      r2Key: objectKey,
+      r2Url: publicUrl,
       createdAt: Date.now(),
-    });
+    };
+
+    fileMetadataMap.set(fileId, meta);
+
+    // Persist in MongoDB if connected
+    if (isMongoConnected()) {
+      try {
+        await FileModel.create({
+          fileId,
+          pairingId,
+          uploaderDeviceId,
+          filename,
+          fileSize,
+          contentType,
+          r2Key: objectKey,
+          r2Url: publicUrl,
+        });
+      } catch (err) {
+        logger.warn({ err }, 'MongoDB file metadata persistence error');
+      }
+    }
 
     return {
       fileId,
       uploadUrl,
       expiresInSeconds: SIGNED_URL_TTL_SECONDS,
+      publicUrl,
     };
   }
 
@@ -88,14 +130,46 @@ export class StorageService {
       throw new AppError('PAIRING_NOT_FOUND', 'Active pairing relationship required.', 403);
     }
 
-    // 2. Lookup file metadata
-    const file = fileMetadataMap.get(fileId);
+    // 2. Lookup file metadata from MongoDB or memory
+    let file = fileMetadataMap.get(fileId);
+
+    if (!file && isMongoConnected()) {
+      try {
+        const dbFile = await FileModel.findOne({ fileId }).lean();
+        if (dbFile) {
+          file = {
+            fileId: dbFile.fileId,
+            pairingId: dbFile.pairingId,
+            uploaderDeviceId: dbFile.uploaderDeviceId,
+            filename: dbFile.filename,
+            fileSize: dbFile.fileSize,
+            contentType: dbFile.contentType,
+            r2Key: dbFile.r2Key,
+            r2Url: dbFile.r2Url,
+            createdAt: dbFile.createdAt ? new Date(dbFile.createdAt).getTime() : Date.now(),
+          };
+        }
+      } catch (_) {}
+    }
+
     if (!file || file.pairingId !== pairingId) {
       throw new AppError('FILE_NOT_FOUND', 'The requested file was not found or belongs to a different pairing.', 404);
     }
 
-    const objectKey = `${pairingId}/${fileId}/${encodeURIComponent(file.filename)}`;
-    const downloadUrl = `${STORAGE_ENDPOINT}/${STORAGE_BUCKET}/${objectKey}?token=${generateNonce(16)}&expires=${Date.now() + SIGNED_URL_TTL_SECONDS * 1000}`;
+    const objectKey = file.r2Key || `${pairingId}/${fileId}/${encodeURIComponent(file.filename)}`;
+    let downloadUrl: string;
+
+    if (r2Service.isConfigured()) {
+      try {
+        const presigned = await r2Service.generatePresignedDownloadUrl(objectKey, SIGNED_URL_TTL_SECONDS);
+        downloadUrl = presigned.downloadUrl;
+      } catch (err) {
+        logger.warn({ err }, 'R2 presigned download failed, falling back to local endpoint');
+        downloadUrl = `${STORAGE_ENDPOINT}/${STORAGE_BUCKET}/${objectKey}?token=${generateNonce(16)}&expires=${Date.now() + SIGNED_URL_TTL_SECONDS * 1000}`;
+      }
+    } else {
+      downloadUrl = `${STORAGE_ENDPOINT}/${STORAGE_BUCKET}/${objectKey}?token=${generateNonce(16)}&expires=${Date.now() + SIGNED_URL_TTL_SECONDS * 1000}`;
+    }
 
     return {
       downloadUrl,

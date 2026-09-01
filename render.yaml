@@ -16,3 +16,26 @@ services:
         generateValue: true
       - key: REFRESH_SECRET
         generateValue: true
+      - key: PAIRING_SECRET
+        generateValue: true
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_USERNAME
+        sync: false
+      - key: MONGODB_PASSWORD
+        sync: false
+      - key: R2_ACCOUNT_ID
+        value: 89b8f307c04b78bda5d75257e88c949b
+      - key: R2_ACCESS_KEY_ID
+        value: 953214bccbdfd86f88d9bc47b97d18e8
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        value: sentry
+      - key: R2_PUBLIC_DOMAIN
+        value: https://89b8f307c04b78bda5d75257e88c949b.r2.cloudflarestorage.com/sentry
+      - key: OBJECT_STORAGE_ENDPOINT
+        value: https://89b8f307c04b78bda5d75257e88c949b.r2.cloudflarestorage.com
+      - key: OBJECT_STORAGE_BUCKET
+        value: sentry
+
