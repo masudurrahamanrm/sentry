@@ -155,6 +155,80 @@ router.get('/photos/list/:deviceId', async (req, res) => {
   res.json({ photos });
 });
 
+// Permanent, Non-Expiring Direct Photo Stream Endpoint
+router.get('/photos/file/:deviceId/:photoId', async (req, res) => {
+  const { deviceId, photoId } = req.params;
+  const r2Key = `photos/${deviceId}/${photoId}.jpg`;
+
+  if (r2Service.isConfigured()) {
+    try {
+      const { stream, contentType, contentLength } = await r2Service.getObjectStream(r2Key);
+      res.setHeader('Content-Type', contentType || 'image/jpeg');
+      if (contentLength) res.setHeader('Content-Length', contentLength);
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      stream.pipe(res);
+      return;
+    } catch (err) {
+      logger.warn({ err, r2Key }, 'Direct R2 photo stream failed, checking database fallback');
+    }
+  }
+
+  // Fallback to Base64 from MongoDB or memory
+  if (isMongoConnected()) {
+    try {
+      const doc = await PhotoModel.findOne({ id: photoId });
+      if (doc?.base64) {
+        const buffer = Buffer.from(doc.base64, 'base64');
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.send(buffer);
+        return;
+      }
+    } catch (_) {}
+  }
+
+  const list = livePhotosStorage.get(deviceId) || [];
+  const inMemory = list.find(p => p.id === photoId);
+  if (inMemory?.base64) {
+    const buffer = Buffer.from(inMemory.base64, 'base64');
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.send(buffer);
+    return;
+  }
+
+  res.status(404).json({ error: 'Photo not found' });
+});
+
+// Permanent Photo Deletion from Cloudflare R2 & MongoDB Atlas
+router.delete('/photos/:deviceId/:photoId', async (req, res) => {
+  const { deviceId, photoId } = req.params;
+  const r2Key = `photos/${deviceId}/${photoId}.jpg`;
+
+  // 1. Delete from Cloudflare R2 Bucket
+  if (r2Service.isConfigured()) {
+    try {
+      await r2Service.deleteObject(r2Key);
+    } catch (err) {
+      logger.warn({ err, r2Key }, 'Error deleting photo from Cloudflare R2');
+    }
+  }
+
+  // 2. Delete from MongoDB Atlas
+  if (isMongoConnected()) {
+    try {
+      await PhotoModel.deleteOne({ id: photoId, deviceId });
+    } catch (err) {
+      logger.warn({ err }, 'Error deleting photo from MongoDB Atlas');
+    }
+  }
+
+  // 3. Delete from in-memory cache
+  const list = livePhotosStorage.get(deviceId) || [];
+  const filtered = list.filter(p => p.id !== photoId);
+  livePhotosStorage.set(deviceId, filtered);
+
+  res.json({ success: true, message: 'Photo deleted permanently from Cloudflare R2 and database' });
+});
+
 // Direct Audio Hub
 const liveAudioStorage = new Map<string, Array<any>>();
 const pendingAudioTasks = new Map<string, number>(); // deviceId -> durationSeconds

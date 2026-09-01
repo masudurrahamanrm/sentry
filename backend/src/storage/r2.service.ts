@@ -145,6 +145,27 @@ export class CloudflareR2Service {
   }
 
   /**
+   * Streams an object directly from Cloudflare R2.
+   */
+  async getObjectStream(key: string): Promise<{ stream: any; contentType: string; contentLength?: number }> {
+    if (!this.client) {
+      throw new Error('Cloudflare R2 is not configured');
+    }
+
+    const command = new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+    });
+
+    const res = await this.client.send(command);
+    return {
+      stream: res.Body,
+      contentType: res.ContentType || 'image/jpeg',
+      contentLength: res.ContentLength,
+    };
+  }
+
+  /**
    * Deletes an object from Cloudflare R2.
    */
   async deleteObject(key: string): Promise<boolean> {
@@ -158,7 +179,7 @@ export class CloudflareR2Service {
       await this.client.send(command);
       return true;
     } catch (err) {
-      logger.error({ err, key }, 'Failed to delete object from Cloudflare R2');
+      logger.warn({ err, key }, 'Failed to delete object from Cloudflare R2');
       return false;
     }
   }

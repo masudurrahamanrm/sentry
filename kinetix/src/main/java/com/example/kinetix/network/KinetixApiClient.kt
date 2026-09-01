@@ -121,6 +121,10 @@ class KinetixApiClient(
         request("POST", "/photos/capture", body.toString(), authenticated = false)
     }
 
+    suspend fun deletePhoto(deviceId: String, photoId: String): Result<JSONObject> = withContext(Dispatchers.IO) {
+        request("DELETE", "/photos/$deviceId/$photoId", null, authenticated = false)
+    }
+
     suspend fun triggerAudioRecord(deviceId: String, durationSeconds: Int = 10): Result<JSONObject> = withContext(Dispatchers.IO) {
         val body = JSONObject().apply {
             put("deviceId", deviceId)

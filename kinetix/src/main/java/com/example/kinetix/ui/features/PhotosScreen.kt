@@ -94,6 +94,7 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
     var selectedPhoto by remember { mutableStateOf<PhotoItem?>(null) }
     var rotationAngle by remember { mutableFloatStateOf(0f) }
     var showExifSheet by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
     suspend fun fetchPhotos() {
         withContext(Dispatchers.IO) {
@@ -699,6 +700,21 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                     tint = Color.White
                                 )
                             }
+                            Spacer(modifier = Modifier.width(6.dp))
+
+                            // Delete Button (Permanent Removal from R2 and Database)
+                            IconButton(
+                                onClick = { showDeleteDialog = true },
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFEF4444).copy(alpha = 0.2f))
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Delete Photo Permanently",
+                                    tint = Color(0xFFEF4444)
+                                )
+                            }
                         }
                     }
 
@@ -879,6 +895,46 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                         }
                     }
                 }
+            }
+
+            // PERMANENT DELETION CONFIRMATION DIALOG
+            if (showDeleteDialog) {
+                AlertDialog(
+                    onDismissRequest = { showDeleteDialog = false },
+                    title = { Text("Delete from Cloudflare R2?", fontWeight = FontWeight.Bold) },
+                    text = {
+                        Text(
+                            "This will permanently delete this photo from Cloudflare R2 cloud storage and the database.\n\nPhotos stay saved forever in your cloud until you explicitly delete them.",
+                            fontSize = 13.sp
+                        )
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                coroutineScope.launch {
+                                    val client = KinetixApiClient(context)
+                                    val res = client.deletePhoto(deviceId, currentPhoto.id)
+                                    if (res.isSuccess) {
+                                        photos.removeAll { it.id == currentPhoto.id }
+                                        selectedPhoto = null
+                                        Toast.makeText(context, "Permanently deleted from Cloudflare R2!", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "Failed to delete photo.", Toast.LENGTH_SHORT).show()
+                                    }
+                                    showDeleteDialog = false
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                        ) {
+                            Text("Delete Permanently", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeleteDialog = false }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
             }
         }
     }
