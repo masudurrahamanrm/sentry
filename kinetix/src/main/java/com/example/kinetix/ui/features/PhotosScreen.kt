@@ -420,130 +420,15 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Secondary Toolbar: 3 Equal Width Control Chips
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        // Timer
-                        Surface(
-                            onClick = {
-                                timerSeconds = when (timerSeconds) {
-                                    0 -> 3
-                                    3 -> 5
-                                    5 -> 10
-                                    else -> 0
-                                }
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (timerSeconds > 0) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(36.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center,
-                                modifier = Modifier.padding(horizontal = 4.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Timer,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(13.dp),
-                                    tint = if (timerSeconds > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    if (timerSeconds == 0) "Timer: Off" else "${timerSeconds}s",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (timerSeconds > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        // Flash
-                        Surface(
-                            onClick = {
-                                selectedFlash = when (selectedFlash) {
-                                    FlashMode.AUTO -> FlashMode.ON
-                                    FlashMode.ON -> FlashMode.OFF
-                                    FlashMode.OFF -> FlashMode.AUTO
-                                }
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (selectedFlash != FlashMode.OFF) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(36.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center,
-                                modifier = Modifier.padding(horizontal = 4.dp)
-                            ) {
-                                Icon(
-                                    when (selectedFlash) {
-                                        FlashMode.AUTO -> Icons.Default.FlashAuto
-                                        FlashMode.ON -> Icons.Default.FlashOn
-                                        FlashMode.OFF -> Icons.Default.FlashOff
-                                    },
-                                    contentDescription = null,
-                                    modifier = Modifier.size(13.dp),
-                                    tint = if (selectedFlash != FlashMode.OFF) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    selectedFlash.label,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (selectedFlash != FlashMode.OFF) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        // Night Boost
-                        Surface(
-                            onClick = { nightBoost = !nightBoost },
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (nightBoost) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(36.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center,
-                                modifier = Modifier.padding(horizontal = 4.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.NightsStay,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(13.dp),
-                                    tint = if (nightBoost) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    "Night Boost",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (nightBoost) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     // Action Button
                     Button(
                         onClick = { triggerProCapture() },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(46.dp),
-                        shape = RoundedCornerShape(12.dp),
+                            .height(48.dp),
+                        shape = RoundedCornerShape(14.dp),
                         enabled = !isCapturing,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (selectedLens == CameraLens.FRONT) Color(0xFFE11D48) else Color(0xFF2563EB)
