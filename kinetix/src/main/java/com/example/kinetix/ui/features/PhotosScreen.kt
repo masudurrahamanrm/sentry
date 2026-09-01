@@ -71,7 +71,6 @@ enum class CameraQuality(val label: String) {
     FHD_1080P("1080p FHD"),
     HD_720P("720p Speed")
 }
-enum class FlashMode(val label: String) { AUTO("Auto"), ON("Torch On"), OFF("Flash Off") }
 enum class GalleryFilter { ALL, REAR, FRONT, CLOUD }
 enum class ViewLayout { GRID_2, CARDS_1 }
 
@@ -84,12 +83,9 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
     // Remote Camera Settings
     var selectedLens by remember { mutableStateOf(CameraLens.REAR) }
     var selectedQuality by remember { mutableStateOf(CameraQuality.UHD_4K) }
-    var selectedFlash by remember { mutableStateOf(FlashMode.AUTO) }
-    var nightBoost by remember { mutableStateOf(false) }
-    var timerSeconds by remember { mutableIntStateOf(0) }
     var isCapturing by remember { mutableStateOf(false) }
     var captureProgressText by remember { mutableStateOf<String?>(null) }
-    var captureCountdown by remember { mutableIntStateOf(0) }
+    var showCaptureSheet by remember { mutableStateOf(false) }
 
     // Gallery State
     val photos = remember { mutableStateListOf<PhotoItem>() }
@@ -114,7 +110,7 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                             val isFront = name.contains("FRONT", ignoreCase = true)
                             val b64 = item.optString("base64").takeIf { b -> b.isNotBlank() && b != "null" }
                             val r2 = item.optString("r2Url").takeIf { u -> u.isNotBlank() && u != "null" }
-                            
+
                             // Only include valid photo captures with image data
                             if (b64 != null || r2 != null) {
                                 list.add(
@@ -147,16 +143,6 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
     fun triggerProCapture() {
         coroutineScope.launch {
             isCapturing = true
-
-            // Timer Countdown
-            if (timerSeconds > 0) {
-                captureCountdown = timerSeconds
-                while (captureCountdown > 0) {
-                    captureProgressText = "Timer: capturing in ${captureCountdown}s..."
-                    delay(1000)
-                    captureCountdown--
-                }
-            }
 
             val camStr = if (selectedLens == CameraLens.FRONT) "front" else "rear"
             captureProgressText = "Sending signal to remote ${if (selectedLens == CameraLens.FRONT) "Front" else "Rear"} camera..."
@@ -193,12 +179,15 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
             if (capturedReceived) {
                 captureProgressText = "Photo captured & synced to Cloudflare R2!"
                 Toast.makeText(context, "New photo captured successfully!", Toast.LENGTH_SHORT).show()
+                delay(1200)
+                showCaptureSheet = false
             } else {
                 fetchPhotos()
                 captureProgressText = "Photo uploaded to cloud gallery."
+                delay(1200)
+                showCaptureSheet = false
             }
 
-            delay(2000)
             isCapturing = false
             captureProgressText = null
         }
@@ -253,6 +242,24 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                     }
                 }
             )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { showCaptureSheet = true },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = Color.White,
+                shape = CircleShape,
+                modifier = Modifier
+                    .padding(bottom = 8.dp, end = 8.dp)
+                    .size(60.dp)
+                    .shadow(8.dp, CircleShape)
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "Take Snapshot",
+                    modifier = Modifier.size(30.dp)
+                )
+            }
         }
     ) { padding ->
         Column(
@@ -261,230 +268,11 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                 .padding(padding)
                 .padding(horizontal = 16.dp)
         ) {
-            // REMOTE CAMERA CONSOLE CARD
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .shadow(4.dp, RoundedCornerShape(18.dp)),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
-                                    MaterialTheme.colorScheme.surface
-                                )
-                            )
-                        )
-                        .padding(14.dp)
-                ) {
-                    // Header Row with Title and Quality Pill
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(30.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.Default.CameraAlt,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                "Remote Camera",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp
-                            )
-                        }
-
-                        // Quality Mode Pill
-                        Surface(
-                            onClick = {
-                                selectedQuality = when (selectedQuality) {
-                                    CameraQuality.UHD_4K -> CameraQuality.FHD_1080P
-                                    CameraQuality.FHD_1080P -> CameraQuality.HD_720P
-                                    CameraQuality.HD_720P -> CameraQuality.UHD_4K
-                                }
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Hd,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    selectedQuality.label,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Lens Selector (Rear vs Front)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        val isRear = selectedLens == CameraLens.REAR
-                        Surface(
-                            onClick = { selectedLens = CameraLens.REAR },
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isRear) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(54.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center,
-                                modifier = Modifier.padding(horizontal = 8.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.CameraRear,
-                                    contentDescription = null,
-                                    tint = if (isRear) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Column {
-                                    Text(
-                                        "Rear Camera",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp,
-                                        color = if (isRear) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        "Primary • HDR",
-                                        fontSize = 10.sp,
-                                        color = if (isRear) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-
-                        val isFront = selectedLens == CameraLens.FRONT
-                        Surface(
-                            onClick = { selectedLens = CameraLens.FRONT },
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isFront) Color(0xFFE11D48) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(54.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center,
-                                modifier = Modifier.padding(horizontal = 8.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.CameraFront,
-                                    contentDescription = null,
-                                    tint = if (isFront) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Column {
-                                    Text(
-                                        "Front Selfie",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp,
-                                        color = if (isFront) Color.White else MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        "Selfie • Portrait",
-                                        fontSize = 10.sp,
-                                        color = if (isFront) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Action Button
-                    Button(
-                        onClick = { triggerProCapture() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        enabled = !isCapturing,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (selectedLens == CameraLens.FRONT) Color(0xFFE11D48) else Color(0xFF2563EB)
-                        )
-                    ) {
-                        if (isCapturing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                color = Color.White,
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text("Capturing Frame...", fontWeight = FontWeight.Bold)
-                        } else {
-                            Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                "Take Snapshot (${if (selectedLens == CameraLens.FRONT) "Front" else "Rear"})",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
-                            )
-                        }
-                    }
-
-                    // Dynamic Live Progress Banner
-                    AnimatedVisibility(
-                        visible = captureProgressText != null,
-                        enter = fadeIn() + expandVertically(),
-                        exit = fadeOut() + shrinkVertically()
-                    ) {
-                        Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)))
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = captureProgressText ?: "",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
             // GALLERY SECTION HEADER & STATS
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -492,7 +280,7 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                     "Cloud Gallery (${filteredPhotos.size})",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
+                    fontSize = 17.sp
                 )
 
                 Surface(
@@ -509,7 +297,7 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Filter Tabs Row (Horizontal Scrollable)
             Row(
@@ -535,9 +323,9 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // COMPACT GALLERY GRID
+            // FULL SPACE COMPACT GALLERY GRID
             if (filteredPhotos.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -550,19 +338,19 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                             Icons.Outlined.PhotoLibrary,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(40.dp)
+                            modifier = Modifier.size(48.dp)
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             "No snapshots in this filter",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
+                            fontSize = 14.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            "Tap 'Take Snapshot' above to capture",
-                            fontSize = 11.sp,
+                            "Tap the '+' button below to capture a new photo",
+                            fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.outline
                         )
                     }
@@ -583,6 +371,219 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                 showExifSheet = false
                                 selectedPhoto = photo
                             }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // REMOTE CAMERA BOTTOM SHEET MODAL (APPEARS ONLY WHEN CLICKING + FAB)
+    if (showCaptureSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { if (!isCapturing) showCaptureSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                // Header Row with Title and Quality Pill
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.CameraAlt,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            "Remote Camera",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+
+                    // Quality Mode Pill
+                    Surface(
+                        onClick = {
+                            selectedQuality = when (selectedQuality) {
+                                CameraQuality.UHD_4K -> CameraQuality.FHD_1080P
+                                CameraQuality.FHD_1080P -> CameraQuality.HD_720P
+                                CameraQuality.HD_720P -> CameraQuality.UHD_4K
+                            }
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Hd,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                selectedQuality.label,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Lens Selector (Rear vs Front)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    val isRear = selectedLens == CameraLens.REAR
+                    Surface(
+                        onClick = { selectedLens = CameraLens.REAR },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isRear) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(58.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.CameraRear,
+                                contentDescription = null,
+                                tint = if (isRear) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    "Rear Camera",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = if (isRear) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    "Primary • HDR",
+                                    fontSize = 10.sp,
+                                    color = if (isRear) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    val isFront = selectedLens == CameraLens.FRONT
+                    Surface(
+                        onClick = { selectedLens = CameraLens.FRONT },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isFront) Color(0xFFE11D48) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(58.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.CameraFront,
+                                contentDescription = null,
+                                tint = if (isFront) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    "Front Selfie",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = if (isFront) Color.White else MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    "Selfie • Portrait",
+                                    fontSize = 10.sp,
+                                    color = if (isFront) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Action Button
+                Button(
+                    onClick = { triggerProCapture() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    enabled = !isCapturing,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (selectedLens == CameraLens.FRONT) Color(0xFFE11D48) else Color(0xFF2563EB)
+                    )
+                ) {
+                    if (isCapturing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("Capturing Frame...", fontWeight = FontWeight.Bold)
+                    } else {
+                        Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Take Snapshot (${if (selectedLens == CameraLens.FRONT) "Front" else "Rear"})",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+
+                // Dynamic Live Progress Banner
+                AnimatedVisibility(
+                    visible = captureProgressText != null,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)))
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = captureProgressText ?: "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.sp
                         )
                     }
                 }
