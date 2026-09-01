@@ -10,18 +10,19 @@ try {
   dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
 } catch (_) {}
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/kinetix_sentry';
+const MONGODB_URI = process.env.MONGODB_URI;
 
 let isConnected = false;
 
 export async function connectMongo(): Promise<boolean> {
   if (isConnected) return true;
 
-  try {
-    if (!process.env.MONGODB_URI && process.env.NODE_ENV !== 'test') {
-      logger.info('MONGODB_URI not configured, using memory/fallback store. Set MONGODB_URI to enable MongoDB.');
-    }
+  if (!MONGODB_URI) {
+    logger.info('MONGODB_URI environment variable not set. Running with memory/fallback store.');
+    return false;
+  }
 
+  try {
     await mongoose.connect(MONGODB_URI, {
       serverSelectionTimeoutMS: 6000,
       connectTimeoutMS: 8000,
