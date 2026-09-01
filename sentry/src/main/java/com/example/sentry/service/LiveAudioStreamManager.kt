@@ -119,8 +119,8 @@ object LiveAudioStreamManager {
                         MediaRecorder()
                     }
 
-                    val sampleRate = if (quality == "ECO") 22050 else 44100
-                    val bitRate = if (quality == "ECO") 64000 else 128000
+                    val sampleRate = if (quality == "ECO") 16000 else 32000
+                    val bitRate = if (quality == "ECO") 32000 else 64000
 
                     recorder.apply {
                         setAudioSource(MediaRecorder.AudioSource.MIC)

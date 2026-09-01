@@ -362,7 +362,7 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = when (liveMicStatus) {
-                                    "STREAMING" -> "LIVE STREAMING (44.1 kHz STUDIO HD)"
+                                    "STREAMING" -> "LIVE STREAMING (32.0 kHz BALANCED HD)"
                                     "PAUSED_CONFLICT" -> "PAUSED: MIC IN USE BY PHONE CALL / APP"
                                     else -> "STANDBY • READY TO LISTEN"
                                 },
@@ -491,7 +491,7 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
                                     }
                                     "$currentDecibels dB • $desc"
                                 } else {
-                                    "Standby • 44,100 Hz AAC Transmission"
+                                    "Standby • 32,000 Hz AAC Transmission"
                                 },
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.SemiBold,
