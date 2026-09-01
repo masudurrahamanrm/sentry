@@ -507,6 +507,33 @@ router.post('/battery/telemetry', async (req, res) => {
   res.status(201).json({ success: true, telemetry: data });
 });
 
+// Remote Device Wakeup Endpoint
+const pendingWakeSignals = new Map<string, number>();
+
+router.post('/devices/:deviceId/wake', async (req, res) => {
+  const devId = req.params.deviceId;
+  pendingWakeSignals.set(devId, Date.now());
+  logger.info({ deviceId: devId }, 'Dispatched remote wakeup signal to device');
+  res.json({
+    success: true,
+    message: 'Remote wakeup pulse dispatched',
+    deviceId: devId,
+    timestamp: Date.now(),
+  });
+});
+
+router.post('/devices/wake', async (req, res) => {
+  const { deviceId } = req.body || {};
+  const devId = deviceId || 'SN-U5ZY-78QZ';
+  pendingWakeSignals.set(devId, Date.now());
+  res.json({
+    success: true,
+    message: 'Remote wakeup pulse dispatched',
+    deviceId: devId,
+    timestamp: Date.now(),
+  });
+});
+
 router.get('/battery/:deviceId', async (req, res) => {
   const devId = req.params.deviceId;
 

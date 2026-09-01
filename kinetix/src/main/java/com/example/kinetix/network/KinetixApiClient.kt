@@ -201,6 +201,15 @@ class KinetixApiClient(
         request("PUT", "/devices/$deviceId/name", body.toString(), authenticated = false)
     }
 
+    suspend fun wakeDevice(deviceId: String): Result<JSONObject> = withContext(Dispatchers.IO) {
+        val body = JSONObject().apply {
+            put("deviceId", deviceId)
+            put("action", "WAKEUP")
+            put("timestamp", System.currentTimeMillis())
+        }
+        request("POST", "/devices/$deviceId/wake", body.toString(), authenticated = false)
+    }
+
     suspend fun startPairing(agentDeviceId: string): Result<JSONObject> = withContext(Dispatchers.IO) {
         val controllerDeviceId = CryptoManager.getOrCreateDeviceId(context)
         val body = JSONObject().apply {

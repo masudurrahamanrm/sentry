@@ -16,6 +16,7 @@ class SentryRestartReceiver : BroadcastReceiver() {
         Log.d(TAG, "Revival broadcast received ($action). Auto-restarting SentryPersistentService...")
         try {
             SentryPersistentService.startService(context.applicationContext)
+            SentryWakeManager.scheduleWakePulse(context.applicationContext)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start service from receiver: ${e.message}")
         }

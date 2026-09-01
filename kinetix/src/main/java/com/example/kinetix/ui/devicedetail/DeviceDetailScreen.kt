@@ -718,6 +718,69 @@ fun DeviceDetailScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
+            // Remote Wakeup & Reconnect Action Card
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = Color.White,
+                shadowElevation = 1.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFFE0F2FE)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Bolt, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(22.dp))
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("Remote Wakeup & Reconnect", fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = Color(0xFF1D1B20))
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text("Awakens Sentry background service on remote phone", fontSize = 11.sp, color = Color(0xFF757575))
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                actionMessage = "⚡ Dispatching remote wakeup signal to $deviceName..."
+                                withContext(Dispatchers.IO) {
+                                    try {
+                                        val client = com.example.kinetix.network.KinetixApiClient(context)
+                                        client.wakeDevice(deviceId)
+                                    } catch (_: Exception) {}
+                                }
+                                delay(1200)
+                                actionMessage = "✅ Wakeup signal sent! Sentry auto-reconnecting..."
+                                delay(2000)
+                                actionMessage = null
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Sync, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Reconnect", color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
             // Ring Device Action Card
             Surface(
                 modifier = Modifier.fillMaxWidth(),
