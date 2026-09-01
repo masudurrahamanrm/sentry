@@ -14,7 +14,6 @@ import android.util.Log
 import com.example.sentry.crypto.CryptoManager
 import com.example.sentry.network.SentryApiClient
 import kotlinx.coroutines.*
-import org.json.JSONObject
 import java.io.File
 import kotlin.math.log10
 
@@ -29,6 +28,7 @@ import kotlin.math.log10
 object LiveAudioStreamManager {
     private const val TAG = "LiveAudioStream"
     private var streamJob: Job? = null
+    private var streamingLoopJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO)
 
     @Volatile
@@ -63,19 +63,23 @@ object LiveAudioStreamManager {
                             startStreamingLoop(context, deviceId, quality)
                         } else if (!shouldStream && isStreamingEnabled) {
                             isStreamingEnabled = false
+                            streamingLoopJob?.cancel()
+                            streamingLoopJob = null
                         }
                     }
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    Log.w(TAG, "Live audio command poll error: ${e.message}")
                 }
-                delay(2000)
+                delay(1500)
             }
         }
     }
 
     private fun startStreamingLoop(context: Context, deviceId: String, quality: String) {
-        scope.launch {
+        streamingLoopJob?.cancel()
+        streamingLoopJob = scope.launch {
             val client = SentryApiClient(context)
-            var consecutiveErrors = 0
+            Log.d(TAG, "Live audio streaming loop STARTED for device: $deviceId")
 
             while (isActive && isStreamingEnabled) {
                 if (isMicConflictPaused) {
@@ -89,13 +93,13 @@ object LiveAudioStreamManager {
                             sequence = ++sequenceCounter
                         )
                     } catch (_: Exception) {}
-                    delay(1500)
+                    delay(1200)
                     continue
                 }
 
                 val chunkFile = File(context.cacheDir, "live_chunk_${System.currentTimeMillis()}.m4a")
                 var recorder: MediaRecorder? = null
-                var maxAmp = 0
+                var maxAmplitude = 0
 
                 try {
                     recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -106,7 +110,7 @@ object LiveAudioStreamManager {
                     }
 
                     val sampleRate = if (quality == "ECO") 22050 else 44100
-                    val bitRate = if (quality == "ECO") 48000 else 96000
+                    val bitRate = if (quality == "ECO") 64000 else 128000
 
                     recorder.apply {
                         setAudioSource(MediaRecorder.AudioSource.MIC)
@@ -119,37 +123,47 @@ object LiveAudioStreamManager {
                         start()
                     }
 
-                    // Record 1.8 second chunk for low-latency live streaming
-                    delay(1800)
-
-                    try {
-                        maxAmp = recorder.maxAmplitude
-                        recorder.stop()
-                        recorder.release()
-                        recorder = null
-                    } catch (_: Exception) {
+                    // Sample amplitude across the recording duration
+                    val durationMs = 2000L
+                    val startTime = System.currentTimeMillis()
+                    while (System.currentTimeMillis() - startTime < durationMs && isActive && isStreamingEnabled && !isMicConflictPaused) {
+                        try {
+                            val amp = recorder.maxAmplitude
+                            if (amp > maxAmplitude) maxAmplitude = amp
+                        } catch (_: Exception) {}
+                        delay(200)
                     }
 
-                    if (chunkFile.exists() && chunkFile.length() > 200) {
+                    // Safely stop recorder
+                    try {
+                        recorder.stop()
+                    } catch (_: Exception) {}
+                    try {
+                        recorder.release()
+                    } catch (_: Exception) {}
+                    recorder = null
+
+                    if (chunkFile.exists() && chunkFile.length() > 300) {
                         val bytes = chunkFile.readBytes()
                         val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                        val decibels = if (maxAmp > 0) (20 * log10(maxAmp.toDouble())).toInt().coerceIn(20, 100) else 35
+                        val decibels = if (maxAmplitude > 10) {
+                            (20 * log10(maxAmplitude.toDouble())).toInt().coerceIn(25, 95)
+                        } else {
+                            35
+                        }
 
-                        client.uploadLiveAudioChunk(
+                        val uploadRes = client.uploadLiveAudioChunk(
                             deviceId = deviceId,
                             base64 = base64,
                             decibels = decibels,
                             micStatus = "STREAMING",
                             sequence = ++sequenceCounter
                         )
-                        consecutiveErrors = 0
+                        Log.d(TAG, "Uploaded live chunk #$sequenceCounter (${bytes.size} bytes, $decibels dB, success=${uploadRes.isSuccess})")
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Live audio chunk record warning: ${e.message}")
-                    consecutiveErrors++
-                    if (consecutiveErrors > 3) {
-                        delay(2000)
-                    }
+                    Log.w(TAG, "Live audio chunk record error: ${e.message}")
+                    delay(1000)
                 } finally {
                     try {
                         recorder?.release()
@@ -158,8 +172,8 @@ object LiveAudioStreamManager {
                         chunkFile.delete()
                     }
                 }
-                delay(200)
             }
+            Log.d(TAG, "Live audio streaming loop STOPPED")
         }
     }
 

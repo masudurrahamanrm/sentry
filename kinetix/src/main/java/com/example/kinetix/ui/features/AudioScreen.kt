@@ -2,6 +2,7 @@ package com.example.kinetix.ui.features
 
 import android.media.MediaPlayer
 import android.util.Base64
+import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -35,6 +36,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.random.Random
 
 data class AudioItem(
@@ -59,7 +61,6 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
     var currentDecibels by remember { mutableIntStateOf(30) }
     var selectedQuality by remember { mutableStateOf("HD") } // "HD", "ECO"
     var audioGainBoost by remember { mutableFloatStateOf(1.0f) } // 1.0f, 1.5f, 2.0f
-    var autoSaveSession by remember { mutableStateOf(false) }
 
     // Quick Snippet Recording State
     var isRecordingSnippet by remember { mutableStateOf(false) }
@@ -70,7 +71,10 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
     val audioList = remember { mutableStateListOf<AudioItem>() }
     var currentlyPlayingId by remember { mutableStateOf<String?>(null) }
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
-    var playbackProgress by remember { mutableFloatStateOf(0f) }
+
+    // Live Sequential Audio Queue Engine
+    val liveAudioQueue = remember { ConcurrentLinkedQueue<File>() }
+    var isQueuePlaying by remember { mutableStateOf(false) }
     var liveStreamPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
     var lastPlayedSequence by remember { mutableIntStateOf(0) }
 
@@ -80,11 +84,44 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
         initialValue = 0.95f,
         targetValue = 1.08f,
         animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = FastOutSlowInEasing),
+            animation = tween(800, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "PulseScale"
     )
+
+    // Sequential Queue Player function
+    fun playNextInQueue() {
+        val nextFile = liveAudioQueue.poll()
+        if (nextFile == null) {
+            isQueuePlaying = false
+            return
+        }
+        isQueuePlaying = true
+        try {
+            val player = MediaPlayer().apply {
+                setDataSource(nextFile.absolutePath)
+                setVolume(audioGainBoost, audioGainBoost)
+                prepare()
+                start()
+                setOnCompletionListener {
+                    try { release() } catch (_: Exception) {}
+                    nextFile.delete()
+                    playNextInQueue()
+                }
+                setOnErrorListener { _, _, _ ->
+                    try { release() } catch (_: Exception) {}
+                    nextFile.delete()
+                    playNextInQueue()
+                    true
+                }
+            }
+            liveStreamPlayer = player
+        } catch (_: Exception) {
+            nextFile.delete()
+            playNextInQueue()
+        }
+    }
 
     // Helper: Fetch audio recordings archive
     suspend fun fetchAudioList() {
@@ -126,12 +163,15 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
         }
     }
 
-    // Live Audio Stream Poller & Seamless Playback Loop
+    // Live Audio Stream Poller & Continuous Queue Feeding Loop
     LaunchedEffect(isLiveListening) {
         if (!isLiveListening) {
             liveStreamPlayer?.stop()
             liveStreamPlayer?.release()
             liveStreamPlayer = null
+            liveAudioQueue.forEach { it.delete() }
+            liveAudioQueue.clear()
+            isQueuePlaying = false
             liveMicStatus = "IDLE"
             currentDecibels = 25
             return@LaunchedEffect
@@ -155,34 +195,28 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
                                 currentDecibels = db
                             }
 
-                            // Play newly arrived audio chunk
+                            // Enqueue newly arrived audio chunk
                             if (status == "STREAMING" && seq > lastPlayedSequence && !chunkB64.isNullOrBlank() && chunkB64 != "null") {
                                 lastPlayedSequence = seq
                                 val chunkBytes = Base64.decode(chunkB64, Base64.DEFAULT)
                                 val chunkFile = File(context.cacheDir, "live_chunk_${seq}.m4a")
                                 FileOutputStream(chunkFile).use { it.write(chunkBytes) }
 
+                                liveAudioQueue.add(chunkFile)
+
                                 withContext(Dispatchers.Main) {
-                                    try {
-                                        liveStreamPlayer?.release()
-                                        val player = MediaPlayer().apply {
-                                            setDataSource(chunkFile.absolutePath)
-                                            setVolume(audioGainBoost, audioGainBoost)
-                                            prepare()
-                                            start()
-                                            setOnCompletionListener {
-                                                chunkFile.delete()
-                                            }
-                                        }
-                                        liveStreamPlayer = player
-                                    } catch (_: Exception) {}
+                                    if (!isQueuePlaying) {
+                                        playNextInQueue()
+                                    }
                                 }
                             }
                         }
                     }
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    Log.w("AudioScreen", "Live audio stream fetch error: ${e.message}")
+                }
             }
-            delay(800) // Poll for real-time live chunks every 800ms
+            delay(1000) // Poll for new live chunks every 1.0s
         }
     }
 
@@ -192,6 +226,8 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
             mediaPlayer = null
             liveStreamPlayer?.release()
             liveStreamPlayer = null
+            liveAudioQueue.forEach { it.delete() }
+            liveAudioQueue.clear()
         }
     }
 
@@ -203,7 +239,6 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
                 mediaPlayer?.release()
                 mediaPlayer = null
                 currentlyPlayingId = null
-                playbackProgress = 0f
                 return
             }
 
@@ -221,7 +256,6 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
                     setOnPreparedListener { start() }
                     setOnCompletionListener {
                         currentlyPlayingId = null
-                        playbackProgress = 0f
                     }
                     setOnErrorListener { _, _, _ ->
                         currentlyPlayingId = null
@@ -240,7 +274,6 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
                     prepare()
                     setOnCompletionListener {
                         currentlyPlayingId = null
-                        playbackProgress = 0f
                     }
                     start()
                 }
