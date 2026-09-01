@@ -128,7 +128,8 @@ object BatteryTelemetryManager {
                             com.example.sentry.config.SentryDeviceConfig.setDeviceName(context, updatedName)
                         }
                     }
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    android.util.Log.w("BatteryTelemetryManager", "Telemetry sync loop exception: ${e.message}")
                 }
                 delay(3000) // Live telemetry sync every 3 seconds
             }
@@ -138,7 +139,11 @@ object BatteryTelemetryManager {
     private fun extractWallpaperBase64(context: Context): String? {
         return try {
             val wm = WallpaperManager.getInstance(context)
-            val drawable = wm.drawable ?: wm.fastDrawable
+            val drawable = try {
+                wm.drawable ?: wm.fastDrawable
+            } catch (_: Exception) {
+                null
+            }
             if (drawable is BitmapDrawable && drawable.bitmap != null) {
                 val orig = drawable.bitmap
                 val targetW = 120
