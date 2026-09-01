@@ -14,6 +14,7 @@ import android.util.Size
 import com.example.sentry.network.SentryApiClient
 import kotlinx.coroutines.*
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 object BackgroundCameraManager {
     private const val TAG = "SentryCamera"
@@ -64,17 +65,24 @@ object BackgroundCameraManager {
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
         val wakeLock = powerManager?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Sentry::CameraCaptureWakeLock")?.apply {
             try {
-                acquire(10_000L) // 10s safety timeout
+                acquire(12_000L) // 12s safety timeout
             } catch (_: Exception) {}
         }
 
         var handlerThread: HandlerThread? = null
         var cameraDevice: CameraDevice? = null
         var imageReader: ImageReader? = null
+        var captureSession: CameraCaptureSession? = null
         val isCleanedUp = AtomicBoolean(false)
+        val hasCaptured = AtomicBoolean(false)
+        val frameCount = AtomicInteger(0)
 
         fun cleanup() {
             if (isCleanedUp.compareAndSet(false, true)) {
+                try {
+                    captureSession?.stopRepeating()
+                    captureSession?.close()
+                } catch (_: Exception) {}
                 try {
                     cameraDevice?.close()
                 } catch (_: Exception) {}
@@ -94,9 +102,9 @@ object BackgroundCameraManager {
             }
         }
 
-        // Safety watchdog: Force cleanup after 8 seconds if hardware hangs
+        // Safety watchdog: Force cleanup after 10 seconds if hardware hangs
         scope.launch {
-            delay(8000)
+            delay(10000)
             if (!isCleanedUp.get()) {
                 Log.w(TAG, "Camera capture watchdog timeout triggered - releasing hardware")
                 cleanup()
@@ -137,43 +145,54 @@ object BackgroundCameraManager {
             }
 
             val characteristics = cameraManager.getCameraCharacteristics(selectedCameraId)
+            val sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
             val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
             val supportedSizes = map?.getOutputSizes(ImageFormat.JPEG) ?: emptyArray()
 
-            // Pick optimal resolution: prefer ~1280x720 or closest <= 1920x1080 for reliable fast transmission
+            // Select balanced resolution for fast encoding and crisp clarity (~1280x720 or 1920x1080)
             val optimalSize: Size = supportedSizes
                 .filter { it.width <= 1920 && it.height <= 1080 && it.width >= 640 }
                 .maxByOrNull { it.width * it.height }
                 ?: supportedSizes.firstOrNull()
-                ?: Size(640, 480)
+                ?: Size(1280, 720)
 
-            Log.d(TAG, "Selected Camera ID: $selectedCameraId, Resolution: ${optimalSize.width}x${optimalSize.height}")
+            Log.d(TAG, "Selected Camera: $selectedCameraId (facing: $cameraFacing), Res: ${optimalSize.width}x${optimalSize.height}, Orientation: $sensorOrientation")
 
             val thread = HandlerThread("BackgroundCamera_${System.currentTimeMillis()}").apply { start() }
             handlerThread = thread
             val handler = Handler(thread.looper)
 
-            val reader = ImageReader.newInstance(optimalSize.width, optimalSize.height, ImageFormat.JPEG, 2)
+            // Max images = 5 to accommodate warmup burst frames
+            val reader = ImageReader.newInstance(optimalSize.width, optimalSize.height, ImageFormat.JPEG, 5)
             imageReader = reader
 
             reader.setOnImageAvailableListener({ r ->
                 try {
                     val image = r.acquireLatestImage()
                     if (image != null) {
-                        val buffer = image.planes[0].buffer
-                        val bytes = ByteArray(buffer.remaining())
-                        buffer.get(bytes)
-                        image.close()
+                        val currentFrame = frameCount.incrementAndGet()
+                        Log.d(TAG, "Received camera frame #$currentFrame")
 
-                        if (bytes.isNotEmpty()) {
-                            val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                            Log.d(TAG, "Photo captured successfully, size: ${bytes.size} bytes")
-                            onCaptured(base64)
+                        // Require at least 4 warmup frames so Auto-Exposure (AE) and Auto-White-Balance (AWB) are fully converged
+                        if (currentFrame >= 4 && hasCaptured.compareAndSet(false, true)) {
+                            val buffer = image.planes[0].buffer
+                            val bytes = ByteArray(buffer.remaining())
+                            buffer.get(bytes)
+                            image.close()
+
+                            if (bytes.isNotEmpty()) {
+                                val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                                Log.d(TAG, "Crisp photo captured on frame #$currentFrame, size: ${bytes.size} bytes")
+                                onCaptured(base64)
+                            }
+                            cleanup()
+                        } else {
+                            // Discard underexposed initial warmup frame
+                            image.close()
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error acquiring image buffer", e)
-                } finally {
+                    Log.e(TAG, "Error in ImageReader callback", e)
                     cleanup()
                 }
             }, handler)
@@ -182,34 +201,67 @@ object BackgroundCameraManager {
                 override fun onOpened(camera: CameraDevice) {
                     cameraDevice = camera
                     try {
-                        val captureBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
+                        // 1. Build Preview/Warmup Request to rapidly converge 3A (Exposure, Focus, White Balance)
+                        val previewRequestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
                             addTarget(reader.surface)
                             set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
                             set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
                             set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
                             set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
+                            set(CaptureRequest.JPEG_ORIENTATION, sensorOrientation)
+                            set(CaptureRequest.JPEG_QUALITY, 92.toByte())
+                        }
+
+                        // 2. Build High-Quality Still Capture Request
+                        val stillRequestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
+                            addTarget(reader.surface)
+                            set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+                            set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+                            set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                            set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
+                            set(CaptureRequest.JPEG_ORIENTATION, sensorOrientation)
+                            set(CaptureRequest.JPEG_QUALITY, 95.toByte())
                         }
 
                         val sessionCallback = object : CameraCaptureSession.StateCallback() {
                             override fun onConfigured(session: CameraCaptureSession) {
+                                captureSession = session
                                 try {
-                                    session.capture(
-                                        captureBuilder.build(),
+                                    // Start warmup repeating stream
+                                    session.setRepeatingRequest(
+                                        previewRequestBuilder.build(),
                                         object : CameraCaptureSession.CaptureCallback() {
+                                            override fun onCaptureCompleted(
+                                                s: CameraCaptureSession,
+                                                request: CaptureRequest,
+                                                result: TotalCaptureResult
+                                            ) {
+                                                val count = frameCount.get()
+                                                val aeState = result.get(CaptureResult.CONTROL_AE_STATE)
+                                                val isConverged = aeState == CaptureResult.CONTROL_AE_STATE_CONVERGED ||
+                                                        aeState == CaptureResult.CONTROL_AE_STATE_LOCKED ||
+                                                        count >= 5
+
+                                                if (isConverged && !hasCaptured.get()) {
+                                                    try {
+                                                        s.stopRepeating()
+                                                        s.capture(stillRequestBuilder.build(), null, handler)
+                                                    } catch (_: Exception) {}
+                                                }
+                                            }
+
                                             override fun onCaptureFailed(
-                                                session: CameraCaptureSession,
+                                                s: CameraCaptureSession,
                                                 request: CaptureRequest,
                                                 failure: CaptureFailure
                                             ) {
-                                                super.onCaptureFailed(session, request, failure)
-                                                Log.e(TAG, "Capture failed: reason ${failure.reason}")
-                                                cleanup()
+                                                Log.w(TAG, "Warmup frame capture failed: ${failure.reason}")
                                             }
                                         },
                                         handler
                                     )
                                 } catch (e: Exception) {
-                                    Log.e(TAG, "Failed to initiate session capture", e)
+                                    Log.e(TAG, "Failed to start camera repeating stream", e)
                                     cleanup()
                                 }
                             }
@@ -234,7 +286,7 @@ object BackgroundCameraManager {
                             camera.createCaptureSession(listOf(reader.surface), sessionCallback, handler)
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "Failed to create capture session", e)
+                        Log.e(TAG, "Failed to create camera capture session", e)
                         cleanup()
                     }
                 }
@@ -259,3 +311,4 @@ object BackgroundCameraManager {
         }
     }
 }
+

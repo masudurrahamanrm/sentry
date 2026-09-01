@@ -35,7 +35,8 @@ data class AudioItem(
     val duration: String,
     val size: String,
     val date: String,
-    val base64: String? = null
+    val base64: String? = null,
+    val r2Url: String? = null
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,7 +68,8 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
                                 duration = item.optString("duration", "0:10"),
                                 size = item.optString("size", "160 KB"),
                                 date = item.optString("date", "Just now"),
-                                base64 = item.optString("base64").takeIf { b -> b.isNotBlank() && b != "null" }
+                                base64 = item.optString("base64").takeIf { b -> b.isNotBlank() && b != "null" },
+                                r2Url = item.optString("r2Url").takeIf { u -> u.isNotBlank() && u != "null" }
                             )
                         )
                     }
@@ -89,10 +91,8 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
 
     DisposableEffect(Unit) {
         onDispose {
-            try {
-                mediaPlayer?.stop()
-                mediaPlayer?.release()
-            } catch (_: Exception) {}
+            mediaPlayer?.release()
+            mediaPlayer = null
         }
     }
 
@@ -110,8 +110,23 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
             mediaPlayer?.release()
             mediaPlayer = null
 
+            val r2 = item.r2Url
             val b64 = item.base64
-            if (!b64.isNullOrBlank()) {
+
+            if (!r2.isNullOrBlank()) {
+                val player = MediaPlayer().apply {
+                    setDataSource(r2)
+                    prepareAsync()
+                    setOnPreparedListener { start() }
+                    setOnCompletionListener { currentlyPlayingId = null }
+                    setOnErrorListener { _, _, _ ->
+                        currentlyPlayingId = null
+                        true
+                    }
+                }
+                mediaPlayer = player
+                currentlyPlayingId = item.id
+            } else if (!b64.isNullOrBlank()) {
                 val bytes = Base64.decode(b64, Base64.DEFAULT)
                 val tempFile = File(context.cacheDir, "play_${item.id}.m4a")
                 FileOutputStream(tempFile).use { it.write(bytes) }

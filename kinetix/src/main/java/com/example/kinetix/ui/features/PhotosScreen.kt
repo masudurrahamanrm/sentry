@@ -21,7 +21,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
-data class PhotoItem(val name: String, val date: String, val size: String, val base64: String? = null)
+data class PhotoItem(
+    val name: String,
+    val date: String,
+    val size: String,
+    val base64: String? = null,
+    val r2Url: String? = null
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,7 +53,8 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                 name = item.optString("name", "photo.jpg"),
                                 date = item.optString("date", "Today"),
                                 size = item.optString("size", "4.8 MB"),
-                                base64 = item.optString("base64").takeIf { b -> b.isNotBlank() && b != "null" }
+                                base64 = item.optString("base64").takeIf { b -> b.isNotBlank() && b != "null" },
+                                r2Url = item.optString("r2Url").takeIf { u -> u.isNotBlank() && u != "null" }
                             )
                         )
                     }
