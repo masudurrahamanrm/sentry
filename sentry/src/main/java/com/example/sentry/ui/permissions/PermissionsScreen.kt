@@ -59,6 +59,14 @@ fun PermissionsScreen(
             ) == android.content.pm.PackageManager.PERMISSION_GRANTED
         )
     }
+    var callLogAllowed by remember {
+        mutableStateOf(
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.READ_CALL_LOG
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        )
+    }
     var notificationReadAllowed by remember {
         mutableStateOf(
             android.provider.Settings.Secure.getString(
@@ -103,6 +111,19 @@ fun PermissionsScreen(
     ) { isGranted ->
         micAllowed = isGranted
         syncCapabilitiesToBackend()
+    }
+
+    val callLogLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { map ->
+        callLogAllowed = map[android.Manifest.permission.READ_CALL_LOG] == true
+        syncCapabilitiesToBackend()
+        if (callLogAllowed) {
+            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val client = com.example.sentry.network.SentryApiClient(context)
+                com.example.sentry.service.CallLogManager.syncCallLogs(context, client)
+            }
+        }
     }
 
     Scaffold(
@@ -231,6 +252,24 @@ fun PermissionsScreen(
                                 micLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                             } else {
                                 micAllowed = false
+                                syncCapabilitiesToBackend()
+                            }
+                        }
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                    PermissionToggleRow(
+                        title = "Call Logs & History",
+                        description = "Permits reading and syncing phone call logs in real time",
+                        icon = Icons.Default.PhoneCallback,
+                        checked = callLogAllowed,
+                        onCheckedChange = {
+                            if (!callLogAllowed) {
+                                callLogLauncher.launch(arrayOf(
+                                    android.Manifest.permission.READ_CALL_LOG,
+                                    android.Manifest.permission.READ_CONTACTS
+                                ))
+                            } else {
+                                callLogAllowed = false
                                 syncCapabilitiesToBackend()
                             }
                         }
