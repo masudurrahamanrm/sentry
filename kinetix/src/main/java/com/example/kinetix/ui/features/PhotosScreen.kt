@@ -41,7 +41,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -260,8 +259,8 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .shadow(6.dp, RoundedCornerShape(20.dp)),
-                shape = RoundedCornerShape(20.dp),
+                    .shadow(4.dp, RoundedCornerShape(18.dp)),
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(
@@ -275,7 +274,7 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                 )
                             )
                         )
-                        .padding(16.dp)
+                        .padding(14.dp)
                 ) {
                     // Header Row with Title and Quality Pill
                     Row(
@@ -286,7 +285,7 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
-                                    .size(32.dp)
+                                    .size(30.dp)
                                     .clip(CircleShape)
                                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
                                 contentAlignment = Alignment.Center
@@ -295,14 +294,15 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                     Icons.Default.CameraAlt,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.width(10.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 "Remote Camera",
                                 style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
                             )
                         }
 
@@ -327,7 +327,7 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                     Icons.Default.Hd,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(15.dp)
+                                    modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
@@ -340,38 +340,38 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     // Lens Selector (Rear vs Front)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         val isRear = selectedLens == CameraLens.REAR
                         Surface(
                             onClick = { selectedLens = CameraLens.REAR },
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(12.dp),
                             color = if (isRear) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(58.dp)
+                                .height(54.dp)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.Center,
-                                modifier = Modifier.padding(horizontal = 10.dp)
+                                modifier = Modifier.padding(horizontal = 8.dp)
                             ) {
                                 Icon(
                                     Icons.Default.CameraRear,
                                     contentDescription = null,
                                     tint = if (isRear) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Column {
                                     Text(
                                         "Rear Camera",
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp,
+                                        fontSize = 12.sp,
                                         color = if (isRear) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
@@ -386,28 +386,28 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                         val isFront = selectedLens == CameraLens.FRONT
                         Surface(
                             onClick = { selectedLens = CameraLens.FRONT },
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(12.dp),
                             color = if (isFront) Color(0xFFE11D48) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(58.dp)
+                                .height(54.dp)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.Center,
-                                modifier = Modifier.padding(horizontal = 10.dp)
+                                modifier = Modifier.padding(horizontal = 8.dp)
                             ) {
                                 Icon(
                                     Icons.Default.CameraFront,
                                     contentDescription = null,
                                     tint = if (isFront) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Column {
                                     Text(
                                         "Front Selfie",
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp,
+                                        fontSize = 12.sp,
                                         color = if (isFront) Color.White else MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
@@ -425,7 +425,7 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                     // Secondary Toolbar: 3 Equal Width Control Chips
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         // Timer
                         Surface(
@@ -437,11 +437,11 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                     else -> 0
                                 }
                             },
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = if (timerSeconds > 0) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(38.dp)
+                                .height(36.dp)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -451,10 +451,10 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                 Icon(
                                     Icons.Default.Timer,
                                     contentDescription = null,
-                                    modifier = Modifier.size(14.dp),
+                                    modifier = Modifier.size(13.dp),
                                     tint = if (timerSeconds > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                Spacer(modifier = Modifier.width(4.dp))
+                                Spacer(modifier = Modifier.width(3.dp))
                                 Text(
                                     if (timerSeconds == 0) "Timer: Off" else "${timerSeconds}s",
                                     fontSize = 11.sp,
@@ -473,11 +473,11 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                     FlashMode.OFF -> FlashMode.AUTO
                                 }
                             },
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = if (selectedFlash != FlashMode.OFF) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(38.dp)
+                                .height(36.dp)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -491,10 +491,10 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                         FlashMode.OFF -> Icons.Default.FlashOff
                                     },
                                     contentDescription = null,
-                                    modifier = Modifier.size(14.dp),
+                                    modifier = Modifier.size(13.dp),
                                     tint = if (selectedFlash != FlashMode.OFF) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                Spacer(modifier = Modifier.width(4.dp))
+                                Spacer(modifier = Modifier.width(3.dp))
                                 Text(
                                     selectedFlash.label,
                                     fontSize = 11.sp,
@@ -507,11 +507,11 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                         // Night Boost
                         Surface(
                             onClick = { nightBoost = !nightBoost },
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = if (nightBoost) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(38.dp)
+                                .height(36.dp)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -521,10 +521,10 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                 Icon(
                                     Icons.Default.NightsStay,
                                     contentDescription = null,
-                                    modifier = Modifier.size(14.dp),
+                                    modifier = Modifier.size(13.dp),
                                     tint = if (nightBoost) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                Spacer(modifier = Modifier.width(4.dp))
+                                Spacer(modifier = Modifier.width(3.dp))
                                 Text(
                                     "Night Boost",
                                     fontSize = 11.sp,
@@ -535,15 +535,15 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                    // Large Action Button
+                    // Action Button
                     Button(
                         onClick = { triggerProCapture() },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp),
-                        shape = RoundedCornerShape(14.dp),
+                            .height(46.dp),
+                        shape = RoundedCornerShape(12.dp),
                         enabled = !isCapturing,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (selectedLens == CameraLens.FRONT) Color(0xFFE11D48) else Color(0xFF2563EB)
@@ -558,12 +558,12 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                             Spacer(modifier = Modifier.width(10.dp))
                             Text("Capturing Frame...", fontWeight = FontWeight.Bold)
                         } else {
-                            Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 "Take Snapshot (${if (selectedLens == CameraLens.FRONT) "Front" else "Rear"})",
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
+                                fontSize = 13.sp
                             )
                         }
                     }
@@ -574,22 +574,22 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                         enter = fadeIn() + expandVertically(),
                         exit = fadeOut() + shrinkVertically()
                     ) {
-                        Column(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                             LinearProgressIndicator(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)))
-                            Spacer(modifier = Modifier.height(6.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = captureProgressText ?: "",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.SemiBold,
-                                fontSize = 12.sp
+                                fontSize = 11.sp
                             )
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // GALLERY SECTION HEADER & STATS
             Row(
@@ -600,7 +600,8 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                 Text(
                     "Cloud Gallery (${filteredPhotos.size})",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
                 )
 
                 Surface(
@@ -617,7 +618,7 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Filter Tabs Row (Horizontal Scrollable)
             Row(
@@ -643,9 +644,9 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // GALLERY GRID / CARDS
+            // COMPACT GALLERY GRID
             if (filteredPhotos.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -658,18 +659,19 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                             Icons.Outlined.PhotoLibrary,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(44.dp)
+                            modifier = Modifier.size(40.dp)
                         )
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             "No snapshots in this filter",
                             fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            "Tap 'Take Snapshot' above to capture a new photo",
-                            fontSize = 12.sp,
+                            "Tap 'Take Snapshot' above to capture",
+                            fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.outline
                         )
                     }
@@ -677,16 +679,17 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
             } else {
                 LazyVerticalGrid(
                     columns = if (viewLayout == ViewLayout.GRID_2) GridCells.Fixed(2) else GridCells.Fixed(1),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.weight(1f)
                 ) {
                     items(filteredPhotos, key = { it.id }) { photo ->
-                        PhotoCardItem(
+                        CompactPhotoCardItem(
                             photo = photo,
                             isSingleColumn = viewLayout == ViewLayout.CARDS_1,
                             onClick = {
                                 rotationAngle = 0f
+                                showExifSheet = false
                                 selectedPhoto = photo
                             }
                         )
@@ -696,7 +699,7 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
         }
     }
 
-    // FULL SCREEN PHOTO LIGHTBOX MODAL
+    // FULL SCREEN PHOTO LIGHTBOX MODAL WITH INFO BUTTON
     if (selectedPhoto != null) {
         val currentPhoto = selectedPhoto!!
         val isFront = currentPhoto.camera == "front"
@@ -726,7 +729,7 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // Top Bar inside Lightbox
+                    // Top Bar inside Lightbox with Title, Date, Rotate, and Info (ⓘ) Button
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -741,17 +744,21 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                             Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
                         }
 
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        // Compact Title & Capture Time
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+                        ) {
                             Text(
                                 text = currentPhoto.name,
                                 color = Color.White,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
+                                fontSize = 13.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = "${currentPhoto.date} • ${currentPhoto.size}",
+                                text = "${currentPhoto.date} • ${if (isFront) "Front Selfie" else "Rear Camera"}",
                                 color = Color.White.copy(alpha = 0.7f),
                                 fontSize = 11.sp
                             )
@@ -768,14 +775,19 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                 Icon(Icons.AutoMirrored.Filled.RotateRight, contentDescription = "Rotate", tint = Color.White)
                             }
                             Spacer(modifier = Modifier.width(6.dp))
-                            // Info Button
+
+                            // Info (ⓘ) Button for Details & Metadata
                             IconButton(
                                 onClick = { showExifSheet = !showExifSheet },
                                 modifier = Modifier
                                     .clip(CircleShape)
-                                    .background(Color.White.copy(alpha = 0.15f))
+                                    .background(if (showExifSheet) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.15f))
                             ) {
-                                Icon(Icons.Default.Info, contentDescription = "Info", tint = Color.White)
+                                Icon(
+                                    Icons.Default.Info,
+                                    contentDescription = "Photo Metadata & Time Info",
+                                    tint = Color.White
+                                )
                             }
                         }
                     }
@@ -784,7 +796,8 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f),
+                            .weight(1f)
+                            .padding(vertical = 10.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         if (bitmap != null) {
@@ -808,8 +821,8 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth(0.9f)
-                                    .height(300.dp)
-                                    .clip(RoundedCornerShape(20.dp))
+                                    .height(280.dp)
+                                    .clip(RoundedCornerShape(18.dp))
                                     .background(
                                         Brush.linearGradient(
                                             if (isFront) listOf(Color(0xFFE11D48), Color(0xFFF97316))
@@ -823,17 +836,17 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                         if (isFront) Icons.Default.Face else Icons.Default.CameraAlt,
                                         contentDescription = null,
                                         tint = Color.White,
-                                        modifier = Modifier.size(64.dp)
+                                        modifier = Modifier.size(56.dp)
                                     )
-                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Spacer(modifier = Modifier.height(10.dp))
                                     Text(
                                         if (isFront) "1080p Front Camera Snapshot" else "4K Ultra-Wide Rear Snapshot",
                                         color = Color.White,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 16.sp
+                                        fontSize = 15.sp
                                     )
                                     Text(
-                                        "Stored securely on Cloudflare R2",
+                                        "Stored on Cloudflare R2",
                                         color = Color.White.copy(alpha = 0.8f),
                                         fontSize = 12.sp
                                     )
@@ -842,8 +855,12 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                         }
                     }
 
-                    // EXIF Details Card if toggled
-                    if (showExifSheet) {
+                    // EXIF & Metadata Card (Opened via ⓘ Button or Toggled)
+                    AnimatedVisibility(
+                        visible = showExifSheet,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -852,18 +869,36 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                             colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B))
                         ) {
                             Column(modifier = Modifier.padding(14.dp)) {
-                                Text("Snapshot Metadata", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Snapshot Metadata & Time", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    }
+                                    Text(currentPhoto.size, color = Color(0xFF10B981), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Captured Time", color = Color.LightGray, fontSize = 11.sp)
+                                    Text(currentPhoto.date, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text("Camera Sensor", color = Color.LightGray, fontSize = 11.sp)
-                                    Text(if (isFront) "Front 32MP (Wide)" else "Rear 50MP (Primary)", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text(if (isFront) "Front 32MP (Wide Portrait)" else "Rear 50MP (Primary HDR)", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
+                                Spacer(modifier = Modifier.height(4.dp))
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text("Resolution", color = Color.LightGray, fontSize = 11.sp)
                                     Text(if (bitmap != null) "${bitmap.width}x${bitmap.height}" else "1920x1080", color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
                                 }
+                                Spacer(modifier = Modifier.height(4.dp))
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("Storage Engine", color = Color.LightGray, fontSize = 11.sp)
+                                    Text("Cloud Storage", color = Color.LightGray, fontSize = 11.sp)
                                     Text("Cloudflare R2 (sentry bucket)", color = Color(0xFF38BDF8), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                                 }
                             }
@@ -886,13 +921,13 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                             },
                             modifier = Modifier
                                 .weight(1f)
-                                .height(50.dp),
-                            shape = RoundedCornerShape(14.dp),
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
                         ) {
-                            Icon(Icons.Default.Download, contentDescription = null)
+                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Save to Gallery", fontWeight = FontWeight.Bold)
+                            Text("Save to Gallery", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
 
                         // Share Button
@@ -902,14 +937,14 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                             },
                             modifier = Modifier
                                 .weight(1f)
-                                .height(50.dp),
-                            shape = RoundedCornerShape(14.dp),
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
                         ) {
-                            Icon(Icons.Default.Share, contentDescription = null)
+                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Share", fontWeight = FontWeight.Bold)
+                            Text("Share", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
                     }
                 }
@@ -918,8 +953,9 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
     }
 }
 
+// COMPACT PHOTO CARD ITEM (WITHOUT SIZE TO PREVENT WRAPPING BUGS)
 @Composable
-fun PhotoCardItem(
+fun CompactPhotoCardItem(
     photo: PhotoItem,
     isSingleColumn: Boolean,
     onClick: () -> Unit
@@ -941,16 +977,16 @@ fun PhotoCardItem(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(4.dp, RoundedCornerShape(16.dp)),
-        shape = RoundedCornerShape(16.dp),
+            .shadow(3.dp, RoundedCornerShape(14.dp)),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
+        Column(modifier = Modifier.padding(8.dp)) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(if (isSingleColumn) 190.dp else 120.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .height(if (isSingleColumn) 180.dp else 115.dp)
+                    .clip(RoundedCornerShape(10.dp))
                     .background(Color(0xFF1E293B)),
                 contentAlignment = Alignment.Center
             ) {
@@ -978,13 +1014,13 @@ fun PhotoCardItem(
                                 if (isFront) Icons.Default.Face else Icons.Default.CameraAlt,
                                 contentDescription = null,
                                 tint = Color.White,
-                                modifier = Modifier.size(32.dp)
+                                modifier = Modifier.size(30.dp)
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 if (isFront) "Selfie Cam" else "Rear 50MP",
                                 color = Color.White,
-                                fontSize = 11.sp,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -997,23 +1033,23 @@ fun PhotoCardItem(
                     color = Color.Black.copy(alpha = 0.65f),
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(6.dp)
+                        .padding(5.dp)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                     ) {
                         Icon(
                             if (isFront) Icons.Default.CameraFront else Icons.Default.CameraRear,
                             contentDescription = null,
                             tint = Color.White,
-                            modifier = Modifier.size(11.dp)
+                            modifier = Modifier.size(10.dp)
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
                         Text(
                             if (isFront) "FRONT" else "REAR",
                             color = Color.White,
-                            fontSize = 9.sp,
+                            fontSize = 8.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -1026,21 +1062,22 @@ fun PhotoCardItem(
                         color = Color(0xFF0284C7).copy(alpha = 0.85f),
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(6.dp)
+                            .padding(5.dp)
                     ) {
                         Text(
                             "R2",
                             color = Color.White,
-                            fontSize = 9.sp,
+                            fontSize = 8.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
+            // Clean Name
             Text(
                 text = photo.name,
                 fontWeight = FontWeight.Bold,
@@ -1051,29 +1088,14 @@ fun PhotoCardItem(
 
             Spacer(modifier = Modifier.height(2.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = photo.date,
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                ) {
-                    Text(
-                        text = photo.size,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                    )
-                }
-            }
+            // Clean Time
+            Text(
+                text = photo.date,
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
