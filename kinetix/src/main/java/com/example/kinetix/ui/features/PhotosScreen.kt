@@ -13,11 +13,9 @@ import android.provider.MediaStore
 import android.util.Base64
 import android.widget.Toast
 import androidx.compose.animation.*
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -25,9 +23,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -43,6 +41,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -68,12 +67,12 @@ data class PhotoItem(
 )
 
 enum class CameraLens { REAR, FRONT }
-enum class CameraQuality(val label: String, val res: String) {
-    UHD_4K("4K Ultra", "1920x1080"),
-    FHD_1080P("1080p FHD", "1280x720"),
-    HD_720P("720p Speed", "640x480")
+enum class CameraQuality(val label: String) {
+    UHD_4K("4K Ultra"),
+    FHD_1080P("1080p FHD"),
+    HD_720P("720p Speed")
 }
-enum class FlashMode(val label: String) { AUTO("Auto"), ON("Torch On"), OFF("Off") }
+enum class FlashMode(val label: String) { AUTO("Auto"), ON("Torch On"), OFF("Flash Off") }
 enum class GalleryFilter { ALL, REAR, FRONT, CLOUD }
 enum class ViewLayout { GRID_2, CARDS_1 }
 
@@ -97,8 +96,6 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
     val photos = remember { mutableStateListOf<PhotoItem>() }
     var activeFilter by remember { mutableStateOf(GalleryFilter.ALL) }
     var viewLayout by remember { mutableStateOf(ViewLayout.GRID_2) }
-    var searchQuery by remember { mutableStateOf("") }
-    var isRefreshing by remember { mutableStateOf(false) }
     var selectedPhoto by remember { mutableStateOf<PhotoItem?>(null) }
     var rotationAngle by remember { mutableFloatStateOf(0f) }
     var showExifSheet by remember { mutableStateOf(false) }
@@ -157,7 +154,7 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
             }
 
             val camStr = if (selectedLens == CameraLens.FRONT) "front" else "rear"
-            captureProgressText = "Dispatched capture signal to remote ${if (selectedLens == CameraLens.FRONT) "Selfie" else "Rear"} camera..."
+            captureProgressText = "Sending signal to remote ${if (selectedLens == CameraLens.FRONT) "Front" else "Rear"} camera..."
 
             val client = KinetixApiClient(context)
             val sendResult = withContext(Dispatchers.IO) {
@@ -165,16 +162,16 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
             }
 
             if (sendResult.isFailure) {
-                captureProgressText = "Failed to send command. Check remote phone connection."
+                captureProgressText = "Failed to send command. Check remote device."
                 delay(2000)
                 isCapturing = false
                 captureProgressText = null
                 return@launch
             }
 
-            captureProgressText = "Sensor warming up & converging 3A exposure..."
+            captureProgressText = "Sensor warming up & converging exposure..."
             delay(1200)
-            captureProgressText = "Capturing high-resolution still frame..."
+            captureProgressText = "Capturing hardware frame..."
 
             // Poll for uploaded snapshot with base64 over the next 10 seconds
             var capturedReceived = false
@@ -190,7 +187,7 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
 
             if (capturedReceived) {
                 captureProgressText = "Photo captured & synced to Cloudflare R2!"
-                Toast.makeText(context, "New snapshot captured successfully!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "New photo captured successfully!", Toast.LENGTH_SHORT).show()
             } else {
                 fetchPhotos()
                 captureProgressText = "Photo uploaded to cloud gallery."
@@ -203,16 +200,14 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
     }
 
     // Filtered Photos
-    val filteredPhotos = remember(photos.size, activeFilter, searchQuery) {
+    val filteredPhotos = remember(photos.size, activeFilter) {
         photos.filter { item ->
-            val matchesFilter = when (activeFilter) {
+            when (activeFilter) {
                 GalleryFilter.ALL -> true
                 GalleryFilter.REAR -> item.camera == "rear"
                 GalleryFilter.FRONT -> item.camera == "front"
                 GalleryFilter.CLOUD -> item.r2Url != null
             }
-            val matchesSearch = searchQuery.isBlank() || item.name.contains(searchQuery, ignoreCase = true)
-            matchesFilter && matchesSearch
         }
     }
 
@@ -220,41 +215,11 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Photos & Camera", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = Color(0xFF10B981).copy(alpha = 0.15f)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(6.dp)
-                                            .clip(CircleShape)
-                                            .background(Color(0xFF10B981))
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        "R2 Cloud Active",
-                                        color = Color(0xFF059669),
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-                        Text(
-                            "High-precision remote lens & cloud gallery",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 11.sp
-                        )
-                    }
+                    Text(
+                        "Photos & Camera",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -275,10 +240,7 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                     IconButton(
                         onClick = {
                             coroutineScope.launch {
-                                isRefreshing = true
                                 fetchPhotos()
-                                delay(600)
-                                isRefreshing = false
                             }
                         }
                     ) {
@@ -294,15 +256,13 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                 .padding(padding)
                 .padding(horizontal = 16.dp)
         ) {
-            // PRO REMOTE CAPTURE CONSOLE CARD
+            // REMOTE CAMERA CONSOLE CARD
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .shadow(8.dp, RoundedCornerShape(22.dp)),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                    .shadow(6.dp, RoundedCornerShape(20.dp)),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(
                     modifier = Modifier
@@ -310,35 +270,44 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                         .background(
                             Brush.verticalGradient(
                                 colors = listOf(
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
                                     MaterialTheme.colorScheme.surface
                                 )
                             )
                         )
                         .padding(16.dp)
                 ) {
+                    // Header Row with Title and Quality Pill
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.CameraAlt,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.CameraAlt,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                "Remote Camera Console",
+                                "Remote Camera",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
                         }
 
-                        // Quality Chip
-                        AssistChip(
+                        // Quality Mode Pill
+                        Surface(
                             onClick = {
                                 selectedQuality = when (selectedQuality) {
                                     CameraQuality.UHD_4K -> CameraQuality.FHD_1080P
@@ -346,15 +315,32 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                     CameraQuality.HD_720P -> CameraQuality.UHD_4K
                                 }
                             },
-                            label = { Text(selectedQuality.label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
-                            leadingIcon = {
-                                Icon(Icons.Default.Hd, contentDescription = null, modifier = Modifier.size(16.dp))
-                            },
-                            shape = RoundedCornerShape(8.dp)
-                        )
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Hd,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    selectedQuality.label,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     // Lens Selector (Rear vs Front)
                     Row(
@@ -365,15 +351,15 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                         Surface(
                             onClick = { selectedLens = CameraLens.REAR },
                             shape = RoundedCornerShape(14.dp),
-                            color = if (isRear) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            color = if (isRear) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(56.dp)
+                                .height(58.dp)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.Center,
-                                modifier = Modifier.padding(8.dp)
+                                modifier = Modifier.padding(horizontal = 10.dp)
                             ) {
                                 Icon(
                                     Icons.Default.CameraRear,
@@ -389,9 +375,9 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                         color = if (isRear) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
-                                        "50MP Primary • HDR",
+                                        "Primary • HDR",
                                         fontSize = 10.sp,
-                                        color = if (isRear) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = if (isRear) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
@@ -401,20 +387,20 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                         Surface(
                             onClick = { selectedLens = CameraLens.FRONT },
                             shape = RoundedCornerShape(14.dp),
-                            color = if (isFront) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            color = if (isFront) Color(0xFFE11D48) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(56.dp)
+                                .height(58.dp)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.Center,
-                                modifier = Modifier.padding(8.dp)
+                                modifier = Modifier.padding(horizontal = 10.dp)
                             ) {
                                 Icon(
                                     Icons.Default.CameraFront,
                                     contentDescription = null,
-                                    tint = if (isFront) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    tint = if (isFront) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Column {
@@ -422,29 +408,27 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                         "Front Selfie",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 13.sp,
-                                        color = if (isFront) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                        color = if (isFront) Color.White else MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
-                                        "32MP Wide • Portrait",
+                                        "Selfie • Portrait",
                                         fontSize = 10.sp,
-                                        color = if (isFront) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = if (isFront) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
-                    // Secondary Settings Toolbar (Timer, Flash, Night Boost)
+                    // Secondary Toolbar: 3 Equal Width Control Chips
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         // Timer
-                        FilterChip(
-                            selected = timerSeconds > 0,
+                        Surface(
                             onClick = {
                                 timerSeconds = when (timerSeconds) {
                                     0 -> 3
@@ -453,15 +437,35 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                     else -> 0
                                 }
                             },
-                            label = { Text(if (timerSeconds == 0) "Timer: Off" else "${timerSeconds}s Timer", fontSize = 11.sp) },
-                            leadingIcon = {
-                                Icon(Icons.Default.Timer, contentDescription = null, modifier = Modifier.size(14.dp))
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (timerSeconds > 0) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Timer,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = if (timerSeconds > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    if (timerSeconds == 0) "Timer: Off" else "${timerSeconds}s",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (timerSeconds > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                        )
+                        }
 
                         // Flash
-                        FilterChip(
-                            selected = selectedFlash != FlashMode.OFF,
+                        Surface(
                             onClick = {
                                 selectedFlash = when (selectedFlash) {
                                     FlashMode.AUTO -> FlashMode.ON
@@ -469,8 +473,17 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                     FlashMode.OFF -> FlashMode.AUTO
                                 }
                             },
-                            label = { Text(selectedFlash.label, fontSize = 11.sp) },
-                            leadingIcon = {
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (selectedFlash != FlashMode.OFF) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            ) {
                                 Icon(
                                     when (selectedFlash) {
                                         FlashMode.AUTO -> Icons.Default.FlashAuto
@@ -478,30 +491,58 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                         FlashMode.OFF -> Icons.Default.FlashOff
                                     },
                                     contentDescription = null,
-                                    modifier = Modifier.size(14.dp)
+                                    modifier = Modifier.size(14.dp),
+                                    tint = if (selectedFlash != FlashMode.OFF) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    selectedFlash.label,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (selectedFlash != FlashMode.OFF) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                        )
+                        }
 
-                        // Night Boost Toggle
-                        FilterChip(
-                            selected = nightBoost,
+                        // Night Boost
+                        Surface(
                             onClick = { nightBoost = !nightBoost },
-                            label = { Text("Night Boost", fontSize = 11.sp) },
-                            leadingIcon = {
-                                Icon(Icons.Default.NightsStay, contentDescription = null, modifier = Modifier.size(14.dp))
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (nightBoost) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.NightsStay,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = if (nightBoost) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    "Night Boost",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (nightBoost) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                        )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Main Action Button
+                    // Large Action Button
                     Button(
                         onClick = { triggerProCapture() },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(50.dp),
+                            .height(48.dp),
                         shape = RoundedCornerShape(14.dp),
                         enabled = !isCapturing,
                         colors = ButtonDefaults.buttonColors(
@@ -510,14 +551,14 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                     ) {
                         if (isCapturing) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
+                                modifier = Modifier.size(18.dp),
                                 color = Color.White,
-                                strokeWidth = 2.5.dp
+                                strokeWidth = 2.dp
                             )
                             Spacer(modifier = Modifier.width(10.dp))
-                            Text("Capturing Hardware Frame...", fontWeight = FontWeight.Bold)
+                            Text("Capturing Frame...", fontWeight = FontWeight.Bold)
                         } else {
-                            Icon(Icons.Default.PhotoCamera, contentDescription = null)
+                            Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 "Take Snapshot (${if (selectedLens == CameraLens.FRONT) "Front" else "Rear"})",
@@ -548,29 +589,20 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // GALLERY TOOLBAR & FILTER PILLS
+            // GALLERY SECTION HEADER & STATS
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text(
-                        "Cloud Gallery (${filteredPhotos.size})",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        "Backed up with Cloudflare R2 & MongoDB",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 11.sp
-                    )
-                }
+                Text(
+                    "Cloud Gallery (${filteredPhotos.size})",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
 
-                // Storage stats pill
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
@@ -580,16 +612,18 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Filter Tabs Row
+            // Filter Tabs Row (Horizontal Scrollable)
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 GalleryFilter.entries.forEach { filter ->
@@ -624,7 +658,7 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                             Icons.Outlined.PhotoLibrary,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier.size(44.dp)
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
@@ -662,7 +696,7 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
         }
     }
 
-    // FULL SCREEN PRO PHOTO VIEWER MODAL
+    // FULL SCREEN PHOTO LIGHTBOX MODAL
     if (selectedPhoto != null) {
         val currentPhoto = selectedPhoto!!
         val isFront = currentPhoto.camera == "front"
@@ -685,7 +719,7 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.94f))
+                    .background(Color.Black.copy(alpha = 0.95f))
                     .padding(16.dp)
             ) {
                 Column(
@@ -731,7 +765,7 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                     .clip(CircleShape)
                                     .background(Color.White.copy(alpha = 0.15f))
                             ) {
-                                Icon(Icons.Default.RotateRight, contentDescription = "Rotate", tint = Color.White)
+                                Icon(Icons.AutoMirrored.Filled.RotateRight, contentDescription = "Rotate", tint = Color.White)
                             }
                             Spacer(modifier = Modifier.width(6.dp))
                             // Info Button
@@ -836,7 +870,7 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                         }
                     }
 
-                    // Bottom Action Bar (Save to Gallery, Share, Delete)
+                    // Bottom Action Bar (Save to Gallery, Share)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -915,7 +949,7 @@ fun PhotoCardItem(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(if (isSingleColumn) 200.dp else 125.dp)
+                    .height(if (isSingleColumn) 190.dp else 120.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(Color(0xFF1E293B)),
                 contentAlignment = Alignment.Center
@@ -944,7 +978,7 @@ fun PhotoCardItem(
                                 if (isFront) Icons.Default.Face else Icons.Default.CameraAlt,
                                 contentDescription = null,
                                 tint = Color.White,
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.size(32.dp)
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
@@ -959,7 +993,7 @@ fun PhotoCardItem(
 
                 // Lens Badge Overlay
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(6.dp),
                     color = Color.Black.copy(alpha = 0.65f),
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -973,7 +1007,7 @@ fun PhotoCardItem(
                             if (isFront) Icons.Default.CameraFront else Icons.Default.CameraRear,
                             contentDescription = null,
                             tint = Color.White,
-                            modifier = Modifier.size(12.dp)
+                            modifier = Modifier.size(11.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
@@ -988,7 +1022,7 @@ fun PhotoCardItem(
                 // R2 Cloud badge
                 if (photo.r2Url != null) {
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(6.dp),
                         color = Color(0xFF0284C7).copy(alpha = 0.85f),
                         modifier = Modifier
                             .align(Alignment.TopEnd)
@@ -1010,7 +1044,7 @@ fun PhotoCardItem(
             Text(
                 text = photo.name,
                 fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
+                fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
