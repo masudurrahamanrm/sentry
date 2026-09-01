@@ -62,6 +62,7 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
     var currentDecibels by remember { mutableIntStateOf(30) }
     var selectedQuality by remember { mutableStateOf("HD") } // "HD", "ECO"
     var audioGainBoost by remember { mutableFloatStateOf(1.0f) } // 1.0f, 1.5f, 2.0f
+    var audioOutputRoute by remember { mutableStateOf("SPEAKER") } // "SPEAKER", "EARPIECE", "BLUETOOTH"
 
     // Quick Snippet Recording State
     var isRecordingSnippet by remember { mutableStateOf(false) }
@@ -76,6 +77,78 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
     // Live Native AudioTrack Stream Engine (16kHz PCM Mono)
     var liveAudioTrack by remember { mutableStateOf<AudioTrack?>(null) }
     var lastPlayedSequence by remember { mutableIntStateOf(0) }
+
+    // Audio Output Routing Engine (Speaker, Earpiece, Bluetooth)
+    fun setAudioOutputRouting(route: String) {
+        audioOutputRoute = route
+        try {
+            val audioManager = context.getSystemService(android.content.Context.AUDIO_SERVICE) as? AudioManager ?: return
+            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                val devices = audioManager.availableCommunicationDevices
+                when (route) {
+                    "SPEAKER" -> {
+                        val speaker = devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                        if (speaker != null) {
+                            audioManager.setCommunicationDevice(speaker)
+                        } else {
+                            audioManager.clearCommunicationDevice()
+                            audioManager.isSpeakerphoneOn = true
+                        }
+                    }
+                    "EARPIECE" -> {
+                        val earpiece = devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE }
+                        if (earpiece != null) {
+                            audioManager.setCommunicationDevice(earpiece)
+                        } else {
+                            audioManager.clearCommunicationDevice()
+                            audioManager.isSpeakerphoneOn = false
+                        }
+                    }
+                    "BLUETOOTH" -> {
+                        val bt = devices.firstOrNull {
+                            it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                            it.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                            it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                            it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+                        }
+                        if (bt != null) {
+                            audioManager.setCommunicationDevice(bt)
+                        } else {
+                            audioManager.isSpeakerphoneOn = false
+                            try {
+                                audioManager.startBluetoothSco()
+                                audioManager.isBluetoothScoOn = true
+                            } catch (_: Exception) {}
+                        }
+                    }
+                }
+            } else {
+                when (route) {
+                    "SPEAKER" -> {
+                        try { audioManager.stopBluetoothSco() } catch (_: Exception) {}
+                        audioManager.isBluetoothScoOn = false
+                        audioManager.isSpeakerphoneOn = true
+                    }
+                    "EARPIECE" -> {
+                        try { audioManager.stopBluetoothSco() } catch (_: Exception) {}
+                        audioManager.isBluetoothScoOn = false
+                        audioManager.isSpeakerphoneOn = false
+                    }
+                    "BLUETOOTH" -> {
+                        audioManager.isSpeakerphoneOn = false
+                        try {
+                            audioManager.startBluetoothSco()
+                            audioManager.isBluetoothScoOn = true
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("AudioScreen", "Audio output routing failed: ${e.message}")
+        }
+    }
 
     // Pulse Animation for Live Streaming
     val infiniteTransition = rememberInfiniteTransition(label = "LivePulse")
@@ -141,6 +214,8 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
             currentDecibels = 25
             return@LaunchedEffect
         }
+
+        setAudioOutputRouting(audioOutputRoute)
 
         val sampleRate = 16000
         val minBufSize = AudioTrack.getMinBufferSize(
@@ -240,6 +315,16 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
                 liveAudioTrack?.release()
             } catch (_: Exception) {}
             liveAudioTrack = null
+            try {
+                val audioManager = context.getSystemService(android.content.Context.AUDIO_SERVICE) as? AudioManager
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    audioManager?.clearCommunicationDevice()
+                }
+                audioManager?.mode = AudioManager.MODE_NORMAL
+                audioManager?.isSpeakerphoneOn = false
+                audioManager?.stopBluetoothSco()
+                audioManager?.isBluetoothScoOn = false
+            } catch (_: Exception) {}
         }
     }
 
@@ -554,7 +639,91 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
                 }
             }
 
-            // 2. AUDIO TUNING & SENSITIVITY CONTROLS
+            // 2. AUDIO OUTPUT ROUTE SWITCHER (LOUDSPEAKER, EARPIECE, BLUETOOTH)
+            item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    shadowElevation = 1.dp
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.VolumeUp,
+                                    contentDescription = null,
+                                    tint = Color(0xFF0D9488),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Audio Output Route", fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                            }
+                            Text(
+                                text = when (audioOutputRoute) {
+                                    "SPEAKER" -> "Loudspeaker"
+                                    "EARPIECE" -> "Private Call Earpiece"
+                                    else -> "Bluetooth / Headset"
+                                },
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF0D9488)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf(
+                                Triple("SPEAKER", "Loudspeaker", Icons.Default.VolumeUp),
+                                Triple("EARPIECE", "Earpiece", Icons.Default.PhoneInTalk),
+                                Triple("BLUETOOTH", "Bluetooth", Icons.Default.BluetoothAudio)
+                            ).forEach { (route, label, icon) ->
+                                val isSelected = audioOutputRoute == route
+                                Surface(
+                                    onClick = {
+                                        setAudioOutputRouting(route)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isSelected) Color(0xFFCCFBF1) else Color(0xFFF8FAFC),
+                                    border = if (isSelected) androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF0D9488)) else androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp)
+                                    ) {
+                                        Icon(
+                                            icon,
+                                            contentDescription = null,
+                                            tint = if (isSelected) Color(0xFF0F766E) else Color(0xFF64748B),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = label,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) Color(0xFF0F766E) else Color(0xFF475569),
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. AUDIO TUNING & SENSITIVITY CONTROLS
             item {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
