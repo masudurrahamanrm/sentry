@@ -86,9 +86,9 @@ fun DeviceDetailScreen(
     var actionMessage by remember { mutableStateOf<String?>(null) }
     var activeBottomTab by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(deviceId) {
-        while (true) {
-            withContext(Dispatchers.IO) {
+    suspend fun refreshDeviceData() {
+        withContext(Dispatchers.IO) {
+            try {
                 val client = com.example.kinetix.network.KinetixApiClient(context)
                 val res = client.listAvailableDevices()
                 if (res.isSuccess) {
@@ -134,24 +134,37 @@ fun DeviceDetailScreen(
                             deviceName = serverDevName
                             com.example.kinetix.cache.KinetixDeviceCache.saveDeviceName(context, deviceId, serverDevName)
                         }
-                        batteryPercentage = bObj.optInt("percentage", bObj.optInt("level", 44))
+                        val pct = bObj.optInt("percentage", bObj.optInt("level", 44))
                         val isCharging = bObj.optBoolean("isCharging", false)
                         val status = bObj.optString("chargingStatus", "")
-                        batteryStatusText = if (status.isNotBlank()) status else (if (isCharging) "Charging" else "Good")
-                        networkType = bObj.optString("networkType", "5G+")
-                        uptimeText = bObj.optString("uptime", "2h 14m")
+                        val st = if (status.isNotBlank()) status else (if (isCharging) "Charging" else "Good")
+                        val net = bObj.optString("networkType", "5G+")
+                        val up = bObj.optString("uptime", "2h 14m")
                         val wall = bObj.optString("wallpaper", "")
-                        if (wall.isNotBlank()) {
-                            wallpaperBase64 = wall
-                            com.example.kinetix.cache.KinetixDeviceCache.saveWallpaper(context, deviceId, wall)
+
+                        withContext(Dispatchers.Main) {
+                            batteryPercentage = pct
+                            batteryStatusText = st
+                            networkType = net
+                            uptimeText = up
+                            if (wall.isNotBlank()) {
+                                wallpaperBase64 = wall
+                                com.example.kinetix.cache.KinetixDeviceCache.saveWallpaper(context, deviceId, wall)
+                            }
                         }
                         com.example.kinetix.cache.KinetixDeviceCache.saveTelemetry(
-                            context, deviceId, batteryPercentage, batteryStatusText, networkType, uptimeText
+                            context, deviceId, pct, st, net, up
                         )
                     }
                 }
-            }
-            delay(2500)
+            } catch (_: Exception) {}
+        }
+    }
+
+    LaunchedEffect(deviceId) {
+        while (true) {
+            refreshDeviceData()
+            delay(4000)
         }
     }
 
@@ -365,22 +378,49 @@ fun DeviceDetailScreen(
                     }
                 }
 
-                // Circular Green Shield Security / Info Button
-                Surface(
-                    onClick = { showInfoModal = true },
-                    shape = CircleShape,
-                    color = Color.White,
-                    border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF4CAF50).copy(alpha = 0.5f)),
-                    shadowElevation = 2.dp,
-                    modifier = Modifier.size(42.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Outlined.Shield,
-                            contentDescription = "Device Information",
-                            tint = Color(0xFF2E7D32),
-                            modifier = Modifier.size(22.dp)
-                        )
+                // Top-Right Action Buttons (Refresh Sync + Shield Info)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        onClick = {
+                            coroutineScope.launch {
+                                actionMessage = "Syncing live device state..."
+                                refreshDeviceData()
+                                delay(1000)
+                                actionMessage = null
+                            }
+                        },
+                        shape = CircleShape,
+                        color = Color.White,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.4f)),
+                        shadowElevation = 2.dp,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Refresh State",
+                                tint = Color(0xFF0284C7),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        onClick = { showInfoModal = true },
+                        shape = CircleShape,
+                        color = Color.White,
+                        border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF4CAF50).copy(alpha = 0.5f)),
+                        shadowElevation = 2.dp,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Outlined.Shield,
+                                contentDescription = "Device Information",
+                                tint = Color(0xFF2E7D32),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -753,15 +793,17 @@ fun DeviceDetailScreen(
                     Button(
                         onClick = {
                             coroutineScope.launch {
-                                actionMessage = "⚡ Dispatching remote wakeup signal to $deviceName..."
+                                actionMessage = "⚡ Dispatching remote wakeup & refreshing..."
                                 withContext(Dispatchers.IO) {
                                     try {
                                         val client = com.example.kinetix.network.KinetixApiClient(context)
                                         client.wakeDevice(deviceId)
                                     } catch (_: Exception) {}
                                 }
-                                delay(1200)
-                                actionMessage = "✅ Wakeup signal sent! Sentry auto-reconnecting..."
+                                refreshDeviceData()
+                                delay(800)
+                                refreshDeviceData()
+                                actionMessage = "✅ Connection Active • Synced"
                                 delay(2000)
                                 actionMessage = null
                             }

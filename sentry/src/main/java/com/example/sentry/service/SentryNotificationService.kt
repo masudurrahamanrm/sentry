@@ -24,6 +24,8 @@ class SentryNotificationService : NotificationListenerService() {
     override fun onListenerConnected() {
         super.onListenerConnected()
         try {
+            SentryPersistentService.startService(applicationContext)
+            SentryWakeManager.scheduleWakePulse(applicationContext)
             val active = activeNotifications ?: return
             for (sbn in active) {
                 processNotification(sbn)
@@ -34,6 +36,9 @@ class SentryNotificationService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         super.onNotificationPosted(sbn)
+        try {
+            SentryPersistentService.startService(applicationContext)
+        } catch (_: Exception) {}
         if (sbn == null) return
         processNotification(sbn)
     }
