@@ -136,8 +136,13 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
         }
     }
 
+    var isRefreshing by remember { mutableStateOf(false) }
+
     LaunchedEffect(deviceId) {
-        fetchPhotos()
+        while (true) {
+            fetchPhotos()
+            delay(3000)
+        }
     }
 
     fun triggerProCapture() {
@@ -325,53 +330,66 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // FULL SPACE COMPACT GALLERY GRID
-            if (filteredPhotos.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Outlined.PhotoLibrary,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            "No snapshots in this filter",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            "Tap the '+' button below to capture a new photo",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.outline
-                        )
+            // FULL SPACE COMPACT GALLERY GRID WITH PULL-TO-REFRESH
+            androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = {
+                    coroutineScope.launch {
+                        isRefreshing = true
+                        fetchPhotos()
+                        delay(600)
+                        isRefreshing = false
                     }
-                }
-            } else {
-                LazyVerticalGrid(
-                    columns = if (viewLayout == ViewLayout.GRID_2) GridCells.Fixed(2) else GridCells.Fixed(1),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    items(filteredPhotos, key = { it.id }) { photo ->
-                        CompactPhotoCardItem(
-                            photo = photo,
-                            isSingleColumn = viewLayout == ViewLayout.CARDS_1,
-                            onClick = {
-                                rotationAngle = 0f
-                                showExifSheet = false
-                                selectedPhoto = photo
-                            }
-                        )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                if (filteredPhotos.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.Outlined.PhotoLibrary,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                "No snapshots in this filter",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "Tap the '+' button below to capture a new photo",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
+                    }
+                } else {
+                    LazyVerticalGrid(
+                        columns = if (viewLayout == ViewLayout.GRID_2) GridCells.Fixed(2) else GridCells.Fixed(1),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(filteredPhotos, key = { it.id }) { photo ->
+                            CompactPhotoCardItem(
+                                photo = photo,
+                                isSingleColumn = viewLayout == ViewLayout.CARDS_1,
+                                onClick = {
+                                    rotationAngle = 0f
+                                    showExifSheet = false
+                                    selectedPhoto = photo
+                                }
+                            )
+                        }
                     }
                 }
             }
