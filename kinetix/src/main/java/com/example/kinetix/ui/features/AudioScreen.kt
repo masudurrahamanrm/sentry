@@ -1,6 +1,6 @@
 package com.example.kinetix.ui.features
 
-import android.media.MediaPlayer
+import android.media.*
 import android.util.Base64
 import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
@@ -36,7 +36,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.random.Random
 
 data class AudioItem(
@@ -72,10 +71,8 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
     var currentlyPlayingId by remember { mutableStateOf<String?>(null) }
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
 
-    // Live Sequential Audio Queue Engine
-    val liveAudioQueue = remember { ConcurrentLinkedQueue<File>() }
-    var isQueuePlaying by remember { mutableStateOf(false) }
-    var liveStreamPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    // Live Native AudioTrack Stream Engine (16kHz PCM Mono)
+    var liveAudioTrack by remember { mutableStateOf<AudioTrack?>(null) }
     var lastPlayedSequence by remember { mutableIntStateOf(0) }
 
     // Pulse Animation for Live Streaming
@@ -89,39 +86,6 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
         ),
         label = "PulseScale"
     )
-
-    // Sequential Queue Player function
-    fun playNextInQueue() {
-        val nextFile = liveAudioQueue.poll()
-        if (nextFile == null) {
-            isQueuePlaying = false
-            return
-        }
-        isQueuePlaying = true
-        try {
-            val player = MediaPlayer().apply {
-                setDataSource(nextFile.absolutePath)
-                setVolume(audioGainBoost, audioGainBoost)
-                prepare()
-                start()
-                setOnCompletionListener {
-                    try { release() } catch (_: Exception) {}
-                    nextFile.delete()
-                    playNextInQueue()
-                }
-                setOnErrorListener { _, _, _ ->
-                    try { release() } catch (_: Exception) {}
-                    nextFile.delete()
-                    playNextInQueue()
-                    true
-                }
-            }
-            liveStreamPlayer = player
-        } catch (_: Exception) {
-            nextFile.delete()
-            playNextInQueue()
-        }
-    }
 
     // Helper: Fetch audio recordings archive
     suspend fun fetchAudioList() {
@@ -163,19 +127,59 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
         }
     }
 
-    // Live Audio Stream Poller & Continuous Queue Feeding Loop
+    // Live Real-Time PCM AudioStream Engine via AudioTrack
     LaunchedEffect(isLiveListening) {
         if (!isLiveListening) {
-            liveStreamPlayer?.stop()
-            liveStreamPlayer?.release()
-            liveStreamPlayer = null
-            liveAudioQueue.forEach { it.delete() }
-            liveAudioQueue.clear()
-            isQueuePlaying = false
+            try {
+                liveAudioTrack?.stop()
+                liveAudioTrack?.release()
+            } catch (_: Exception) {}
+            liveAudioTrack = null
             liveMicStatus = "IDLE"
             currentDecibels = 25
             return@LaunchedEffect
         }
+
+        val sampleRate = 16000
+        val minBufSize = AudioTrack.getMinBufferSize(
+            sampleRate,
+            AudioFormat.CHANNEL_OUT_MONO,
+            AudioFormat.ENCODING_PCM_16BIT
+        )
+        val track = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setSampleRate(sampleRate)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build()
+                )
+                .setBufferSizeInBytes((minBufSize * 4).coerceAtLeast(32000))
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build()
+        } else {
+            @Suppress("DEPRECATION")
+            AudioTrack(
+                AudioManager.STREAM_MUSIC,
+                sampleRate,
+                AudioFormat.CHANNEL_OUT_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+                (minBufSize * 4).coerceAtLeast(32000),
+                AudioTrack.MODE_STREAM
+            )
+        }
+
+        try {
+            track.play()
+        } catch (_: Exception) {}
+        liveAudioTrack = track
 
         while (isLiveListening) {
             withContext(Dispatchers.IO) {
@@ -195,20 +199,23 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
                                 currentDecibels = db
                             }
 
-                            // Enqueue newly arrived audio chunk
+                            // Write PCM audio data straight to AudioTrack hardware mixer
                             if (status == "STREAMING" && seq > lastPlayedSequence && !chunkB64.isNullOrBlank() && chunkB64 != "null") {
                                 lastPlayedSequence = seq
-                                val chunkBytes = Base64.decode(chunkB64, Base64.DEFAULT)
-                                val chunkFile = File(context.cacheDir, "live_chunk_${seq}.m4a")
-                                FileOutputStream(chunkFile).use { it.write(chunkBytes) }
+                                val pcmBytes = Base64.decode(chunkB64, Base64.DEFAULT)
 
-                                liveAudioQueue.add(chunkFile)
-
-                                withContext(Dispatchers.Main) {
-                                    if (!isQueuePlaying) {
-                                        playNextInQueue()
+                                // Apply audio volume gain boost
+                                if (audioGainBoost != 1.0f) {
+                                    for (i in 0 until pcmBytes.size step 2) {
+                                        var sample = (pcmBytes[i].toInt() and 0xFF) or (pcmBytes[i + 1].toInt() shl 8)
+                                        if (sample > 32767) sample -= 65536
+                                        sample = (sample * audioGainBoost).toInt().coerceIn(-32768, 32767)
+                                        pcmBytes[i] = (sample and 0xFF).toByte()
+                                        pcmBytes[i + 1] = ((sample shr 8) and 0xFF).toByte()
                                     }
                                 }
+
+                                track.write(pcmBytes, 0, pcmBytes.size)
                             }
                         }
                     }
@@ -216,7 +223,7 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
                     Log.w("AudioScreen", "Live audio stream fetch error: ${e.message}")
                 }
             }
-            delay(1000) // Poll for new live chunks every 1.0s
+            delay(400) // 400ms fast streaming poll
         }
     }
 
@@ -224,10 +231,11 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
         onDispose {
             mediaPlayer?.release()
             mediaPlayer = null
-            liveStreamPlayer?.release()
-            liveStreamPlayer = null
-            liveAudioQueue.forEach { it.delete() }
-            liveAudioQueue.clear()
+            try {
+                liveAudioTrack?.stop()
+                liveAudioTrack?.release()
+            } catch (_: Exception) {}
+            liveAudioTrack = null
         }
     }
 
@@ -362,7 +370,7 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = when (liveMicStatus) {
-                                    "STREAMING" -> "LIVE STREAMING (32.0 kHz BALANCED HD)"
+                                    "STREAMING" -> "LIVE STREAMING (16 kHz CONTINUOUS PCM)"
                                     "PAUSED_CONFLICT" -> "PAUSED: MIC IN USE BY PHONE CALL / APP"
                                     else -> "STANDBY • READY TO LISTEN"
                                 },
@@ -580,7 +588,6 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
                                 Surface(
                                     onClick = {
                                         audioGainBoost = gain
-                                        liveStreamPlayer?.setVolume(gain, gain)
                                     },
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(8.dp),

