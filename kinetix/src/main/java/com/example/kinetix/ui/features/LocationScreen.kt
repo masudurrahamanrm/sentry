@@ -2,7 +2,9 @@ package com.example.kinetix.ui.features
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -12,14 +14,60 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.kinetix.network.KinetixApiClient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LocationScreen(deviceId: String, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    var latitude by remember { mutableDoubleStateOf(22.5726) }
+    var longitude by remember { mutableDoubleStateOf(88.3639) }
+    var accuracy by remember { mutableDoubleStateOf(3.0) }
+    var altitude by remember { mutableDoubleStateOf(14.0) }
+    var speed by remember { mutableDoubleStateOf(0.0) }
+    var address by remember { mutableStateOf("Live GPS Location") }
+    var isFetching by remember { mutableStateOf(false) }
+    var lastFixTime by remember { mutableStateOf("Just now") }
+
+    suspend fun refreshLocation() {
+        withContext(Dispatchers.IO) {
+            try {
+                val client = KinetixApiClient(context)
+                val res = client.getDeviceLocation(deviceId)
+                if (res.isSuccess) {
+                    val locObj = res.getOrNull()
+                    if (locObj != null) {
+                        latitude = locObj.optDouble("latitude", 22.5726)
+                        longitude = locObj.optDouble("longitude", 88.3639)
+                        accuracy = locObj.optDouble("accuracy", 3.0)
+                        altitude = locObj.optDouble("altitude", 14.0)
+                        speed = locObj.optDouble("speed", 0.0)
+                        address = locObj.optString("address", "Live GPS Location")
+                        lastFixTime = "Just now (Live streaming)"
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    LaunchedEffect(deviceId) {
+        while (true) {
+            refreshLocation()
+            delay(3000)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -36,34 +84,39 @@ fun LocationScreen(deviceId: String, onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
-            // Simulated Map Box
+            // Live Status Card
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(240.dp)
+                    .height(200.dp)
                     .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFF263238)),
+                    .background(Color(0xFF1E293B)),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(16.dp)
+                ) {
                     Icon(
-                        Icons.Default.LocationOn,
+                        Icons.Default.GpsFixed,
                         contentDescription = null,
                         tint = Color(0xFF4CAF50),
                         modifier = Modifier.size(48.dp)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        "Live GPS Fix Active",
+                        address,
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
+                        fontSize = 15.sp
                     )
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "Accuracy: ±3.2 meters",
-                        color = Color(0xFFB0BEC5),
+                        "Accuracy: ±${accuracy.toInt()}m • GPS Live Fix",
+                        color = Color(0xFF94A3B8),
                         fontSize = 13.sp
                     )
                 }
@@ -81,25 +134,35 @@ fun LocationScreen(deviceId: String, onBack: () -> Unit) {
                     Text("Telemetry Coordinates", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    DetailRow("Latitude", "12.9715987° N")
-                    DetailRow("Longitude", "77.5945627° E")
-                    DetailRow("Altitude", "920.4 m Above Sea Level")
-                    DetailRow("Speed", "0.0 km/h (Stationary)")
+                    DetailRow("Latitude", String.format("%.6f°", latitude))
+                    DetailRow("Longitude", String.format("%.6f°", longitude))
+                    DetailRow("Accuracy", "±${accuracy.toInt()} meters")
+                    DetailRow("Altitude", String.format("%.1f m Above Sea Level", altitude))
+                    DetailRow("Speed", String.format("%.1f km/h", speed))
                     DetailRow("Provider", "GPS / FusedLocationProvider")
-                    DetailRow("Last Fix Time", "Just now (Live streaming)")
+                    DetailRow("Device ID", deviceId)
+                    DetailRow("Status", lastFixTime)
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
             Button(
-                onClick = { /* Refresh GPS */ },
+                onClick = {
+                    coroutineScope.launch {
+                        isFetching = true
+                        refreshLocation()
+                        delay(600)
+                        isFetching = false
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(12.dp),
+                enabled = !isFetching
             ) {
                 Icon(Icons.Default.MyLocation, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Refresh High-Precision GPS")
+                Text(if (isFetching) "Acquiring Fix..." else "Refresh High-Precision GPS")
             }
         }
     }

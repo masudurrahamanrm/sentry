@@ -59,7 +59,8 @@ data class PairedDeviceItem(
     val isThisDevice: Boolean = false,
     val latitude: Double = 22.5726,
     val longitude: Double = 88.3639,
-    val address: String = "Kadampukur - Jhalgachi Rd",
+    val accuracy: Double = 3.0,
+    val address: String = "Live GPS Location",
     val batteryLevel: Int = 87,
     val batteryStatus: String = "Fast Charging (USB-PD 33W)"
 )
@@ -95,7 +96,32 @@ fun DashboardScreen(
     // Current device real GPS coordinates
     var currentDeviceLat by remember { mutableDoubleStateOf(22.5726) }
     var currentDeviceLon by remember { mutableDoubleStateOf(88.3639) }
-    var currentDeviceAddress by remember { mutableStateOf("Kadampukur - Jhalgachi Rd") }
+    var currentDeviceAddress by remember { mutableStateOf("Live GPS Location") }
+
+    // Request runtime location permissions on launch
+    val locationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ ->
+        // Trigger GPS update when permission results arrive
+    }
+
+    LaunchedEffect(Unit) {
+        val hasFine = androidx.core.content.ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val hasCoarse = androidx.core.content.ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        if (!hasFine && !hasCoarse) {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
 
     // Query hardware GPS location of current phone
     fun updateCurrentDeviceGps() {
@@ -109,27 +135,35 @@ fun DashboardScreen(
             ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
             if (hasFine || hasCoarse) {
-                val gpsLoc = try { locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER) } catch (_: Exception) { null }
-                val netLoc = try { locManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER) } catch (_: Exception) { null }
-                val loc: Location? = gpsLoc ?: netLoc
+                var bestLoc: Location? = null
+                val providers = locManager.getProviders(true)
+                for (p in providers) {
+                    try {
+                        val l = locManager.getLastKnownLocation(p) ?: continue
+                        if (bestLoc == null || l.accuracy < bestLoc.accuracy || l.time > bestLoc.time) {
+                            bestLoc = l
+                        }
+                    } catch (_: Exception) {}
+                }
 
-                if (loc != null) {
-                    currentDeviceLat = loc.latitude
-                    currentDeviceLon = loc.longitude
+                if (bestLoc != null) {
+                    currentDeviceLat = bestLoc.latitude
+                    currentDeviceLon = bestLoc.longitude
 
                     try {
                         val geocoder = Geocoder(context, Locale.getDefault())
-                        val list = geocoder.getFromLocation(loc.latitude, loc.longitude, 1)
+                        val list = geocoder.getFromLocation(bestLoc.latitude, bestLoc.longitude, 1)
                         if (!list.isNullOrEmpty()) {
                             val addr = list[0]
-                            val thoroughfare = addr.thoroughfare ?: addr.featureName ?: addr.locality ?: ""
-                            val subLocality = addr.subLocality ?: addr.subAdminArea ?: ""
-                            currentDeviceAddress = if (thoroughfare.isNotBlank() && subLocality.isNotBlank()) {
-                                "$thoroughfare, $subLocality"
-                            } else if (thoroughfare.isNotBlank()) {
-                                thoroughfare
-                            } else {
-                                addr.getAddressLine(0) ?: "Kadampukur - Jhalgachi Rd"
+                            val thoroughfare = addr.thoroughfare ?: addr.featureName ?: ""
+                            val subLocality = addr.subLocality ?: addr.locality ?: addr.subAdminArea ?: ""
+                            val city = addr.locality ?: addr.adminArea ?: ""
+                            currentDeviceAddress = when {
+                                thoroughfare.isNotBlank() && subLocality.isNotBlank() -> "$thoroughfare, $subLocality"
+                                thoroughfare.isNotBlank() && city.isNotBlank() -> "$thoroughfare, $city"
+                                thoroughfare.isNotBlank() -> thoroughfare
+                                subLocality.isNotBlank() -> subLocality
+                                else -> addr.getAddressLine(0) ?: "Live GPS Location"
                             }
                         }
                     } catch (_: Exception) {}
@@ -179,6 +213,7 @@ fun DashboardScreen(
                         isThisDevice = true,
                         latitude = currentDeviceLat,
                         longitude = currentDeviceLon,
+                        accuracy = 3.0,
                         address = currentDeviceAddress,
                         batteryLevel = 92,
                         batteryStatus = "Fast Charging (USB-PD)"
@@ -201,10 +236,10 @@ fun DashboardScreen(
 
                             if (devId.startsWith("SN")) {
                                 val loc = locationsMap[devId]
-                                // Default remote offset if same place or not set yet
-                                val lat = loc?.optDouble("latitude", currentDeviceLat + 0.0018) ?: (currentDeviceLat + 0.0018)
-                                val lon = loc?.optDouble("longitude", currentDeviceLon + 0.0022) ?: (currentDeviceLon + 0.0022)
+                                val lat = if (loc != null && loc.has("latitude")) loc.getDouble("latitude") else (currentDeviceLat + 0.0018)
+                                val lon = if (loc != null && loc.has("longitude")) loc.getDouble("longitude") else (currentDeviceLon + 0.0022)
                                 val addr = loc?.optString("address", currentDeviceAddress) ?: currentDeviceAddress
+                                val acc = loc?.optDouble("accuracy", 3.0) ?: 3.0
 
                                 newList.add(
                                     PairedDeviceItem(
@@ -217,6 +252,7 @@ fun DashboardScreen(
                                         isThisDevice = false,
                                         latitude = lat,
                                         longitude = lon,
+                                        accuracy = acc,
                                         address = addr,
                                         batteryLevel = 87,
                                         batteryStatus = "Optimal Health (Good)"
@@ -232,6 +268,12 @@ fun DashboardScreen(
                     pairedDevices.addAll(newList)
                     if (selectedDevice == null && newList.isNotEmpty()) {
                         selectedDevice = newList.first()
+                    } else if (selectedDevice != null) {
+                        // Keep selectedDevice fresh with updated coords
+                        val updatedMatch = newList.firstOrNull { it.deviceId == selectedDevice!!.deviceId }
+                        if (updatedMatch != null) {
+                            selectedDevice = updatedMatch
+                        }
                     }
 
                     // Push multi-device location data to Leaflet JS
@@ -453,8 +495,14 @@ fun DashboardScreen(
                     // GPS Recenter Crosshair Button (🎯)
                     Surface(
                         onClick = {
-                            selectedDevice?.let { dev ->
-                                webViewRef?.evaluateJavascript("window.focusDevice(${dev.latitude}, ${dev.longitude})", null)
+                            val target = selectedDevice ?: pairedDevices.firstOrNull()
+                            target?.let { dev ->
+                                webViewRef?.evaluateJavascript("if(window.focusDevice) window.focusDevice(${dev.latitude}, ${dev.longitude}, '${dev.deviceId}');", null)
+                                actionFeedbackMessage = "Centered on ${dev.deviceName}"
+                                coroutineScope.launch {
+                                    delay(3000)
+                                    actionFeedbackMessage = null
+                                }
                             }
                         },
                         shape = CircleShape,
@@ -604,7 +652,7 @@ fun DashboardScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Telemetry Info Chips (Battery & GPS)
+                        // Telemetry Info Chips (Battery & Interactive GPS Live Mark Button)
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Surface(
                                 color = Color(0xFFF3EDF7),
@@ -618,14 +666,33 @@ fun DashboardScreen(
                                 }
                             }
                             Surface(
-                                color = Color(0xFFF3EDF7),
+                                color = Color(0xFFE8DEF8),
                                 shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        // MARK & LOCATE DEVICE ON MAP
+                                        val targetLat = dev.latitude
+                                        val targetLon = dev.longitude
+                                        val targetId = dev.deviceId
+                                        val js = "if(window.focusDevice) window.focusDevice($targetLat, $targetLon, '$targetId');"
+                                        webViewRef?.evaluateJavascript(js, null)
+
+                                        // Collapse bottom sheet so user clearly sees the marked device position on the map
+                                        isBottomSheetExpanded = false
+
+                                        actionFeedbackMessage = "Marked ${dev.deviceName} on map: ${dev.address}"
+                                        coroutineScope.launch {
+                                            delay(4000)
+                                            actionFeedbackMessage = null
+                                        }
+                                    }
                             ) {
                                 Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.GpsFixed, contentDescription = null, tint = Color(0xFF1976D2), modifier = Modifier.size(20.dp))
+                                    Icon(Icons.Default.GpsFixed, contentDescription = "Mark Location", tint = Color(0xFF1976D2), modifier = Modifier.size(20.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("±3m • GPS Live", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    val accFormatted = if (dev.accuracy > 0.0) "±${dev.accuracy.toInt()}m • GPS Live" else "±3m • GPS Live"
+                                    Text(accFormatted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1D1B20))
                                 }
                             }
                         }
@@ -750,7 +817,7 @@ fun DashboardScreen(
                                             .clickable {
                                                 selectedDevice = device
                                                 showDeviceDetails = true
-                                                val js = "if(window.focusDevice) window.focusDevice(${device.latitude}, ${device.longitude});"
+                                                val js = "if(window.focusDevice) window.focusDevice(${device.latitude}, ${device.longitude}, '${device.deviceId}');"
                                                 webViewRef?.evaluateJavascript(js, null)
                                             }
                                             .padding(horizontal = 8.dp, vertical = 12.dp),

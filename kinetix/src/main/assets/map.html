@@ -678,7 +678,11 @@ svg.leaflet-image-layer.leaflet-interactive path {
         .uber-pulse-ring.remote-device { background: radial-gradient(circle, rgba(76, 175, 80, 0.45) 0%, rgba(76, 175, 80, 0.05) 70%, transparent 100%); border: 1.5px solid rgba(76, 175, 80, 0.85); }
         @keyframes uberPulse { 0% { transform: scale(0.6); opacity: 0.9; } 50% { transform: scale(1.3); opacity: 0.25; } 100% { transform: scale(0.6); opacity: 0.9; } }
         
-        .uber-pin-badge { width: 52px; height: 52px; background: #000000; border-radius: 50%; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.75); display: flex; align-items: center; justify-content: center; z-index: 10; }
+        .uber-pin.focused-target .uber-pulse-ring { animation: uberPulseFast 0.9s infinite ease-out; border-width: 3px; }
+        .uber-pin.focused-target .uber-pin-badge { transform: scale(1.15); transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        @keyframes uberPulseFast { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(1.8); opacity: 0; } }
+
+        .uber-pin-badge { width: 52px; height: 52px; background: #000000; border-radius: 50%; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.75); display: flex; align-items: center; justify-content: center; z-index: 10; transition: transform 0.3s ease; }
         .uber-pin-badge.this-device { border: 3px solid #276EF1; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.75), 0 0 16px rgba(39, 110, 241, 0.6); }
         .uber-pin-badge.remote-device { border: 3px solid #4CAF50; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.75), 0 0 16px rgba(76, 175, 80, 0.6); }
         .uber-pin-badge svg { width: 26px; height: 26px; fill: #FFFFFF; }
@@ -730,7 +734,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
                 '<svg viewBox="0 0 24 24"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>' :
                 '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>';
 
-            var html = '<div class="uber-pin" onclick="if(window.AndroidBridge) AndroidBridge.onMarkerClicked(\'' + deviceId + '\');">' +
+            var html = '<div id="pin-' + deviceId + '" class="uber-pin" onclick="if(window.AndroidBridge) AndroidBridge.onMarkerClicked(\'' + deviceId + '\');">' +
                        '  <div class="pin-label-tag ' + typeClass + '">' + displayName + '</div>' +
                        '  <div class="uber-pulse-ring ' + typeClass + '"></div>' +
                        '  <div class="uber-pin-badge ' + typeClass + '">' + iconSvg + '</div>' +
@@ -773,10 +777,25 @@ svg.leaflet-image-layer.leaflet-interactive path {
             }
         };
 
-        window.focusDevice = function(lat, lon) {
+        window.focusDevice = function(lat, lon, devId) {
             if (map) {
                 map.invalidateSize();
-                map.flyTo([lat, lon], 17, { animate: true, duration: 0.8 });
+                map.flyTo([lat, lon], 18, { animate: true, duration: 1.0 });
+
+                var prevs = document.querySelectorAll(".uber-pin.focused-target");
+                for (var j = 0; j < prevs.length; j++) {
+                    prevs[j].classList.remove("focused-target");
+                }
+
+                if (devId) {
+                    var el = document.getElementById("pin-" + devId);
+                    if (el) {
+                        el.classList.add("focused-target");
+                        setTimeout(function() {
+                            if (el) el.classList.remove("focused-target");
+                        }, 5000);
+                    }
+                }
             }
         };
 

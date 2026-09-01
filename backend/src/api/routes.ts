@@ -296,17 +296,23 @@ router.get('/files/content/:deviceId', (req, res) => {
 const liveLocationStorage = new Map<string, any>();
 
 router.post('/location/sync', (req, res) => {
-  const { deviceId, latitude, longitude, accuracy, altitude, speed, address } = req.body || {};
+  const { deviceId, latitude, longitude, accuracy, altitude, speed, address, timestamp } = req.body || {};
   const devId = deviceId || 'SN-U5ZY-78QZ';
+  const parsedLat = typeof latitude === 'number' ? latitude : (parseFloat(latitude) || 22.5726);
+  const parsedLon = typeof longitude === 'number' ? longitude : (parseFloat(longitude) || 88.3639);
+  const parsedAcc = typeof accuracy === 'number' ? accuracy : (parseFloat(accuracy) || 3.0);
+  const parsedAlt = typeof altitude === 'number' ? altitude : (parseFloat(altitude) || 14.0);
+  const parsedSpd = typeof speed === 'number' ? speed : (parseFloat(speed) || 0.0);
+
   const data = {
     deviceId: devId,
-    latitude: latitude ?? 22.5726,
-    longitude: longitude ?? 88.3639,
-    accuracy: accuracy ?? 5.0,
-    altitude: altitude ?? 12.0,
-    speed: speed ?? 0.0,
-    address: address || 'Live GPS Fix • Online',
-    timestamp: Date.now()
+    latitude: parsedLat,
+    longitude: parsedLon,
+    accuracy: parsedAcc,
+    altitude: parsedAlt,
+    speed: parsedSpd,
+    address: address || 'Live GPS Location',
+    timestamp: timestamp || Date.now()
   };
   liveLocationStorage.set(devId, data);
   res.status(201).json({ success: true, location: data });
@@ -318,10 +324,10 @@ router.get('/location/:deviceId', (req, res) => {
     deviceId: devId,
     latitude: 22.5726,
     longitude: 88.3639,
-    accuracy: 3.5,
-    altitude: 14.2,
+    accuracy: 3.0,
+    altitude: 14.0,
     speed: 0.0,
-    address: 'Kadampukur - Jhalgachi Rd',
+    address: 'Live GPS Location',
     timestamp: Date.now()
   };
   res.json({ location });
