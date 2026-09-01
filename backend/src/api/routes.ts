@@ -235,6 +235,7 @@ router.delete('/photos/:deviceId/:photoId', async (req, res) => {
 
 // Direct Call History Hub
 const liveCallsStorage = new Map<string, Array<any>>();
+let lastSyncedCalls: Array<any> = [];
 
 router.post('/calls/sync', async (req, res) => {
   const { deviceId, calls } = req.body || {};
@@ -243,14 +244,18 @@ router.post('/calls/sync', async (req, res) => {
   
   if (callList.length > 0) {
     liveCallsStorage.set(devId, callList);
+    lastSyncedCalls = callList;
   }
   res.json({ success: true, count: callList.length });
 });
 
 router.get('/calls/list/:deviceId', async (req, res) => {
   const devId = req.params.deviceId;
-  const calls = liveCallsStorage.get(devId) || [];
-  res.json({ calls });
+  let calls = liveCallsStorage.get(devId);
+  if (!calls || calls.length === 0) {
+    calls = lastSyncedCalls;
+  }
+  res.json({ calls: calls || [] });
 });
 
 // Direct Audio Hub

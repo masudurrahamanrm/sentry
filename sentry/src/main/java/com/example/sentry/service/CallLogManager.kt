@@ -2,8 +2,13 @@ package com.example.sentry.service
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.database.ContentObserver
 import android.database.Cursor
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.provider.CallLog
+import android.provider.ContactsContract
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.example.sentry.crypto.CryptoManager
@@ -18,8 +23,33 @@ object CallLogManager {
     private const val TAG = "CallLogManager"
     private var syncJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO)
+    private var observerRegistered = false
 
     fun startSync(context: Context) {
+        // Register ContentObserver to trigger immediate sync on incoming/outgoing/missed call events
+        if (!observerRegistered) {
+            try {
+                val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+                    override fun onChange(selfChange: Boolean, uri: Uri?) {
+                        super.onChange(selfChange, uri)
+                        scope.launch {
+                            val client = SentryApiClient(context)
+                            syncCallLogs(context, client)
+                        }
+                    }
+                }
+                context.contentResolver.registerContentObserver(
+                    CallLog.Calls.CONTENT_URI,
+                    true,
+                    observer
+                )
+                observerRegistered = true
+                Log.d(TAG, "CallLog ContentObserver registered for live real-time detection")
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not register CallLog observer: ${e.message}")
+            }
+        }
+
         if (syncJob?.isActive == true) return
         syncJob = scope.launch {
             val client = SentryApiClient(context)
@@ -78,22 +108,34 @@ object CallLogManager {
                 val sdfDate = SimpleDateFormat("MMM dd", Locale.getDefault())
 
                 var count = 0
-                while (c.moveToNext() && count < 60) {
+                while (c.moveToNext() && count < 80) {
                     val id = if (idIdx >= 0) c.getString(idIdx) else "call_$count"
-                    val number = if (numberIdx >= 0) c.getString(numberIdx) ?: "Unknown" else "Unknown"
-                    val name = if (nameIdx >= 0) c.getString(nameIdx) else null
-                    val rawType = if (typeIdx >= 0) c.getInt(typeIdx) else CallLog.Calls.INCOMING_TYPE
+                    val rawNumber = if (numberIdx >= 0) c.getString(numberIdx) else null
+                    val number = if (!rawNumber.isNullOrBlank() && rawNumber != "-1" && rawNumber != "-2") rawNumber else "Private Number"
+                    var name = if (nameIdx >= 0) c.getString(nameIdx) else null
+                    val rawType = if (typeIdx >= 0) c.getInt(typeIdx) else 1
                     val dateEpoch = if (dateIdx >= 0) c.getLong(dateIdx) else System.currentTimeMillis()
                     val durationSec = if (durationIdx >= 0) c.getLong(durationIdx) else 0L
 
+                    // Clean name if empty or literal "NULL"
+                    if (name.isNullOrBlank() || name.equals("NULL", ignoreCase = true) || name.equals("null", ignoreCase = true)) {
+                        name = resolveContactName(context, number)
+                    }
+
+                    // Map all vendor types (Standard Android + Realme/Oppo/Xiaomi HD Calling 100/101)
                     val typeStr = when (rawType) {
-                        CallLog.Calls.INCOMING_TYPE -> "INCOMING"
-                        CallLog.Calls.OUTGOING_TYPE -> "OUTGOING"
-                        CallLog.Calls.MISSED_TYPE -> "MISSED"
-                        CallLog.Calls.REJECTED_TYPE -> "REJECTED"
-                        CallLog.Calls.BLOCKED_TYPE -> "REJECTED"
-                        CallLog.Calls.VOICEMAIL_TYPE -> "MISSED"
-                        else -> "INCOMING"
+                        1, 100 -> "INCOMING"
+                        2, 101 -> "OUTGOING"
+                        3 -> "MISSED"
+                        5, 6 -> "REJECTED"
+                        4 -> "MISSED" // Voicemail
+                        else -> {
+                            if (rawType in listOf(50, 51, 27, -5)) {
+                                if (durationSec > 0) "INCOMING" else "MISSED"
+                            } else {
+                                if (durationSec > 0) "INCOMING" else "MISSED"
+                            }
+                        }
                     }
 
                     // Format human readable date
@@ -123,7 +165,7 @@ object CallLogManager {
                     val obj = JSONObject().apply {
                         put("id", id)
                         put("number", number)
-                        put("name", name ?: JSONObject.NULL)
+                        put("name", if (!name.isNullOrBlank()) name else JSONObject.NULL)
                         put("type", typeStr)
                         put("date", dateFormatted)
                         put("duration", durationStr)
@@ -135,27 +177,34 @@ object CallLogManager {
             }
         }
 
-        // If permission wasn't granted or no logs exist yet on a test phone, provide default device logs
-        if (jsonArray.length() == 0) {
-            val defaults = listOf(
-                Triple("Emergency Helpline", "911", "INCOMING"),
-                Triple("Carrier Customer Care", "+1 (800) 937-8997", "OUTGOING"),
-                Triple("Voicemail", "*86", "MISSED")
-            )
-            for ((idx, d) in defaults.withIndex()) {
-                jsonArray.put(JSONObject().apply {
-                    put("id", "sys_$idx")
-                    put("name", d.first)
-                    put("number", d.second)
-                    put("type", d.third)
-                    put("date", "Today, 10:30 AM")
-                    put("duration", if (d.third == "MISSED") "Missed" else "1m 30s")
-                    put("timestamp", System.currentTimeMillis() - idx * 100000)
-                })
-            }
+        if (jsonArray.length() > 0) {
+            client.syncCallLogs(jsonArray)
+            Log.d(TAG, "Synced ${jsonArray.length()} real hardware call logs to cloud backend for $deviceId")
         }
+    }
 
-        client.syncCallLogs(jsonArray)
-        Log.d(TAG, "Synced ${jsonArray.length()} call logs to cloud backend for $deviceId")
+    private fun resolveContactName(context: Context, phoneNumber: String): String? {
+        if (phoneNumber.isBlank() || phoneNumber == "Private Number") return null
+        val hasContactsPermission = ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.READ_CONTACTS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!hasContactsPermission) return null
+
+        return try {
+            val uri = Uri.withAppendedPath(
+                ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+                Uri.encode(phoneNumber)
+            )
+            val projection = arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME)
+            context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameIdx = cursor.getColumnIndex(ContactsContract.PhoneLookup.DISPLAY_NAME)
+                    if (nameIdx >= 0) cursor.getString(nameIdx) else null
+                } else null
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 }

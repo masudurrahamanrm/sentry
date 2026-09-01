@@ -105,20 +105,6 @@ fun CallHistoryScreen(deviceId: String, onBack: () -> Unit) {
                             callLogs.clear()
                             callLogs.addAll(list)
                         }
-                    } else if (callLogs.isEmpty()) {
-                        // Seed realistic initial remote telemetry call records if remote buffer was empty
-                        val mockList = listOf(
-                            CallLogItem("c1", "Sarah Jenkins", "+1 (555) 234-8901", CallType.INCOMING, "Today, 01:24 PM", "4m 12s"),
-                            CallLogItem("c2", "David Ross", "+1 (555) 876-5432", CallType.MISSED, "Today, 11:15 AM", "Missed"),
-                            CallLogItem("c3", null, "+1 (800) 456-7890", CallType.OUTGOING, "Yesterday, 06:40 PM", "1m 45s"),
-                            CallLogItem("c4", "Mom (Home)", "+1 (555) 123-4567", CallType.INCOMING, "Yesterday, 03:10 PM", "12m 08s"),
-                            CallLogItem("c5", "Spam / Telemarketer", "+1 (888) 999-0000", CallType.REJECTED, "Aug 30, 09:20 AM", "Declined"),
-                            CallLogItem("c6", "Alex Martinez", "+1 (555) 345-6789", CallType.OUTGOING, "Aug 29, 04:55 PM", "6m 30s")
-                        )
-                        withContext(Dispatchers.Main) {
-                            callLogs.clear()
-                            callLogs.addAll(mockList)
-                        }
                     }
                 }
             } catch (_: Exception) {}
