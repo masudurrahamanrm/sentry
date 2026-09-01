@@ -10,7 +10,7 @@ try {
   dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
 } catch (_) {}
 
-const MONGODB_URI = process.env.MONGODB_URI;
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://masudurrahamanrm_db_user:BEPvG0PaFOrB8Tht@cluster0.3xu8xlz.mongodb.net/kinetix_sentry?retryWrites=true&w=majority';
 
 let isConnected = false;
 

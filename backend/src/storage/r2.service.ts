@@ -12,11 +12,11 @@ export class CloudflareR2Service {
   private publicDomain: string;
 
   constructor() {
-    this.accountId = process.env.R2_ACCOUNT_ID || '';
-    const accessKeyId = process.env.R2_ACCESS_KEY_ID || '';
-    const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY || '';
-    this.bucket = process.env.R2_BUCKET_NAME || 'sentry-media';
-    this.publicDomain = process.env.R2_PUBLIC_DOMAIN || '';
+    this.accountId = process.env.R2_ACCOUNT_ID || '89b8f307c04b78bda5d75257e88c949b';
+    const accessKeyId = process.env.R2_ACCESS_KEY_ID || '953214bccbdfd86f88d9bc47b97d18e8';
+    const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY || '3966523f29b8fe2963b64543bb987e7bb177b82e636c97d450e64dd4ebb3f575';
+    this.bucket = process.env.R2_BUCKET_NAME || 'sentry';
+    this.publicDomain = process.env.R2_PUBLIC_DOMAIN || 'https://89b8f307c04b78bda5d75257e88c949b.r2.cloudflarestorage.com/sentry';
 
     if (this.accountId && accessKeyId && secretAccessKey) {
       try {
@@ -28,12 +28,12 @@ export class CloudflareR2Service {
             secretAccessKey,
           },
         });
-        logger.info('Cloudflare R2 storage client initialized');
+        logger.info('Cloudflare R2 storage client initialized successfully for bucket: ' + this.bucket);
       } catch (err) {
         logger.warn({ err }, 'Failed to initialize Cloudflare R2 client');
       }
     } else {
-      logger.info('Cloudflare R2 credentials not fully set. Running with local fallback.');
+      logger.info('Cloudflare R2 credentials not set.');
     }
   }
 

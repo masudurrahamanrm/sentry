@@ -91,11 +91,15 @@ router.post('/photos/upload', async (req, res) => {
     try {
       const buffer = Buffer.from(base64, 'base64');
       r2Key = `photos/${devId}/${photoId}.jpg`;
+      logger.info({ r2Key, devId, sizeBytes: buffer.length }, 'Uploading captured photo to Cloudflare R2 bucket...');
       const uploaded = await r2Service.uploadBuffer(r2Key, buffer, 'image/jpeg');
       r2Url = uploaded.url;
+      logger.info({ r2Key, r2Url }, 'Successfully saved photo to Cloudflare R2 bucket!');
     } catch (err) {
-      logger.warn({ err }, 'R2 photo upload failed, falling back to database/memory');
+      logger.error({ err, r2Key }, 'Cloudflare R2 photo upload failed, falling back to database/memory');
     }
+  } else {
+    logger.warn({ hasBase64: !!base64, r2Configured: r2Service.isConfigured() }, 'Cloudflare R2 not configured or empty base64, skipping R2 upload');
   }
 
   const newPhoto = {
