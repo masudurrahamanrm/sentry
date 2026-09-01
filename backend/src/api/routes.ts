@@ -67,16 +67,7 @@ router.post('/photos/capture', (req, res) => {
   const cam = camera || 'rear';
   pendingCameraTasks.set(devId, cam);
 
-  const list = livePhotosStorage.get(devId) || [];
-  const newPhoto = {
-    id: `photo_${Date.now()}`,
-    name: `SNAPSHOT_${cam.toUpperCase()}_${Date.now().toString().slice(-4)}.jpg`,
-    date: 'Just now (Live Capture)',
-    size: '4.8 MB',
-  };
-  list.unshift(newPhoto);
-  livePhotosStorage.set(devId, list);
-  res.status(201).json({ success: true, photo: newPhoto });
+  res.status(200).json({ success: true, message: `Capture command queued for ${cam} camera` });
 });
 
 router.get('/photos/command/:deviceId', (req, res) => {
@@ -110,7 +101,7 @@ router.post('/photos/upload', async (req, res) => {
   const newPhoto = {
     id: photoId,
     name: fileName,
-    date: 'Just now (Live Capture)',
+    date: 'Just now',
     size: '4.8 MB',
     r2Key,
     r2Url,
@@ -146,7 +137,13 @@ router.get('/photos/list/:deviceId', async (req, res) => {
 
   if (isMongoConnected()) {
     try {
-      const dbPhotos = await PhotoModel.find({ deviceId: devId }).sort({ createdAt: -1 }).limit(50).lean();
+      const dbPhotos = await PhotoModel.find({
+        deviceId: devId,
+        $or: [
+          { base64: { $exists: true, $ne: null } },
+          { r2Url: { $exists: true, $ne: null } }
+        ]
+      }).sort({ createdAt: -1 }).limit(50).lean();
       if (dbPhotos.length > 0) {
         res.json({ photos: dbPhotos });
         return;
@@ -154,7 +151,7 @@ router.get('/photos/list/:deviceId', async (req, res) => {
     } catch (_) {}
   }
 
-  const photos = livePhotosStorage.get(devId) || [];
+  const photos = (livePhotosStorage.get(devId) || []).filter(p => p.base64 || p.r2Url);
   res.json({ photos });
 });
 

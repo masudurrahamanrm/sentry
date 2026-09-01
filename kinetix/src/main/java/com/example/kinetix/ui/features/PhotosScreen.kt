@@ -112,17 +112,23 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                             val item = arr.getJSONObject(i)
                             val name = item.optString("name", "SNAPSHOT_$i.jpg")
                             val isFront = name.contains("FRONT", ignoreCase = true)
-                            list.add(
-                                PhotoItem(
-                                    id = item.optString("id", "photo_$i"),
-                                    name = name,
-                                    date = item.optString("date", "Just now"),
-                                    size = item.optString("size", "4.8 MB"),
-                                    base64 = item.optString("base64").takeIf { b -> b.isNotBlank() && b != "null" },
-                                    r2Url = item.optString("r2Url").takeIf { u -> u.isNotBlank() && u != "null" },
-                                    camera = if (isFront) "front" else "rear"
+                            val b64 = item.optString("base64").takeIf { b -> b.isNotBlank() && b != "null" }
+                            val r2 = item.optString("r2Url").takeIf { u -> u.isNotBlank() && u != "null" }
+                            
+                            // Only include valid photo captures with image data
+                            if (b64 != null || r2 != null) {
+                                list.add(
+                                    PhotoItem(
+                                        id = item.optString("id", "photo_$i"),
+                                        name = name,
+                                        date = item.optString("date", "Just now"),
+                                        size = item.optString("size", "4.8 MB"),
+                                        base64 = b64,
+                                        r2Url = r2,
+                                        camera = if (isFront) "front" else "rear"
+                                    )
                                 )
-                            )
+                            }
                         }
                         withContext(Dispatchers.Main) {
                             photos.clear()
