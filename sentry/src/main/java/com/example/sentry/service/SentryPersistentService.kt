@@ -119,11 +119,52 @@ class SentryPersistentService : Service() {
         }
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        android.util.Log.d("SentryPersistentService", "Task removed by user (Clear All). Reviving persistent service...")
+
+        // 1. Immediate revival via AlarmManager (wakes up even if process killed)
+        try {
+            val restartIntent = Intent(applicationContext, SentryRestartReceiver::class.java).apply {
+                action = SentryRestartReceiver.ACTION_RESTART_SERVICE
+            }
+            val pendingIntent = android.app.PendingIntent.getBroadcast(
+                applicationContext,
+                999,
+                restartIntent,
+                android.app.PendingIntent.FLAG_ONE_SHOT or android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager
+            alarmManager?.setExactAndAllowWhileIdle(
+                android.app.AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                android.os.SystemClock.elapsedRealtime() + 500,
+                pendingIntent
+            )
+        } catch (_: Exception) {
+        }
+
+        // 2. Direct service launch fallback
+        try {
+            startService(applicationContext)
+        } catch (_: Exception) {
+        }
+    }
+
     override fun onDestroy() {
         try {
             wakeLock?.release()
         } catch (_: Exception) {
         }
+
+        // Trigger immediate revival broadcast on service destruction
+        try {
+            val restartIntent = Intent(applicationContext, SentryRestartReceiver::class.java).apply {
+                action = SentryRestartReceiver.ACTION_RESTART_SERVICE
+            }
+            sendBroadcast(restartIntent)
+        } catch (_: Exception) {
+        }
+
         super.onDestroy()
     }
 
