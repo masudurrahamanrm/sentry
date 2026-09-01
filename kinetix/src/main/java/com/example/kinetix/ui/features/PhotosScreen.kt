@@ -807,9 +807,30 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                     Text(if (bitmap != null) "${bitmap.width}x${bitmap.height}" else "1920x1080", color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Text("Cloud Storage", color = Color.LightGray, fontSize = 11.sp)
-                                    Text("Cloudflare R2 (sentry bucket)", color = Color(0xFF38BDF8), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            if (currentPhoto.r2Url != null) "Cloudflare R2 (Saved)" else "Cloudflare R2 (Syncing...)",
+                                            color = Color(0xFF38BDF8),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        if (currentPhoto.r2Url != null) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            IconButton(
+                                                onClick = {
+                                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                    val clip = android.content.ClipData.newPlainText("R2 URL", currentPhoto.r2Url)
+                                                    clipboard.setPrimaryClip(clip)
+                                                    Toast.makeText(context, "Cloudflare R2 URL copied to clipboard!", Toast.LENGTH_SHORT).show()
+                                                },
+                                                modifier = Modifier.size(20.dp)
+                                            ) {
+                                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy R2 URL", tint = Color(0xFF38BDF8), modifier = Modifier.size(14.dp))
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

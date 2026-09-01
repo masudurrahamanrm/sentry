@@ -74,9 +74,16 @@ export class CloudflareR2Service {
 
     await this.client.send(command);
 
+    let url = this.getPublicUrl(key);
+    try {
+      // Generate 7-day presigned URL for direct secure streaming
+      const download = await this.generatePresignedDownloadUrl(key, 86400 * 7);
+      url = download.downloadUrl;
+    } catch (_) {}
+
     return {
       key,
-      url: this.getPublicUrl(key),
+      url,
       size: buffer.length,
     };
   }
