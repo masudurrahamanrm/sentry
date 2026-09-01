@@ -48,6 +48,7 @@ fun DeviceDetailScreen(
     deviceId: String,
     onBack: () -> Unit,
     onNavigateToNotifications: () -> Unit,
+    onNavigateToCalls: () -> Unit = {},
     onNavigateToPhotos: () -> Unit,
     onNavigateToFiles: () -> Unit,
     onNavigateToLocation: () -> Unit,
@@ -537,7 +538,7 @@ fun DeviceDetailScreen(
                         Icon(Icons.Default.Bolt, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(13.dp))
                         Spacer(modifier = Modifier.width(2.dp))
                         Text(
-                            text = "6 Tools Ready",
+                            text = "8 Tools Ready",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF2E7D32)
@@ -548,7 +549,7 @@ fun DeviceDetailScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 4. Grid of 6 Modern Feature Access Cards
+            // 4. Grid of 8 Modern Feature Access Cards
             // Row 1: Notifications & Photos/Cam
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SentryModernToolCard(
@@ -622,6 +623,36 @@ fun DeviceDetailScreen(
                     badgeColor = Color(0xFF2979FF),
                     badgeBg = Color(0xFFE3F2FD),
                     onClick = onNavigateToAudio
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Row 4: Call History & Cloud Gallery
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SentryModernToolCard(
+                    modifier = Modifier.weight(1f),
+                    title = "Call History",
+                    subtitle = "Logs & Duration",
+                    icon = Icons.Default.PhoneCallback,
+                    badgeColor = Color(0xFF0284C7),
+                    badgeBg = Color(0xFFE0F2FE),
+                    tagText = "Live",
+                    tagColor = Color(0xFF0284C7),
+                    tagBg = Color(0xFFE0F2FE),
+                    onClick = onNavigateToCalls
+                )
+                SentryModernToolCard(
+                    modifier = Modifier.weight(1f),
+                    title = "Cloud Gallery",
+                    subtitle = "R2 Media Hub",
+                    icon = Icons.Default.PhotoLibrary,
+                    badgeColor = Color(0xFF8B5CF6),
+                    badgeBg = Color(0xFFF3E8FF),
+                    tagText = "R2",
+                    tagColor = Color(0xFF7C3AED),
+                    tagBg = Color(0xFFEDE9FE),
+                    onClick = onNavigateToPhotos
                 )
             }
 

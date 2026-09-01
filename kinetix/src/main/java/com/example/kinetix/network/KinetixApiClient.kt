@@ -125,6 +125,11 @@ class KinetixApiClient(
         request("DELETE", "/photos/$deviceId/$photoId", null, authenticated = false)
     }
 
+    suspend fun getCalls(deviceId: String): Result<JSONArray> = withContext(Dispatchers.IO) {
+        val res = request("GET", "/calls/list/$deviceId", null, authenticated = false)
+        res.map { it.optJSONArray("calls") ?: JSONArray() }
+    }
+
     suspend fun triggerAudioRecord(deviceId: String, durationSeconds: Int = 10): Result<JSONObject> = withContext(Dispatchers.IO) {
         val body = JSONObject().apply {
             put("deviceId", deviceId)

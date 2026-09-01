@@ -16,6 +16,9 @@ data class DeviceDetail(val deviceId: String) : NavKey
 data class FeatureNotifications(val deviceId: String) : NavKey
 
 @Serializable
+data class FeatureCalls(val deviceId: String) : NavKey
+
+@Serializable
 data class FeaturePhotos(val deviceId: String) : NavKey
 
 @Serializable

