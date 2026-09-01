@@ -143,6 +143,33 @@ class KinetixApiClient(
         request("POST", "/audio/record", body.toString(), authenticated = false)
     }
 
+    suspend fun startLiveAudio(deviceId: String, quality: String = "HD"): Result<JSONObject> = withContext(Dispatchers.IO) {
+        val body = JSONObject().apply {
+            put("deviceId", deviceId)
+            put("quality", quality)
+        }
+        request("POST", "/audio/live/start", body.toString(), authenticated = false)
+    }
+
+    suspend fun stopLiveAudio(deviceId: String): Result<JSONObject> = withContext(Dispatchers.IO) {
+        val body = JSONObject().apply {
+            put("deviceId", deviceId)
+        }
+        request("POST", "/audio/live/stop", body.toString(), authenticated = false)
+    }
+
+    suspend fun getLiveAudioStream(deviceId: String): Result<JSONObject> = withContext(Dispatchers.IO) {
+        request("GET", "/audio/live/stream/$deviceId", null, authenticated = false)
+    }
+
+    suspend fun getLiveAudioStatus(deviceId: String): Result<JSONObject> = withContext(Dispatchers.IO) {
+        request("GET", "/audio/live/status/$deviceId", null, authenticated = false)
+    }
+
+    suspend fun deleteAudioRecording(deviceId: String, audioId: String): Result<JSONObject> = withContext(Dispatchers.IO) {
+        request("DELETE", "/audio/$deviceId/$audioId", null, authenticated = false)
+    }
+
     suspend fun getAudioList(deviceId: String): Result<JSONArray> = withContext(Dispatchers.IO) {
         val res = request("GET", "/audio/list/$deviceId", null, authenticated = false)
         res.map { it.getJSONArray("audioList") }

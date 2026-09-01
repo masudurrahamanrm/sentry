@@ -363,10 +363,122 @@ router.get('/gallery/list/:deviceId', async (req, res) => {
   res.json({ media: media || [] });
 });
 
-// Direct Audio Hub
+// Direct Audio Hub & Live Ambient Streamer
 const liveAudioStorage = new Map<string, Array<any>>();
 const pendingAudioTasks = new Map<string, number>(); // deviceId -> durationSeconds
+const liveAudioStreams = new Map<string, {
+  active: boolean;
+  quality: string; // 'HD' or 'ECO'
+  micStatus: 'STREAMING' | 'PAUSED_CONFLICT' | 'IDLE';
+  lastChunkBase64: string | null;
+  decibels: number;
+  sequence: number;
+  updatedAt: number;
+}>();
 
+// Controller triggers Live Ambient Listen
+router.post('/audio/live/start', (req, res) => {
+  const { deviceId, quality } = req.body || {};
+  const devId = deviceId || 'SN-U5ZY-78QZ';
+  const current = liveAudioStreams.get(devId) || {
+    active: false,
+    quality: 'HD',
+    micStatus: 'IDLE',
+    lastChunkBase64: null,
+    decibels: 30,
+    sequence: 0,
+    updatedAt: Date.now()
+  };
+  current.active = true;
+  current.quality = quality || 'HD';
+  current.updatedAt = Date.now();
+  liveAudioStreams.set(devId, current);
+  res.json({ success: true, message: 'Live audio stream activated' });
+});
+
+router.post('/audio/live/stop', (req, res) => {
+  const { deviceId } = req.body || {};
+  const devId = deviceId || 'SN-U5ZY-78QZ';
+  const current = liveAudioStreams.get(devId);
+  if (current) {
+    current.active = false;
+    current.micStatus = 'IDLE';
+    current.updatedAt = Date.now();
+    liveAudioStreams.set(devId, current);
+  }
+  res.json({ success: true, message: 'Live audio stream stopped' });
+});
+
+// Sentry polls whether it should transmit live audio
+router.get('/audio/live/command/:deviceId', (req, res) => {
+  const devId = req.params.deviceId;
+  const stream = liveAudioStreams.get(devId);
+  res.json({
+    active: stream?.active ?? false,
+    quality: stream?.quality ?? 'HD'
+  });
+});
+
+// Sentry uploads real-time audio chunk + decibels + conflict status
+router.post('/audio/live/chunk', (req, res) => {
+  const { deviceId, base64, decibels, micStatus, sequence } = req.body || {};
+  const devId = deviceId || 'SN-U5ZY-78QZ';
+  const current = liveAudioStreams.get(devId) || {
+    active: true,
+    quality: 'HD',
+    micStatus: 'STREAMING',
+    lastChunkBase64: null,
+    decibels: 30,
+    sequence: 0,
+    updatedAt: Date.now()
+  };
+
+  current.lastChunkBase64 = base64 || null;
+  current.decibels = typeof decibels === 'number' ? decibels : 35;
+  current.micStatus = micStatus || 'STREAMING';
+  current.sequence = sequence || (current.sequence + 1);
+  current.updatedAt = Date.now();
+  liveAudioStreams.set(devId, current);
+
+  res.json({ success: true, sequence: current.sequence });
+});
+
+// Controller fetches live audio stream chunk & telemetry
+router.get('/audio/live/stream/:deviceId', (req, res) => {
+  const devId = req.params.deviceId;
+  const stream = liveAudioStreams.get(devId);
+  if (!stream) {
+    res.json({
+      active: false,
+      micStatus: 'IDLE',
+      decibels: 25,
+      sequence: 0,
+      chunk: null
+    });
+    return;
+  }
+  res.json({
+    active: stream.active,
+    micStatus: stream.micStatus,
+    decibels: stream.decibels,
+    sequence: stream.sequence,
+    chunk: stream.lastChunkBase64,
+    updatedAt: stream.updatedAt
+  });
+});
+
+// Controller queries live mic status
+router.get('/audio/live/status/:deviceId', (req, res) => {
+  const devId = req.params.deviceId;
+  const stream = liveAudioStreams.get(devId);
+  res.json({
+    active: stream?.active ?? false,
+    micStatus: stream?.micStatus ?? 'IDLE',
+    decibels: stream?.decibels ?? 0
+  });
+});
+
+// Standard 10s Remote Snippet Capture
 router.post('/audio/record', (req, res) => {
   const { deviceId, durationSeconds } = req.body || {};
   const devId = deviceId || 'SN-U5ZY-78QZ';
@@ -454,6 +566,34 @@ router.get('/audio/list/:deviceId', async (req, res) => {
 
   const audioList = liveAudioStorage.get(devId) || [];
   res.json({ audioList });
+});
+
+// Delete audio recording from MongoDB, Cloudflare R2, and in-memory cache
+router.delete('/audio/:deviceId/:audioId', async (req, res) => {
+  const { deviceId, audioId } = req.params;
+  const r2Key = `audio/${deviceId}/${audioId}.m4a`;
+
+  if (r2Service.isConfigured()) {
+    try {
+      await r2Service.deleteObject(r2Key);
+    } catch (err) {
+      logger.warn({ err, r2Key }, 'Error deleting audio from R2');
+    }
+  }
+
+  if (isMongoConnected()) {
+    try {
+      await AudioModel.deleteOne({ id: audioId, deviceId });
+    } catch (err) {
+      logger.warn({ err }, 'Error deleting audio from MongoDB');
+    }
+  }
+
+  const list = liveAudioStorage.get(deviceId) || [];
+  const filtered = list.filter(a => a.id !== audioId);
+  liveAudioStorage.set(deviceId, filtered);
+
+  res.json({ success: true, message: 'Audio deleted successfully' });
 });
 
 // Battery & Hardware Telemetry Hub

