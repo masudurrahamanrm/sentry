@@ -328,8 +328,8 @@ class KinetixApiClient(
             try {
                 val conn = URL(fullUrl).openConnection() as HttpURLConnection
                 conn.requestMethod = method
-                conn.connectTimeout = 3000
-                conn.readTimeout = 3000
+                conn.connectTimeout = 10000
+                conn.readTimeout = 20000
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("Accept", "application/json")
                 conn.setRequestProperty("X-App-Secret", "SECURE_CLUSTER_V2_99A8F74B")
