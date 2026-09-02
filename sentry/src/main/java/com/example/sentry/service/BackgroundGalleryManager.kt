@@ -258,32 +258,27 @@ object BackgroundGalleryManager {
 
     private fun extractFullResolutionBase64(context: Context, uri: Uri): String? {
         return try {
-            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            // First attempt to read exact raw original bytes directly (100% lossless original quality)
             context.contentResolver.openInputStream(uri)?.use { stream ->
-                BitmapFactory.decodeStream(stream, null, options)
+                val bytes = stream.readBytes()
+                if (bytes.isNotEmpty() && bytes.size < 15 * 1024 * 1024) {
+                    return Base64.encodeToString(bytes, Base64.NO_WRAP)
+                }
             }
 
-            val maxDim = 2560
-            var sampleSize = 1
-            if (options.outWidth > maxDim || options.outHeight > maxDim) {
-                val larger = maxOf(options.outWidth, options.outHeight)
-                sampleSize = larger / maxDim
-            }
-
+            // Fallback for massive RAW files
             val decodeOptions = BitmapFactory.Options().apply {
-                inSampleSize = sampleSize.coerceAtLeast(1)
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             }
-
             val fullBitmap = context.contentResolver.openInputStream(uri)?.use { stream ->
                 BitmapFactory.decodeStream(stream, null, decodeOptions)
             } ?: return null
 
             val out = ByteArrayOutputStream()
-            fullBitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+            fullBitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
             Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
         } catch (e: Exception) {
-            Log.w(TAG, "Error decoding full resolution bitmap: ${e.message}")
+            Log.w(TAG, "Error reading full resolution photo: ${e.message}")
             null
         }
     }

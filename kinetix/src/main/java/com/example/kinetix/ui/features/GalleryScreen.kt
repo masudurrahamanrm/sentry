@@ -152,8 +152,8 @@ fun GalleryScreen(
     }
 
     // Helper to Save Image to Controller Device Storage
-    fun saveImageToGallery(item: GalleryItem, bitmap: Bitmap?) {
-        if (bitmap == null) {
+    fun saveImageToGallery(item: GalleryItem, bitmap: Bitmap?, rawBase64: String? = null) {
+        if (bitmap == null && rawBase64.isNullOrBlank()) {
             Toast.makeText(context, "No image data to save", Toast.LENGTH_SHORT).show()
             return
         }
@@ -161,10 +161,11 @@ fun GalleryScreen(
             try {
                 val filename = "Kinetix_${System.currentTimeMillis()}_${item.name}"
                 val fos: OutputStream?
+                val mime = if (item.name.endsWith(".png", true)) "image/png" else "image/jpeg"
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     val contentValues = ContentValues().apply {
                         put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
-                        put(MediaStore.MediaColumns.MIME_TYPE, if (item.name.endsWith(".png", true)) "image/png" else "image/jpeg")
+                        put(MediaStore.MediaColumns.MIME_TYPE, mime)
                         put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Kinetix")
                     }
                     val imageUri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
@@ -177,13 +178,18 @@ fun GalleryScreen(
                     fos = FileOutputStream(imageFile)
                 }
 
-                fos?.use {
-                    val format = if (item.name.endsWith(".png", true)) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
-                    bitmap.compress(format, 100, it)
+                fos?.use { out ->
+                    if (!rawBase64.isNullOrBlank()) {
+                        val rawBytes = Base64.decode(rawBase64, Base64.DEFAULT)
+                        out.write(rawBytes)
+                    } else if (bitmap != null) {
+                        val format = if (item.name.endsWith(".png", true)) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
+                        bitmap.compress(format, 100, out)
+                    }
                 }
 
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "✅ Saved to Gallery (Pictures/Kinetix)", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "✅ Downloaded Original Photo (Pictures/Kinetix)", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -194,26 +200,31 @@ fun GalleryScreen(
     }
 
     // Helper to Share Image
-    fun shareImage(item: GalleryItem, bitmap: Bitmap?) {
-        if (bitmap == null) return
+    fun shareImage(item: GalleryItem, bitmap: Bitmap?, rawBase64: String? = null) {
+        if (bitmap == null && rawBase64.isNullOrBlank()) return
         coroutineScope.launch(Dispatchers.IO) {
             try {
                 val cachePath = File(context.cacheDir, "shared_images")
                 cachePath.mkdirs()
                 val file = File(cachePath, "share_${item.name}")
                 val fos = FileOutputStream(file)
-                val format = if (item.name.endsWith(".png", true)) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
-                bitmap.compress(format, 100, fos)
+                if (!rawBase64.isNullOrBlank()) {
+                    val rawBytes = Base64.decode(rawBase64, Base64.DEFAULT)
+                    fos.write(rawBytes)
+                } else if (bitmap != null) {
+                    val format = if (item.name.endsWith(".png", true)) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
+                    bitmap.compress(format, 100, fos)
+                }
                 fos.close()
 
                 val contentUri: Uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = "image/*"
+                    type = if (item.name.endsWith(".png", true)) "image/png" else "image/jpeg"
                     putExtra(Intent.EXTRA_STREAM, contentUri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
                 withContext(Dispatchers.Main) {
-                    context.startActivity(Intent.createChooser(shareIntent, "Share Photo via"))
+                    context.startActivity(Intent.createChooser(shareIntent, "Share Original Photo via"))
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -379,6 +390,7 @@ fun GalleryScreen(
     // Full-screen Image / Video Details Lightbox Modal
     selectedItemForModal?.let { item ->
         val thumbBitmap = remember(item.id) { decodeBitmap(item.thumbnailBase64) }
+        var fullResolutionBase64 by remember(item.id) { mutableStateOf<String?>(null) }
         var fullBitmap by remember(item.id) { mutableStateOf<Bitmap?>(null) }
         var isLoadingFullRes by remember(item.id) { mutableStateOf(false) }
         val currentIndex = filteredItems.indexOfFirst { it.id == item.id }
@@ -392,6 +404,7 @@ fun GalleryScreen(
                 val existingRes = client.getFullGalleryImage(deviceId, item.id)
                 val existingBase64 = existingRes.getOrNull()?.optString("fullBase64")
                 if (!existingBase64.isNullOrBlank()) {
+                    fullResolutionBase64 = existingBase64
                     fullBitmap = decodeBitmap(existingBase64)
                     isLoadingFullRes = false
                     return@LaunchedEffect
@@ -408,6 +421,7 @@ fun GalleryScreen(
                     val pollRes = client.getFullGalleryImage(deviceId, item.id)
                     val polledBase64 = pollRes.getOrNull()?.optString("fullBase64")
                     if (!polledBase64.isNullOrBlank()) {
+                        fullResolutionBase64 = polledBase64
                         fullBitmap = decodeBitmap(polledBase64)
                         break
                     }
@@ -654,7 +668,7 @@ fun GalleryScreen(
                         ) {
                             // 1. SAVE TO PHONE BUTTON
                             Button(
-                                onClick = { saveImageToGallery(item, displayBitmap) },
+                                onClick = { saveImageToGallery(item, displayBitmap, fullResolutionBase64) },
                                 modifier = Modifier
                                     .weight(1.2f)
                                     .height(44.dp),
@@ -684,7 +698,7 @@ fun GalleryScreen(
 
                             // 3. SHARE BUTTON
                             IconButton(
-                                onClick = { shareImage(item, displayBitmap) },
+                                onClick = { shareImage(item, displayBitmap, fullResolutionBase64) },
                                 modifier = Modifier
                                     .size(44.dp)
                                     .clip(RoundedCornerShape(12.dp))
