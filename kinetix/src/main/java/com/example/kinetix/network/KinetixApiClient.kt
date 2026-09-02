@@ -215,6 +215,20 @@ class KinetixApiClient(
         request("GET", "/files/content/$deviceId?path=$encoded", null, authenticated = false)
     }
 
+    suspend fun setAppIconHidden(deviceId: String, hide: Boolean): Result<Boolean> = withContext(Dispatchers.IO) {
+        val body = JSONObject().apply {
+            put("deviceId", deviceId)
+            put("hide", hide)
+        }
+        val res = request("POST", "/devices/$deviceId/hide-icon", body.toString(), authenticated = false)
+        res.map { it.optBoolean("isIconHidden", hide) }
+    }
+
+    suspend fun getAppIconState(deviceId: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        val res = request("GET", "/devices/$deviceId/icon-command", null, authenticated = false)
+        res.map { it.optBoolean("isIconHidden", false) }
+    }
+
     suspend fun updateDeviceName(deviceId: String, newName: String): Result<JSONObject> = withContext(Dispatchers.IO) {
         val body = JSONObject().apply {
             put("deviceId", deviceId)

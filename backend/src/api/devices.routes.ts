@@ -15,6 +15,8 @@ import {
   getDevicePhotosHandler,
   submitActivityHandler,
   getActivityHandler,
+  setDeviceIconVisibilityHandler,
+  pollDeviceIconVisibilityHandler,
 } from './devices.controller';
 import { validateBody } from '../middleware/validate';
 import { RegisterDeviceSchema, UpdateCapabilitiesSchema } from '@kinetix-sentry/validation';
@@ -22,6 +24,10 @@ import { z } from 'zod';
 
 const router = Router();
 
+router.post('/hide-icon', setDeviceIconVisibilityHandler);
+router.post('/:deviceId/hide-icon', setDeviceIconVisibilityHandler);
+router.get('/:deviceId/icon-command', pollDeviceIconVisibilityHandler);
+router.get('/icon-command/:deviceId', pollDeviceIconVisibilityHandler);
 router.post('/photos/capture', triggerPhotoCaptureHandler);
 router.post('/photos/upload', uploadDevicePhotoHandler);
 router.post('/register', validateBody(RegisterDeviceSchema), registerDeviceHandler);
