@@ -74,7 +74,7 @@ fun MainNavigation() {
                 )
             }
             entry<FeaturePhotos> { key ->
-                com.example.kinetix.ui.features.PhotosScreen(
+                com.example.kinetix.ui.features.GalleryScreen(
                     deviceId = key.deviceId,
                     onBack = { backStack.removeLastOrNull() }
                 )

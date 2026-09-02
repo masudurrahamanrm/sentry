@@ -127,11 +127,40 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                                 )
                             }
                         }
-                        withContext(Dispatchers.Main) {
-                            photos.clear()
-                            photos.addAll(list)
+                    }
+                }
+
+                // Also load mobile gallery media
+                val galleryRes = client.getGalleryMedia(deviceId)
+                if (galleryRes.isSuccess) {
+                    val gArr = galleryRes.getOrNull()
+                    if (gArr != null) {
+                        for (i in 0 until gArr.length()) {
+                            val gObj = gArr.getJSONObject(i)
+                            val name = gObj.optString("name", "Photo_$i.jpg")
+                            val thumb = gObj.optString("thumbnail").takeIf { it.isNotBlank() && it != "null" }
+                            val full = gObj.optString("fullBase64").takeIf { it.isNotBlank() && it != "null" }
+                            val imgData = full ?: thumb
+                            if (imgData != null) {
+                                list.add(
+                                    PhotoItem(
+                                        id = gObj.optString("id", "media_$i"),
+                                        name = name,
+                                        date = gObj.optString("date", "Recent"),
+                                        size = gObj.optString("size", "Original"),
+                                        base64 = imgData,
+                                        r2Url = null,
+                                        camera = gObj.optString("album", "Gallery")
+                                    )
+                                )
+                            }
                         }
                     }
+                }
+
+                withContext(Dispatchers.Main) {
+                    photos.clear()
+                    photos.addAll(list)
                 }
             } catch (_: Exception) {}
         }
