@@ -304,12 +304,12 @@ export async function submitNotificationHandler(req: Request, res: Response, nex
     const notifTimestamp = timestamp || Date.now();
     const notifId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
 
-    // Deduplicate: check if recent notification is identical
+    // Deduplicate: check if exact notification received within 2 seconds
     const isDuplicate = list.some(item => 
       item.packageName === newPkg && 
       item.title === newTitle && 
       item.body === newBody && 
-      (Math.abs((item.timestamp || 0) - notifTimestamp) < 60000)
+      (Math.abs((item.timestamp || 0) - notifTimestamp) < 2000)
     );
 
     let r2ImageUrl: string | undefined;

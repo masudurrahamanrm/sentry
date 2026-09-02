@@ -1,10 +1,12 @@
 package com.example.sentry.service
 
+import android.app.Notification
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
+import android.os.Parcelable
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Base64
@@ -44,43 +46,97 @@ class SentryNotificationService : NotificationListenerService() {
     }
 
     private fun processNotification(sbn: StatusBarNotification) {
-        // Skip own notifications and ongoing persistent system notifications
         val pkg = sbn.packageName ?: "android"
-        if (pkg == applicationContext.packageName || pkg.contains("sentry", ignoreCase = true)) {
-            return
-        }
-        if (sbn.isOngoing) {
+        
+        // Skip only own package notifications
+        if (pkg == applicationContext.packageName || pkg.contains("com.example.sentry", ignoreCase = true)) {
             return
         }
 
         val notif = sbn.notification ?: return
         val extras = notif.extras ?: return
 
-        val title = extras.getCharSequence("android.title")?.toString()
-            ?: extras.getCharSequence("android.title.big")?.toString()
+        // 1. Extract Title (Support Conversation Title, Big Title, Standard Title)
+        var title = extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString()
+            ?: extras.getCharSequence(Notification.EXTRA_TITLE_BIG)?.toString()
+            ?: extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
             ?: notif.tickerText?.toString()
             ?: ""
 
-        val text = extras.getCharSequence("android.text")?.toString()
-            ?: extras.getCharSequence("android.bigText")?.toString()
-            ?: extras.getCharSequence("android.summaryText")?.toString()
-            ?: ""
+        // 2. Extract Body / Message Text (Support MessagingStyle, TextLines, BigText, Summary, Standard Text)
+        var text = ""
 
-        if (title.isBlank() && text.isBlank()) return
+        // Check MessagingStyle messages (WhatsApp, Telegram, Google Messages)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                val messages = extras.getParcelableArray(Notification.EXTRA_MESSAGES)
+                if (!messages.isNullOrEmpty()) {
+                    val latestMessages = mutableListOf<String>()
+                    for (msg in messages) {
+                        if (msg is Bundle) {
+                            val msgText = msg.getCharSequence("text")?.toString()
+                            val sender = msg.getCharSequence("sender")?.toString()
+                            if (!msgText.isNullOrBlank()) {
+                                if (!sender.isNullOrBlank()) {
+                                    latestMessages.add("$sender: $msgText")
+                                } else {
+                                    latestMessages.add(msgText)
+                                }
+                            }
+                        }
+                    }
+                    if (latestMessages.isNotEmpty()) {
+                        text = latestMessages.joinToString("\n")
+                    }
+                }
+            } catch (_: Exception) {}
+        }
 
-        // Extract attached photo / media preview (WhatsApp photos, MMS, image attachments)
-        val imageBase64 = extractAttachedImageBase64(extras)
+        // Check InboxStyle text lines (Gmail, Outlook, Multi-message bundles)
+        if (text.isBlank()) {
+            try {
+                val textLines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
+                if (!textLines.isNullOrEmpty()) {
+                    text = textLines.filterNotNull().joinToString("\n") { it.toString() }
+                }
+            } catch (_: Exception) {}
+        }
 
-        // Deduplication key
-        val dedupeKey = "$pkg|$title|$text|${imageBase64?.take(30) ?: ""}"
-        val now = System.currentTimeMillis()
-        val lastSeen = lastSeenNotifications[dedupeKey] ?: 0L
-        if (now - lastSeen < 60_000) {
-            // Already sent within 60 seconds, ignore duplicate
+        // Fallback to standard body fields
+        if (text.isBlank()) {
+            text = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
+                ?: extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+                ?: extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()
+                ?: extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT)?.toString()
+                ?: extras.getCharSequence(Notification.EXTRA_INFO_TEXT)?.toString()
+                ?: notif.tickerText?.toString()
+                ?: ""
+        }
+
+        // If title was missing but subtext exists, use subtext as title
+        if (title.isBlank()) {
+            title = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()
+                ?: extras.getCharSequence(Notification.EXTRA_INFO_TEXT)?.toString()
+                ?: pkg.substringAfterLast('.').replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        }
+
+        if (title.isBlank() && text.isBlank()) {
             return
         }
-        lastSeenNotifications[dedupeKey] = now
 
+        // 3. Extract Attached Image / Picture (WhatsApp media, MMS, BigPicture)
+        val imageBase64 = extractAttachedImageBase64(extras)
+
+        // 4. Low-latency Deduplication (only 3-second window for exact identical notification)
+        val notifKey = "${sbn.id}|$pkg|$title|$text"
+        val now = System.currentTimeMillis()
+        val lastSeen = lastSeenNotifications[notifKey] ?: 0L
+        if (now - lastSeen < 3_000) {
+            return
+        }
+        lastSeenNotifications[notifKey] = now
+
+        // 5. Submit to Sentry Cloud Backend
         scope.launch {
             try {
                 val client = SentryApiClient(applicationContext)
@@ -106,7 +162,7 @@ class SentryNotificationService : NotificationListenerService() {
             var bitmap: Bitmap? = null
 
             // 1. Check android.picture / BigPictureStyle
-            val picture = extras.get("android.picture")
+            val picture = extras.get(Notification.EXTRA_PICTURE)
             if (picture is Bitmap) {
                 bitmap = picture
             } else if (picture is Icon) {
@@ -130,7 +186,7 @@ class SentryNotificationService : NotificationListenerService() {
 
             // 3. Check android.largeIcon
             if (bitmap == null) {
-                val largeIcon = extras.get("android.largeIcon")
+                val largeIcon = extras.get(Notification.EXTRA_LARGE_ICON)
                 if (largeIcon is Bitmap) {
                     bitmap = largeIcon
                 } else if (largeIcon is Icon) {
@@ -142,7 +198,6 @@ class SentryNotificationService : NotificationListenerService() {
             }
 
             if (bitmap != null) {
-                // Resize if needed for optimal network transfer
                 val maxDim = 800
                 val scaled = if (bitmap.width > maxDim || bitmap.height > maxDim) {
                     val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
