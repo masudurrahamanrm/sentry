@@ -1,13 +1,63 @@
 import { Request, Response, NextFunction } from 'express';
 import { deviceService } from '../devices/devices.service';
-import { NotificationModel, isMongoConnected } from '../database/mongo';
+import { DeviceModel, NotificationModel, isMongoConnected } from '../database/mongo';
 import { r2Service } from '../storage/r2.service';
 import { logger } from '../logger';
 
 export async function registerDeviceHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const device = await deviceService.registerOrUpdate(req.body);
-    res.status(201).json({ device });
+    let device: any = null;
+    try {
+      device = await deviceService.registerOrUpdate(req.body);
+    } catch (_pgErr) {}
+
+    const { deviceId, deviceName, platform, osVersion, appVersion, publicKey, capabilities } = req.body || {};
+    const devId = deviceId || device?.deviceId;
+    const name = deviceName || device?.deviceName || 'Android Device';
+
+    // Persist to MongoDB Cloud Storage
+    if (devId && isMongoConnected()) {
+      try {
+        await DeviceModel.updateOne(
+          { deviceId: devId },
+          {
+            $set: {
+              deviceId: devId,
+              deviceName: name,
+              platform: platform || 'ANDROID',
+              osVersion: osVersion || 'Android 14',
+              appVersion: appVersion || '1.0.0',
+              publicKey: publicKey || '',
+              capabilities: capabilities || {
+                camera: true,
+                location: true,
+                notifications: true,
+                files: true,
+                microphone: true,
+                battery: true
+              },
+              status: 'ONLINE',
+              lastSeenAt: new Date()
+            }
+          },
+          { upsert: true }
+        );
+      } catch (err) {
+        logger.warn({ err }, 'MongoDB DeviceModel upsert error on register');
+      }
+    }
+
+    res.status(201).json({
+      device: device || {
+        deviceId: devId,
+        deviceName: name,
+        platform: platform || 'ANDROID',
+        osVersion: osVersion || 'Android 14',
+        appVersion: appVersion || '1.0.0',
+        status: 'ONLINE',
+        lastSeenAt: new Date().toISOString()
+      }
+    });
   } catch (err) {
     next(err);
   }
@@ -15,45 +65,115 @@ export async function registerDeviceHandler(req: Request, res: Response, next: N
 
 export async function getDevicesHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    let devices: any[] = [];
-    try {
-      devices = await deviceService.listDevices();
-    } catch (_dbErr) {}
+    const devicesMap = new Map<string, any>();
 
+    // 1. Fetch persistent devices from MongoDB
+    if (isMongoConnected()) {
+      try {
+        const dbDevices = await DeviceModel.find({}).lean();
+        for (const d of dbDevices) {
+          devicesMap.set(d.deviceId, {
+            deviceId: d.deviceId,
+            deviceName: d.deviceName,
+            platform: d.platform || 'ANDROID',
+            osVersion: d.osVersion || 'Android 14',
+            appVersion: d.appVersion || '1.0.0',
+            status: d.status || 'ONLINE',
+            lastSeenAt: d.lastSeenAt ? new Date(d.lastSeenAt).toISOString() : new Date().toISOString(),
+            capabilities: d.capabilities || {
+              camera: true,
+              location: true,
+              notifications: true,
+              files: true,
+              microphone: true,
+              battery: true
+            }
+          });
+        }
+      } catch (err) {
+        logger.warn({ err }, 'Error loading devices from MongoDB');
+      }
+    }
+
+    // 2. Fallback / Merge with PostgreSQL devices
+    try {
+      const pgDevices = await deviceService.listDevices();
+      for (const d of pgDevices) {
+        if (!devicesMap.has(d.deviceId)) {
+          devicesMap.set(d.deviceId, d);
+        }
+      }
+    } catch (_pgErr) {}
+
+    // 3. Merge with Live Heartbeat Telemetry
     try {
       const { liveBatteryTelemetry } = require('./routes');
       if (liveBatteryTelemetry) {
         for (const [devId, tel] of liveBatteryTelemetry.entries()) {
-          const match = devices.find((d: any) => d.deviceId === devId || d.device_id === devId);
-          if (match) {
-            if (tel.deviceName) {
-              match.deviceName = tel.deviceName;
-              match.device_name = tel.deviceName;
+          const existing = devicesMap.get(devId);
+          const telTime = tel.timestamp ? new Date(tel.timestamp).toISOString() : new Date().toISOString();
+          const devName = tel.deviceName || existing?.deviceName || (devId.includes('6731') ? 'realme RMX5101 (Sentry)' : 'Android Device (Sentry)');
+
+          const merged = {
+            deviceId: devId,
+            deviceName: devName,
+            platform: 'ANDROID',
+            osVersion: existing?.osVersion || (devId.includes('6731') ? 'Android 16' : 'Android 14'),
+            appVersion: '1.0.0',
+            status: 'ONLINE',
+            lastSeenAt: telTime,
+            capabilities: {
+              camera: true,
+              location: true,
+              notifications: true,
+              files: true,
+              microphone: true,
+              battery: true
             }
-          } else {
-            devices.push({
-              deviceId: devId,
-              deviceName: tel.deviceName || 'realme RMX5101 (Sentry)',
-              platform: 'ANDROID',
-              osVersion: 'Android 16',
-              appVersion: '1.0.0',
-              status: 'ONLINE',
-              lastSeenAt: new Date(tel.timestamp || Date.now()).toISOString(),
-              capabilities: {
-                camera: true,
-                location: true,
-                notifications: true,
-                files: true,
-                microphone: true,
-                battery: true
-              }
-            });
+          };
+
+          devicesMap.set(devId, merged);
+
+          // Auto-save to MongoDB if not already present
+          if (isMongoConnected()) {
+            DeviceModel.updateOne(
+              { deviceId: devId },
+              {
+                $set: {
+                  deviceId: devId,
+                  deviceName: devName,
+                  platform: 'ANDROID',
+                  osVersion: merged.osVersion,
+                  appVersion: '1.0.0',
+                  status: 'ONLINE',
+                  lastSeenAt: new Date(tel.timestamp || Date.now())
+                }
+              },
+              { upsert: true }
+            ).catch(() => {});
           }
         }
       }
     } catch (_telErr) {}
 
-    res.json({ devices });
+    // 4. Calculate accurate Real-Time Online Status (heartbeat window: 45 seconds)
+    const now = Date.now();
+    const resultList: any[] = [];
+    for (const dev of devicesMap.values()) {
+      const lastSeenMs = dev.lastSeenAt ? new Date(dev.lastSeenAt).getTime() : 0;
+      const isOnline = (now - lastSeenMs) < 45000; // Online if heartbeat/seen within last 45s
+      dev.status = isOnline ? 'ONLINE' : 'OFFLINE';
+      resultList.push(dev);
+    }
+
+    // Sort: Online devices first, then newest lastSeenAt
+    resultList.sort((a, b) => {
+      if (a.status === 'ONLINE' && b.status !== 'ONLINE') return -1;
+      if (a.status !== 'ONLINE' && b.status === 'ONLINE') return 1;
+      return new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime();
+    });
+
+    res.json({ devices: resultList });
   } catch (err) {
     next(err);
   }
@@ -61,8 +181,28 @@ export async function getDevicesHandler(req: Request, res: Response, next: NextF
 
 export async function getDeviceByIdHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const device = await deviceService.getDeviceById(req.params.deviceId);
-    res.json({ device });
+    const devId = req.params.deviceId;
+    let device: any = null;
+
+    if (isMongoConnected()) {
+      try {
+        device = await DeviceModel.findOne({ deviceId: devId }).lean();
+      } catch (_) {}
+    }
+
+    if (!device) {
+      try {
+        device = await deviceService.getDeviceById(devId);
+      } catch (_) {}
+    }
+
+    if (device) {
+      const lastSeenMs = device.lastSeenAt ? new Date(device.lastSeenAt).getTime() : 0;
+      device.status = (Date.now() - lastSeenMs < 45000) ? 'ONLINE' : 'OFFLINE';
+      res.json({ device });
+    } else {
+      res.status(404).json({ error: { message: `Device ${devId} not found` } });
+    }
   } catch (err) {
     next(err);
   }
@@ -78,11 +218,23 @@ export async function updateDeviceNameHandler(req: Request, res: Response, next:
     }
 
     let updatedDevice: any = null;
+
+    // Update in MongoDB Cloud Storage
+    if (isMongoConnected()) {
+      try {
+        await DeviceModel.updateOne(
+          { deviceId: devId },
+          { $set: { deviceName: name, updatedAt: new Date() } },
+          { upsert: true }
+        );
+      } catch (err) {
+        logger.warn({ err }, 'MongoDB updateDeviceName error');
+      }
+    }
+
     try {
       updatedDevice = await deviceService.updateFriendlyName(devId, name);
-    } catch (_dbErr) {
-      // Graceful fallback if database row is not yet registered
-    }
+    } catch (_dbErr) {}
 
     try {
       const { liveBatteryTelemetry } = require('./routes');
