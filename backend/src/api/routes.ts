@@ -308,8 +308,13 @@ router.post('/gallery/sync', async (req, res) => {
   const mediaList = Array.isArray(media) ? media : [];
 
   if (mediaList.length > 0) {
-    liveGalleryStorage.set(devId, mediaList);
-    lastSyncedGallery = mediaList;
+    const existing = liveGalleryStorage.get(devId) || [];
+    const map = new Map<string, any>();
+    for (const item of existing) map.set(item.id, item);
+    for (const item of mediaList) map.set(item.id, item);
+    const merged = Array.from(map.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    liveGalleryStorage.set(devId, merged);
+    lastSyncedGallery = merged;
 
     if (isMongoConnected()) {
       try {
