@@ -348,7 +348,7 @@ router.get('/gallery/list/:deviceId', async (req, res) => {
 
   if (isMongoConnected()) {
     try {
-      const dbMedia = await GalleryMediaModel.find({ deviceId: devId }).sort({ timestamp: -1 }).limit(500).lean();
+      const dbMedia = await GalleryMediaModel.find({ deviceId: devId }).sort({ timestamp: -1 }).limit(1000).lean();
       if (dbMedia.length > 0) {
         res.json({ media: dbMedia });
         return;
