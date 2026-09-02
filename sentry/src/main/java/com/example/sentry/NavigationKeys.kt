@@ -14,3 +14,6 @@ data object Permissions : NavKey
 
 @Serializable
 data object About : NavKey
+
+@Serializable
+data object CompanionInfo : NavKey

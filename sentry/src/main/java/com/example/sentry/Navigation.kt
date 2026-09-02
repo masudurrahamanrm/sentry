@@ -22,6 +22,7 @@ fun SentryNavigation() {
         entryProvider = entryProvider {
             entry<Home> {
                 HomeScreen(
+                    onNavigateToCompanionInfo = { backStack.add(CompanionInfo) },
                     onNavigateToPairing = { backStack.add(Pairing) },
                     onNavigateToPermissions = { backStack.add(Permissions) },
                     onNavigateToAbout = { backStack.add(About) }
@@ -41,6 +42,14 @@ fun SentryNavigation() {
             entry<About> {
                 AboutScreen(
                     onBack = { backStack.removeLastOrNull() }
+                )
+            }
+            entry<CompanionInfo> {
+                com.example.sentry.ui.companion.CompanionInfoScreen(
+                    onBack = { backStack.removeLastOrNull() },
+                    onNavigateToPairing = { backStack.add(Pairing) },
+                    onNavigateToPermissions = { backStack.add(Permissions) },
+                    onNavigateToAbout = { backStack.add(About) }
                 )
             }
         }
