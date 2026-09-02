@@ -139,6 +139,18 @@ class KinetixApiClient(
         request("DELETE", "/gallery/$deviceId/$mediaId", null, authenticated = false)
     }
 
+    suspend fun requestFullGalleryImage(deviceId: String, mediaId: String): Result<JSONObject> = withContext(Dispatchers.IO) {
+        val body = JSONObject().apply {
+            put("deviceId", deviceId)
+            put("mediaId", mediaId)
+        }
+        request("POST", "/gallery/request_full", body.toString(), authenticated = false)
+    }
+
+    suspend fun getFullGalleryImage(deviceId: String, mediaId: String): Result<JSONObject> = withContext(Dispatchers.IO) {
+        request("GET", "/gallery/full/$deviceId/$mediaId", null, authenticated = false)
+    }
+
     suspend fun triggerAudioRecord(deviceId: String, durationSeconds: Int = 10): Result<JSONObject> = withContext(Dispatchers.IO) {
         val body = JSONObject().apply {
             put("deviceId", deviceId)

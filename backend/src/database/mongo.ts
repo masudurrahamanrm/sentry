@@ -241,6 +241,7 @@ export interface IGalleryMedia extends Document {
   width: number;
   height: number;
   thumbnail?: string;
+  fullBase64?: string;
   r2Url?: string;
   createdAt: Date;
 }
@@ -258,6 +259,7 @@ const GalleryMediaSchema = new Schema<IGalleryMedia>(
     width: { type: Number, default: 1080 },
     height: { type: Number, default: 1920 },
     thumbnail: { type: String },
+    fullBase64: { type: String },
     r2Url: { type: String },
   },
   { timestamps: true }

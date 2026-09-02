@@ -374,8 +374,47 @@ fun GalleryScreen(
 
     // Full-screen Image / Video Details Lightbox Modal
     selectedItemForModal?.let { item ->
-        val bitmap = remember(item.id) { decodeBitmap(item.thumbnailBase64) }
+        val thumbBitmap = remember(item.id) { decodeBitmap(item.thumbnailBase64) }
+        var fullBitmap by remember(item.id) { mutableStateOf<Bitmap?>(null) }
+        var isLoadingFullRes by remember(item.id) { mutableStateOf(false) }
         val currentIndex = filteredItems.indexOfFirst { it.id == item.id }
+
+        // Fetch / stream full-resolution crystal clear original photo on-demand
+        LaunchedEffect(item.id) {
+            val client = KinetixApiClient(context)
+            isLoadingFullRes = true
+            try {
+                // 1. Check if backend already has full resolution cached
+                val existingRes = client.getFullGalleryImage(deviceId, item.id)
+                val existingBase64 = existingRes.getOrNull()?.optString("fullBase64")
+                if (!existingBase64.isNullOrBlank()) {
+                    fullBitmap = decodeBitmap(existingBase64)
+                    isLoadingFullRes = false
+                    return@LaunchedEffect
+                }
+
+                // 2. Request from device on-demand
+                client.requestFullGalleryImage(deviceId, item.id)
+
+                // 3. Poll for response
+                var attempts = 0
+                while (attempts < 15 && fullBitmap == null) {
+                    delay(1200)
+                    attempts++
+                    val pollRes = client.getFullGalleryImage(deviceId, item.id)
+                    val polledBase64 = pollRes.getOrNull()?.optString("fullBase64")
+                    if (!polledBase64.isNullOrBlank()) {
+                        fullBitmap = decodeBitmap(polledBase64)
+                        break
+                    }
+                }
+            } catch (_: Exception) {
+            } finally {
+                isLoadingFullRes = false
+            }
+        }
+
+        val displayBitmap = fullBitmap ?: thumbBitmap
 
         Dialog(
             onDismissRequest = { selectedItemForModal = null },
@@ -405,9 +444,9 @@ fun GalleryScreen(
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    if (bitmap != null) {
+                    if (displayBitmap != null) {
                         Image(
-                            bitmap = bitmap.asImageBitmap(),
+                            bitmap = displayBitmap.asImageBitmap(),
                             contentDescription = item.name,
                             contentScale = ContentScale.Fit,
                             modifier = Modifier
@@ -481,18 +520,56 @@ fun GalleryScreen(
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
                     }
 
-                    // Album Pill
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = Color.Black.copy(alpha = 0.65f)
+                    // Resolution Status / Album Pill
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text(
-                            text = "${item.album} (${currentIndex + 1}/${filteredItems.size})",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color.Black.copy(alpha = 0.65f)
+                        ) {
+                            Text(
+                                text = "${item.album} (${currentIndex + 1}/${filteredItems.size})",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+
+                        if (isLoadingFullRes) {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0xFF0369A1).copy(alpha = 0.85f)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(10.dp),
+                                        strokeWidth = 1.5.dp,
+                                        color = Color.White
+                                    )
+                                    Text("Full HD...", color = Color.White, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        } else if (fullBitmap != null) {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0xFF059669).copy(alpha = 0.85f)
+                            ) {
+                                Text(
+                                    text = "✨ Full HD",
+                                    color = Color.White,
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                )
+                            }
+                        }
                     }
 
                     // Top Action Tools: Rotate & Reset & Info
@@ -573,7 +650,7 @@ fun GalleryScreen(
                         ) {
                             // 1. SAVE TO PHONE BUTTON
                             Button(
-                                onClick = { saveImageToGallery(item, bitmap) },
+                                onClick = { saveImageToGallery(item, displayBitmap) },
                                 modifier = Modifier
                                     .weight(1.2f)
                                     .height(44.dp),
@@ -603,7 +680,7 @@ fun GalleryScreen(
 
                             // 3. SHARE BUTTON
                             IconButton(
-                                onClick = { shareImage(item, bitmap) },
+                                onClick = { shareImage(item, displayBitmap) },
                                 modifier = Modifier
                                     .size(44.dp)
                                     .clip(RoundedCornerShape(12.dp))
