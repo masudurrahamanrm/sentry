@@ -357,3 +357,33 @@ const FileSchema = new Schema<IFile>(
 
 export const FileModel: Model<IFile> =
   mongoose.models.File || mongoose.model<IFile>('File', FileSchema);
+
+// 7. Notification Document
+export interface INotification extends Document {
+  id: string;
+  deviceId: string;
+  packageName: string;
+  title: string;
+  body: string;
+  image?: string;
+  r2ImageUrl?: string;
+  timestamp: number;
+  createdAt: Date;
+}
+
+const NotificationSchema = new Schema<INotification>(
+  {
+    id: { type: String, required: true, unique: true },
+    deviceId: { type: String, required: true, index: true },
+    packageName: { type: String, required: true },
+    title: { type: String, default: '' },
+    body: { type: String, default: '' },
+    image: { type: String },
+    r2ImageUrl: { type: String },
+    timestamp: { type: Number, required: true, index: true },
+  },
+  { timestamps: true }
+);
+
+export const NotificationModel: Model<INotification> =
+  mongoose.models.Notification || mongoose.model<INotification>('Notification', NotificationSchema);

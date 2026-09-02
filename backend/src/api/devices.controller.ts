@@ -1,5 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { deviceService } from '../devices/devices.service';
+import { NotificationModel, isMongoConnected } from '../database/mongo';
+import { r2Service } from '../storage/r2.service';
+import { logger } from '../logger';
 
 export async function registerDeviceHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -146,26 +149,63 @@ export async function submitNotificationHandler(req: Request, res: Response, nex
     const newTitle = title || 'Notification';
     const newBody = body || '';
     const newPkg = packageName || 'System';
+    const notifTimestamp = timestamp || Date.now();
+    const notifId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
 
-    // Deduplicate: check if last notification is identical
+    // Deduplicate: check if recent notification is identical
     const isDuplicate = list.some(item => 
       item.packageName === newPkg && 
       item.title === newTitle && 
       item.body === newBody && 
-      (Math.abs((item.timestamp || 0) - (timestamp || Date.now())) < 60000)
+      (Math.abs((item.timestamp || 0) - notifTimestamp) < 60000)
     );
 
+    let r2ImageUrl: string | undefined;
     if (!isDuplicate) {
-      list.unshift({
-        id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      // If notification contains an attached image, store in Cloudflare R2 if configured
+      if (image && typeof image === 'string' && r2Service.isConfigured()) {
+        try {
+          const buffer = Buffer.from(image, 'base64');
+          const r2Key = `notifications/${deviceId}/${notifId}.jpg`;
+          const uploadRes = await r2Service.uploadBuffer(r2Key, buffer, 'image/jpeg');
+          r2ImageUrl = uploadRes.url;
+        } catch (err) {
+          logger.warn({ err }, 'R2 notification image upload fallback');
+        }
+      }
+
+      const notifItem = {
+        id: notifId,
+        deviceId,
         packageName: newPkg,
         title: newTitle,
         body: newBody,
         image: image || null,
-        timestamp: timestamp || Date.now(),
-      });
-      if (list.length > 50) list.pop(); // Keep latest 50
+        r2ImageUrl,
+        timestamp: notifTimestamp,
+      };
+
+      list.unshift(notifItem);
+      if (list.length > 100) list.pop(); // Keep latest 100 in memory
       liveNotificationsMap.set(deviceId, list);
+
+      // Persist to MongoDB Cloud Database
+      if (isMongoConnected()) {
+        try {
+          await NotificationModel.create({
+            id: notifId,
+            deviceId,
+            packageName: newPkg,
+            title: newTitle,
+            body: newBody,
+            image: image || undefined,
+            r2ImageUrl,
+            timestamp: notifTimestamp,
+          });
+        } catch (err) {
+          logger.warn({ err }, 'MongoDB Notification persistence warning');
+        }
+      }
     }
 
     res.status(201).json({ success: true });
@@ -177,6 +217,20 @@ export async function submitNotificationHandler(req: Request, res: Response, nex
 export async function getNotificationsHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const deviceId = req.params.deviceId;
+
+    // Check MongoDB Cloud Database first
+    if (isMongoConnected()) {
+      try {
+        const dbNotifs = await NotificationModel.find({ deviceId }).sort({ timestamp: -1 }).limit(100).lean();
+        if (dbNotifs && dbNotifs.length > 0) {
+          res.json({ notifications: dbNotifs });
+          return;
+        }
+      } catch (err) {
+        logger.warn({ err }, 'Error retrieving notifications from MongoDB');
+      }
+    }
+
     const notifications = liveNotificationsMap.get(deviceId) || [];
     res.json({ notifications });
   } catch (err) {
@@ -188,6 +242,16 @@ export async function clearNotificationsHandler(req: Request, res: Response, nex
   try {
     const deviceId = req.params.deviceId;
     liveNotificationsMap.set(deviceId, []);
+
+    // Clear from MongoDB Cloud Database
+    if (isMongoConnected()) {
+      try {
+        await NotificationModel.deleteMany({ deviceId });
+      } catch (err) {
+        logger.warn({ err }, 'Error clearing notifications from MongoDB');
+      }
+    }
+
     res.json({ success: true });
   } catch (err) {
     next(err);
