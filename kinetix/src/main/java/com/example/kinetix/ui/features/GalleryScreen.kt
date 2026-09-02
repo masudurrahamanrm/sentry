@@ -134,6 +134,10 @@ fun GalleryScreen(
 
     LaunchedEffect(deviceId) {
         fetchGallery()
+        if (mediaItems.isEmpty()) {
+            delay(1200)
+            fetchGallery()
+        }
     }
 
     // Helper to decode Base64 Bitmap
