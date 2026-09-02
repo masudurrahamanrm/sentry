@@ -100,11 +100,11 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
         withContext(Dispatchers.IO) {
             try {
                 val client = KinetixApiClient(context)
+                val list = mutableListOf<PhotoItem>()
                 val res = client.getPhotos(deviceId)
                 if (res.isSuccess) {
                     val arr = res.getOrNull()
                     if (arr != null) {
-                        val list = mutableListOf<PhotoItem>()
                         for (i in 0 until arr.length()) {
                             val item = arr.getJSONObject(i)
                             val name = item.optString("name", "SNAPSHOT_$i.jpg")
