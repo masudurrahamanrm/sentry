@@ -162,7 +162,7 @@ class SentryApiClient(
 
     suspend fun pollGalleryCommands(): Result<JSONObject> = withContext(Dispatchers.IO) {
         val deviceId = CryptoManager.getOrCreateDeviceId(context)
-        get("/gallery/command/$deviceId", authenticated = false)
+        request("GET", "/gallery/command/$deviceId", null, authenticated = false)
     }
 
     suspend fun uploadFullGalleryImage(mediaId: String, base64: String, mimeType: String = "image/jpeg"): Result<JSONObject> = withContext(Dispatchers.IO) {
