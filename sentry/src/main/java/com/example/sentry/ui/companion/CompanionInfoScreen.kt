@@ -53,16 +53,7 @@ fun CompanionInfoScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Column {
-                        Text("Sentry Agent", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                        Text(
-                            "Device Companion",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
+                title = { },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -106,23 +97,6 @@ fun CompanionInfoScreen(
                         color = MaterialTheme.colorScheme.primary,
                         letterSpacing = 1.sp
                     )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .clip(CircleShape)
-                                .background(if (isConnected) Color(0xFF4CAF50) else Color(0xFFE53935))
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = statusText,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
                 }
             }
 
