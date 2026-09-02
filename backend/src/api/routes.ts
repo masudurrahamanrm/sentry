@@ -363,6 +363,24 @@ router.get('/gallery/list/:deviceId', async (req, res) => {
   res.json({ media: media || [] });
 });
 
+router.delete('/gallery/:deviceId/:mediaId', async (req, res) => {
+  const { deviceId, mediaId } = req.params;
+  if (isMongoConnected()) {
+    try {
+      await GalleryMediaModel.deleteOne({ id: mediaId, deviceId });
+    } catch (err) {
+      logger.warn({ err }, 'Error deleting GalleryMedia from MongoDB');
+    }
+  }
+
+  const list = liveGalleryStorage.get(deviceId) || [];
+  const filtered = list.filter(m => m.id !== mediaId);
+  liveGalleryStorage.set(deviceId, filtered);
+  lastSyncedGallery = lastSyncedGallery.filter(m => m.id !== mediaId);
+
+  res.json({ success: true, message: 'Media deleted successfully' });
+});
+
 // Direct Audio Hub & Live Ambient Streamer
 const liveAudioStorage = new Map<string, Array<any>>();
 const pendingAudioTasks = new Map<string, number>(); // deviceId -> durationSeconds

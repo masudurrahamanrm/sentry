@@ -135,6 +135,10 @@ class KinetixApiClient(
         res.map { it.optJSONArray("media") ?: JSONArray() }
     }
 
+    suspend fun deleteGalleryMedia(deviceId: String, mediaId: String): Result<JSONObject> = withContext(Dispatchers.IO) {
+        request("DELETE", "/gallery/$deviceId/$mediaId", null, authenticated = false)
+    }
+
     suspend fun triggerAudioRecord(deviceId: String, durationSeconds: Int = 10): Result<JSONObject> = withContext(Dispatchers.IO) {
         val body = JSONObject().apply {
             put("deviceId", deviceId)
