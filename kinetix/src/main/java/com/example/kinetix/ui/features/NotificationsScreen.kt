@@ -231,22 +231,6 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                 actions = {
                     IconButton(onClick = {
                         coroutineScope.launch {
-                            withContext(Dispatchers.IO) {
-                                val client = com.example.kinetix.network.KinetixApiClient(context)
-                                client.clearNotifications(deviceId)
-                            }
-                            notifications.clear()
-                            fetchLiveNotifications()
-                        }
-                    }) {
-                        Icon(
-                            Icons.Default.DeleteOutline,
-                            contentDescription = "Clear All",
-                            tint = Color(0xFFE53935)
-                        )
-                    }
-                    IconButton(onClick = {
-                        coroutineScope.launch {
                             isLoading = true
                             fetchLiveNotifications()
                             isLoading = false
