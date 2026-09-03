@@ -354,47 +354,21 @@ fun DeviceDetailScreen(
                     }
                 }
 
-                // Center: Device Name & Status Column (Perfect Center)
+                // Center: Device Name & Status Column (Clean Centered Display)
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .clip(RoundedCornerShape(8.dp))
-                        .combinedClickable(
-                            onClick = {
-                                renameInputText = deviceName
-                                showRenameModal = true
-                            },
-                            onLongClick = {
-                                renameInputText = deviceName
-                                showRenameModal = true
-                            },
-                            onDoubleClick = {
-                                renameInputText = deviceName
-                                showRenameModal = true
-                            }
-                        )
                         .padding(horizontal = 8.dp, vertical = 2.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = deviceName,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 18.sp,
-                            color = Color(0xFF1D1B20),
-                            maxLines = 1
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(
-                            Icons.Outlined.Edit,
-                            contentDescription = "Rename Device",
-                            tint = Color(0xFF9E9E9E),
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
+                    Text(
+                        text = deviceName,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 18.sp,
+                        color = Color(0xFF1D1B20),
+                        maxLines = 1,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
