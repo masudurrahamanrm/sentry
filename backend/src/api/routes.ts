@@ -319,7 +319,7 @@ router.post('/gallery/sync', async (req, res) => {
     for (const item of mediaList) {
       map.set(item.id, item);
     }
-    const merged = Array.from(map.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    const merged = Array.from(map.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 300);
     liveGalleryStorage.set(devId, merged);
     lastSyncedGallery = merged;
 
@@ -368,11 +368,11 @@ router.get('/gallery/list/:deviceId', async (req, res) => {
           { deviceId: { $regex: new RegExp(cleanDev, 'i') } },
           {}
         ]
-      }).sort({ timestamp: -1 }).limit(1000).lean();
+      }).sort({ timestamp: -1 }).limit(300).lean();
 
       const validDb = dbMedia.filter((m: any) => m && m.id && m.thumbnail && m.thumbnail.length > 100);
       if (validDb.length > 0) {
-        res.json({ media: validDb });
+        res.json({ media: validDb.slice(0, 300) });
         return;
       }
     } catch (_) {}
@@ -391,7 +391,7 @@ router.get('/gallery/list/:deviceId', async (req, res) => {
     media = lastSyncedGallery;
   }
   const cleanList = (media || []).filter((m: any) => m && m.id && m.thumbnail && m.thumbnail.length > 100);
-  res.json({ media: cleanList });
+  res.json({ media: cleanList.slice(0, 300) });
 });
 
 router.delete('/gallery/:deviceId/:mediaId', async (req, res) => {

@@ -261,9 +261,9 @@ object BackgroundGalleryManager {
                 } else -1
 
                 var inspected = 0
-                val maxScan = 500
+                val maxRecentPhotos = 300
 
-                while (c.moveToNext() && inspected < maxScan) {
+                while (c.moveToNext() && inspected < maxRecentPhotos) {
                     inspected++
                     val mediaId = if (idIdx >= 0) c.getLong(idIdx) else continue
                     val mediaIdStr = "media_$mediaId"

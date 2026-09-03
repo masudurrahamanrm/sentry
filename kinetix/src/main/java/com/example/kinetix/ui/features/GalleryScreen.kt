@@ -277,7 +277,7 @@ fun GalleryScreen(
                         for (item in incomingList) {
                             map[item.id] = item
                         }
-                        val merged = map.values.sortedByDescending { it.timestamp }
+                        val merged = map.values.sortedByDescending { it.timestamp }.take(300)
                         mediaItems.clear()
                         mediaItems.addAll(merged)
                     }
@@ -298,7 +298,7 @@ fun GalleryScreen(
                             for (item in secondList) {
                                 map[item.id] = item
                             }
-                            val merged = map.values.sortedByDescending { it.timestamp }
+                            val merged = map.values.sortedByDescending { it.timestamp }.take(300)
                             mediaItems.clear()
                             mediaItems.addAll(merged)
                             Toast.makeText(context, "🔄 Gallery updated • ${merged.size} photos synced", Toast.LENGTH_SHORT).show()
