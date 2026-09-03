@@ -19,6 +19,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -35,8 +36,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -75,6 +79,7 @@ fun DashboardScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
 
     val pairedDevices = remember { mutableStateListOf<PairedDeviceItem>() }
     var selectedDevice by remember { mutableStateOf<PairedDeviceItem?>(null) }
@@ -83,6 +88,11 @@ fun DashboardScreen(
     var activeTab by remember { mutableStateOf(0) }
     var actionFeedbackMessage by remember { mutableStateOf<String?>(null) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
+
+    // Device Rename Modal State (Tap & hold for 4 seconds)
+    var deviceToRename by remember { mutableStateOf<PairedDeviceItem?>(null) }
+    var renameInputText by remember { mutableStateOf("") }
+    var isRenamingDevice by remember { mutableStateOf(false) }
 
     var isBottomSheetExpanded by remember { mutableStateOf(true) }
     var sheetDragOffset by remember { mutableFloatStateOf(0f) }
@@ -201,7 +211,9 @@ fun DashboardScreen(
 
                 // 1. Current device (This Phone running Kinetix) with REAL GPS
                 val thisModel = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
-                val thisDeviceName = if (thisModel.isNotBlank()) thisModel else "realme 15 Pro 5G"
+                val defaultModelName = if (thisModel.isNotBlank()) thisModel else "realme 15 Pro 5G"
+                val cachedThisDeviceName = com.example.kinetix.cache.KinetixDeviceCache.getDeviceName(context, "THIS_DEVICE", "")
+                val thisDeviceName = if (cachedThisDeviceName.isNotBlank()) cachedThisDeviceName else defaultModelName
                 newList.add(
                     PairedDeviceItem(
                         deviceId = "THIS_DEVICE",
@@ -804,73 +816,324 @@ fun DashboardScreen(
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.fillMaxSize()
                             ) {
-                                items(pairedDevices) { device ->
+                                items(pairedDevices, key = { it.deviceId }) { device ->
                                     val isSelected = selectedDevice?.deviceId == device.deviceId
 
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(16.dp))
-                                            .background(
-                                                if (isSelected) Color(0xFFF3EDF7) else Color.Transparent
-                                            )
-                                            .clickable {
-                                                selectedDevice = device
-                                                showDeviceDetails = true
-                                                val js = "if(window.focusDevice) window.focusDevice(${device.latitude}, ${device.longitude}, '${device.deviceId}');"
-                                                webViewRef?.evaluateJavascript(js, null)
-                                            }
-                                            .padding(horizontal = 8.dp, vertical = 12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier.size(42.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            val isWatch = device.deviceName.contains("Watch", ignoreCase = true)
-                                            val isBuds = device.deviceName.contains("Buds", ignoreCase = true) || device.deviceName.contains("AirPods", ignoreCase = true)
+                                    DashboardDeviceCard(
+                                        device = device,
+                                        isSelected = isSelected,
+                                        onTap = {
+                                            selectedDevice = device
+                                            showDeviceDetails = true
+                                            val js = "if(window.focusDevice) window.focusDevice(${device.latitude}, ${device.longitude}, '${device.deviceId}');"
+                                            webViewRef?.evaluateJavascript(js, null)
+                                        },
+                                        onHoldComplete = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            try {
+                                                val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                    vibrator?.vibrate(android.os.VibrationEffect.createOneShot(120, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+                                                } else {
+                                                    vibrator?.vibrate(120)
+                                                }
+                                            } catch (_: Exception) {}
 
-                                            Icon(
-                                                when {
-                                                    isWatch -> Icons.Default.Watch
-                                                    isBuds -> Icons.Default.Headphones
-                                                    else -> Icons.Default.Smartphone
-                                                },
-                                                contentDescription = null,
-                                                tint = if (device.isThisDevice) Color(0xFF1976D2) else Color(0xFF2E7D32),
-                                                modifier = Modifier.size(28.dp)
-                                            )
+                                            deviceToRename = device
+                                            renameInputText = device.deviceName
                                         }
-
-                                        Spacer(modifier = Modifier.width(14.dp))
-
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = device.deviceName,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 15.sp,
-                                                color = Color(0xFF1D1B20)
-                                            )
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = if (device.isThisDevice) "This device • ${device.address}" else "${device.osVersion} • ${device.lastSeenText}",
-                                                color = if (device.isThisDevice) Color(0xFF1976D2) else Color(0xFF49454F),
-                                                fontSize = 13.sp,
-                                                fontWeight = if (device.isThisDevice) FontWeight.Medium else FontWeight.Normal
-                                            )
-                                        }
-
-                                        Icon(
-                                            Icons.Default.ChevronRight,
-                                            contentDescription = "Details",
-                                            tint = Color(0xFF9E9E9E),
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
+                                    )
                                 }
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // Rename Device Dialog (Opened on 4-second hold)
+        if (deviceToRename != null) {
+            val dev = deviceToRename!!
+            AlertDialog(
+                onDismissRequest = {
+                    if (!isRenamingDevice) deviceToRename = null
+                },
+                icon = {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFEDE7F6)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = null,
+                            tint = Color(0xFF673AB7),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                },
+                title = {
+                    Text(
+                        text = "Rename Device",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        textAlign = TextAlign.Center
+                    )
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "Set a custom nickname for ${if (dev.isThisDevice) "this device" else dev.deviceId}:",
+                            fontSize = 13.sp,
+                            color = Color(0xFF49454F)
+                        )
+
+                        OutlinedTextField(
+                            value = renameInputText,
+                            onValueChange = { renameInputText = it },
+                            label = { Text("Device Name") },
+                            placeholder = { Text("e.g. My Primary Phone, Office Sentry") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF673AB7),
+                                focusedLabelColor = Color(0xFF673AB7)
+                            )
+                        )
+
+                        Text(
+                            text = "Quick suggestions:",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF49454F)
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf("Primary Phone", "Work Device", "Home Sentry").forEach { suggestion ->
+                                SuggestionChip(
+                                    onClick = { renameInputText = suggestion },
+                                    label = { Text(suggestion, fontSize = 11.sp) },
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val newName = renameInputText.trim()
+                            if (newName.isNotBlank()) {
+                                coroutineScope.launch {
+                                    isRenamingDevice = true
+                                    val targetId = dev.deviceId
+                                    if (!dev.isThisDevice) {
+                                        withContext(Dispatchers.IO) {
+                                            val client = KinetixApiClient(context)
+                                            client.updateDeviceName(targetId, newName)
+                                        }
+                                    }
+                                    com.example.kinetix.cache.KinetixDeviceCache.saveDeviceName(context, targetId, newName)
+
+                                    // Update local state list immediately
+                                    val idx = pairedDevices.indexOfFirst { it.deviceId == targetId }
+                                    if (idx != -1) {
+                                        pairedDevices[idx] = pairedDevices[idx].copy(deviceName = newName)
+                                    }
+                                    if (selectedDevice?.deviceId == targetId) {
+                                        selectedDevice = selectedDevice?.copy(deviceName = newName)
+                                    }
+
+                                    actionFeedbackMessage = "Renamed to \"$newName\""
+                                    isRenamingDevice = false
+                                    deviceToRename = null
+                                    delay(2500)
+                                    actionFeedbackMessage = null
+                                }
+                            }
+                        },
+                        enabled = !isRenamingDevice && renameInputText.isNotBlank(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF673AB7))
+                    ) {
+                        if (isRenamingDevice) {
+                            CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Saving...")
+                        } else {
+                            Text("Save")
+                        }
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { deviceToRename = null },
+                        enabled = !isRenamingDevice
+                    ) {
+                        Text("Cancel", color = Color(0xFF673AB7))
+                    }
+                },
+                shape = RoundedCornerShape(20.dp),
+                containerColor = Color.White
+            )
+        }
+    }
+}
+
+@Composable
+fun DashboardDeviceCard(
+    device: PairedDeviceItem,
+    isSelected: Boolean,
+    onTap: () -> Unit,
+    onHoldComplete: () -> Unit
+) {
+    val coroutineScope = rememberCoroutineScope()
+    var isHolding by remember { mutableStateOf(false) }
+    var holdProgress by remember { mutableFloatStateOf(0f) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                if (isSelected) Color(0xFFF3EDF7) else Color.Transparent
+            )
+            .border(
+                width = if (isHolding) 1.5.dp else 1.dp,
+                color = if (isHolding) Color(0xFF673AB7) else if (isSelected) Color(0xFFE8DEF8) else Color(0xFFEEEEEE),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .pointerInput(device.deviceId) {
+                detectTapGestures(
+                    onPress = {
+                        isHolding = true
+                        val targetMs = 4000L
+                        val startTime = System.currentTimeMillis()
+                        var completed = false
+
+                        val progressJob = coroutineScope.launch {
+                            while (isHolding) {
+                                val elapsed = System.currentTimeMillis() - startTime
+                                holdProgress = (elapsed.toFloat() / targetMs).coerceIn(0f, 1f)
+                                if (elapsed >= targetMs) {
+                                    completed = true
+                                    onHoldComplete()
+                                    break
+                                }
+                                delay(30)
+                            }
+                        }
+
+                        val released = tryAwaitRelease()
+                        isHolding = false
+                        progressJob.cancel()
+                        val duration = System.currentTimeMillis() - startTime
+                        holdProgress = 0f
+
+                        if (released && !completed && duration < 500) {
+                            onTap()
+                        }
+                    }
+                )
+            }
+            .padding(horizontal = 12.dp, vertical = 12.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (device.isThisDevice) Color(0xFFE3F2FD) else Color(0xFFE8F5E9)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val isWatch = device.deviceName.contains("Watch", ignoreCase = true)
+                    val isBuds = device.deviceName.contains("Buds", ignoreCase = true) || device.deviceName.contains("AirPods", ignoreCase = true)
+
+                    Icon(
+                        when {
+                            isWatch -> Icons.Default.Watch
+                            isBuds -> Icons.Default.Headphones
+                            else -> Icons.Default.Smartphone
+                        },
+                        contentDescription = null,
+                        tint = if (device.isThisDevice) Color(0xFF1976D2) else Color(0xFF2E7D32),
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = device.deviceName,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = Color(0xFF1D1B20)
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = if (device.isThisDevice) "This device • ${device.address}" else "${device.osVersion} • ${device.lastSeenText}",
+                        color = if (device.isThisDevice) Color(0xFF1976D2) else Color(0xFF49454F),
+                        fontSize = 13.sp,
+                        fontWeight = if (device.isThisDevice) FontWeight.Medium else FontWeight.Normal
+                    )
+                }
+
+                Icon(
+                    Icons.Default.ChevronRight,
+                    contentDescription = "Details",
+                    tint = Color(0xFF9E9E9E),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            // Visual 4-second hold progress indicator
+            if (isHolding && holdProgress > 0f) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Hold for 4s to rename...",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF673AB7)
+                        )
+                        val secondsRemaining = ((4000L * (1f - holdProgress)) / 1000.0)
+                        Text(
+                            text = String.format(java.util.Locale.US, "%.1fs", secondsRemaining),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF673AB7)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LinearProgressIndicator(
+                        progress = { holdProgress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = Color(0xFF673AB7),
+                        trackColor = Color(0xFFEDE7F6)
+                    )
                 }
             }
         }
