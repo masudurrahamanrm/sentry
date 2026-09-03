@@ -1,5 +1,6 @@
 package com.example.kinetix.ui.features
 
+import android.app.Activity
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -43,6 +44,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -52,8 +58,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import com.example.kinetix.network.KinetixApiClient
 import kotlinx.coroutines.Dispatchers
@@ -721,27 +725,59 @@ fun GalleryScreen(
 
         Dialog(
             onDismissRequest = { selectedItemForModal = null },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
         ) {
+            val view = LocalView.current
+            DisposableEffect(view) {
+                val window = (view.parent as? DialogWindowProvider)?.window ?: (context as? Activity)?.window
+                if (window != null) {
+                    WindowCompat.setDecorFitsSystemWindows(window, false)
+                    window.statusBarColor = android.graphics.Color.WHITE
+                    window.navigationBarColor = android.graphics.Color.WHITE
+                    val controller = WindowCompat.getInsetsController(window, view)
+                    controller.isAppearanceLightStatusBars = true
+                    controller.isAppearanceLightNavigationBars = true
+                }
+                onDispose {}
+            }
+
+            var accumulatedSwipeX by remember(item.id) { mutableFloatStateOf(0f) }
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.White)
             ) {
-                // Main Interactive Image with Pinch-to-Zoom & Pan & Rotation
+                // Main Interactive Image with Pinch-to-Zoom, Pan, Rotation & Swipe-to-Change Photo
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(bottom = 110.dp, top = 88.dp)
-                        .pointerInput(Unit) {
+                        .padding(bottom = 90.dp, top = 65.dp)
+                        .pointerInput(item.id) {
                             detectTransformGestures { _, pan, zoom, _ ->
                                 scale = (scale * zoom).coerceIn(1f, 5f)
-                                if (scale > 1f) {
+                                if (scale > 1.05f) {
                                     offsetX += pan.x
                                     offsetY += pan.y
                                 } else {
                                     offsetX = 0f
                                     offsetY = 0f
+                                    accumulatedSwipeX += pan.x
+                                    if (accumulatedSwipeX < -70f && currentIndex < filteredItems.size - 1) {
+                                        scale = 1f
+                                        offsetX = 0f
+                                        offsetY = 0f
+                                        rotationAngle = 0f
+                                        accumulatedSwipeX = 0f
+                                        selectedItemForModal = filteredItems[currentIndex + 1]
+                                    } else if (accumulatedSwipeX > 70f && currentIndex > 0) {
+                                        scale = 1f
+                                        offsetX = 0f
+                                        offsetY = 0f
+                                        rotationAngle = 0f
+                                        accumulatedSwipeX = 0f
+                                        selectedItemForModal = filteredItems[currentIndex - 1]
+                                    }
                                 }
                             }
                         },
@@ -820,7 +856,7 @@ fun GalleryScreen(
                     }
                 }
 
-                // 1. iOS Top Navigation Header (Frosted Glass Aesthetic)
+                // 1. iOS Top Navigation Header (Frosted Glass Aesthetic, Flush with Status Bar)
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -831,7 +867,8 @@ fun GalleryScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 38.dp, bottom = 10.dp, start = 12.dp, end = 12.dp),
+                            .statusBarsPadding()
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
