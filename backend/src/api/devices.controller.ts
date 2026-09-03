@@ -78,14 +78,16 @@ export async function getDevicesHandler(req: Request, res: Response, next: NextF
       try {
         const dbDevices = await DeviceModel.find({}).lean();
         for (const d of dbDevices) {
+          const lastSeenDate = d.lastSeenAt ? new Date(d.lastSeenAt) : new Date();
+          const isRecent = (Date.now() - lastSeenDate.getTime()) < 45000;
           devicesMap.set(d.deviceId, {
             deviceId: d.deviceId,
             deviceName: d.deviceName,
             platform: d.platform || 'ANDROID',
             osVersion: d.osVersion || 'Android 14',
             appVersion: d.appVersion || '1.0.0',
-            status: d.status || 'ONLINE',
-            lastSeenAt: d.lastSeenAt ? new Date(d.lastSeenAt).toISOString() : new Date().toISOString(),
+            status: isRecent ? (d.status || 'ONLINE') : 'OFFLINE',
+            lastSeenAt: lastSeenDate.toISOString(),
             capabilities: d.capabilities || {
               camera: true,
               location: true,
@@ -117,8 +119,10 @@ export async function getDevicesHandler(req: Request, res: Response, next: NextF
       if (liveBatteryTelemetry) {
         for (const [devId, tel] of liveBatteryTelemetry.entries()) {
           const existing = devicesMap.get(devId);
-          const telTime = tel.timestamp ? new Date(tel.timestamp).toISOString() : new Date().toISOString();
-          const devName = tel.deviceName || existing?.deviceName || (devId.includes('6731') ? 'realme RMX5101 (Sentry)' : 'Android Device (Sentry)');
+          const telTime = tel.timestamp ? new Date(tel.timestamp).toISOString() : (existing?.lastSeenAt || new Date().toISOString());
+          const timeDiff = Date.now() - (tel.timestamp ? new Date(tel.timestamp).getTime() : new Date(existing?.lastSeenAt || 0).getTime());
+          const isOnline = timeDiff < 45000;
+          const devName = existing?.deviceName || tel.deviceName || (devId.includes('6731') ? 'realme RMX5101 (Sentry)' : 'Android Device (Sentry)');
 
           const merged = {
             deviceId: devId,
@@ -126,7 +130,7 @@ export async function getDevicesHandler(req: Request, res: Response, next: NextF
             platform: 'ANDROID',
             osVersion: existing?.osVersion || (devId.includes('6731') ? 'Android 16' : 'Android 14'),
             appVersion: '1.0.0',
-            status: 'ONLINE',
+            status: isOnline ? 'ONLINE' : 'OFFLINE',
             lastSeenAt: telTime,
             capabilities: {
               camera: true,

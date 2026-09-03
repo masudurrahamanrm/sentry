@@ -68,6 +68,7 @@ fun DeviceDetailScreen(
     var deviceName by remember(deviceId) { mutableStateOf(com.example.kinetix.cache.KinetixDeviceCache.getDeviceName(context, deviceId)) }
     var osVersion by remember { mutableStateOf("Android 16") }
     var isOnline by remember { mutableStateOf(true) }
+    var lastSeenText by remember { mutableStateOf("Just now") }
     var batteryPercentage by remember(deviceId) { mutableIntStateOf(cachedTel.percentage) }
     var batteryStatusText by remember(deviceId) { mutableStateOf(cachedTel.status) }
     var networkType by remember(deviceId) { mutableStateOf(cachedTel.networkType) }
@@ -108,7 +109,52 @@ fun DeviceDetailScreen(
                                     }
                                 }
                                 osVersion = item.optString("osVersion", item.optString("os_version", "Android 16"))
-                                isOnline = item.optString("status", "ONLINE") == "ONLINE"
+                                val statusStr = item.optString("status", "ONLINE")
+                                val online = statusStr.equals("ONLINE", ignoreCase = true)
+                                val fetchedLastSeen = item.optString("lastSeenAt", "")
+
+                                val formattedLastSeen = if (online) {
+                                    "Just now"
+                                } else if (fetchedLastSeen.isNotBlank()) {
+                                    try {
+                                        val format = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).apply {
+                                            timeZone = java.util.TimeZone.getTimeZone("UTC")
+                                        }
+                                        val clean = fetchedLastSeen.substringBefore(".").substringBefore("Z")
+                                        val parsedDate = format.parse(clean)
+                                        if (parsedDate != null) {
+                                            val diffMs = System.currentTimeMillis() - parsedDate.time
+                                            when {
+                                                diffMs < 60_000L -> "Just now"
+                                                diffMs < 3600_000L -> "${diffMs / 60_000L}m ago"
+                                                diffMs < 86400_000L -> {
+                                                    val timeFormat = java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault())
+                                                    "Today at ${timeFormat.format(parsedDate)}"
+                                                }
+                                                diffMs < 172800_000L -> {
+                                                    val timeFormat = java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault())
+                                                    "Yesterday at ${timeFormat.format(parsedDate)}"
+                                                }
+                                                else -> {
+                                                    val dateFormat = java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.getDefault())
+                                                    dateFormat.format(parsedDate)
+                                                }
+                                            }
+                                        } else {
+                                            "Recently"
+                                        }
+                                    } catch (_: Exception) {
+                                        "Recently"
+                                    }
+                                } else {
+                                    "Recently"
+                                }
+
+                                withContext(Dispatchers.Main) {
+                                    isOnline = online
+                                    lastSeenText = formattedLastSeen
+                                }
+
                                 val caps = item.optJSONObject("capabilities")
                                 if (caps != null) {
                                     cameraEnabled = caps.optBoolean("camera", true)
@@ -287,31 +333,32 @@ fun DeviceDetailScreen(
         ) {
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 1. Top Bar Header (Circular Menu Button, Device Name, Online Status, Last Seen Pill, Shield Button)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            // 1. Top Bar Header (Circular Menu Button, Centered Device Name & Status, Right Action Buttons)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
             ) {
-                // Circular Hamburger / Back Button
+                // Left: Circular Hamburger / Back Button
                 Surface(
                     onClick = onBack,
                     shape = CircleShape,
                     color = Color.White,
                     shadowElevation = 2.dp,
-                    modifier = Modifier.size(42.dp)
+                    modifier = Modifier
+                        .size(42.dp)
+                        .align(Alignment.CenterStart)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color(0xFF1D1B20), modifier = Modifier.size(20.dp))
                     }
                 }
 
-                // Device Name & Status Column (Tap / Double-tap / Long press to Rename)
+                // Center: Device Name & Status Column (Perfect Center)
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 4.dp)
+                        .align(Alignment.Center)
                         .clip(RoundedCornerShape(8.dp))
                         .combinedClickable(
                             onClick = {
@@ -327,6 +374,7 @@ fun DeviceDetailScreen(
                                 showRenameModal = true
                             }
                         )
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -335,7 +383,7 @@ fun DeviceDetailScreen(
                         Text(
                             text = deviceName,
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 17.sp,
+                            fontSize = 18.sp,
                             color = Color(0xFF1D1B20),
                             maxLines = 1
                         )
@@ -344,23 +392,25 @@ fun DeviceDetailScreen(
                             Icons.Outlined.Edit,
                             contentDescription = "Rename Device",
                             tint = Color(0xFF9E9E9E),
-                            modifier = Modifier.size(13.dp)
+                            modifier = Modifier.size(14.dp)
                         )
                     }
+
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
                         modifier = Modifier.padding(top = 2.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(6.dp)
+                                .size(7.dp)
                                 .clip(CircleShape)
                                 .background(if (isOnline) Color(0xFF4CAF50) else Color(0xFFE53935))
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
                         Text(
-                            text = if (isOnline) "Connected • Online" else "Offline",
-                            fontSize = 11.5.sp,
+                            text = if (isOnline) "Connected • Online" else "Disconnected • Offline",
+                            fontSize = 12.sp,
                             color = if (isOnline) Color(0xFF2E7D32) else Color(0xFFC62828),
                             fontWeight = FontWeight.Bold
                         )
@@ -375,18 +425,22 @@ fun DeviceDetailScreen(
                         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE0E0E0))
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(Icons.Outlined.AccessTime, contentDescription = null, tint = Color(0xFF757575), modifier = Modifier.size(11.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Last seen: Just now", fontSize = 10.sp, color = Color(0xFF757575), fontWeight = FontWeight.Medium)
+                            Text("Last seen: $lastSeenText", fontSize = 10.5.sp, color = Color(0xFF757575), fontWeight = FontWeight.Medium)
                         }
                     }
                 }
 
-                // Top-Right Action Buttons (Refresh Sync + Shield Info)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                // Right: Action Buttons (Refresh Sync + Shield Info)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.align(Alignment.CenterEnd)
+                ) {
                     Surface(
                         onClick = {
                             coroutineScope.launch {
