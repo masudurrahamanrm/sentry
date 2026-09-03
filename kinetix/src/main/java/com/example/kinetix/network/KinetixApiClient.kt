@@ -2,6 +2,7 @@ package com.example.kinetix.network
 
 import android.content.Context
 import android.os.Build
+import com.example.kinetix.BuildConfig
 import com.example.kinetix.crypto.CryptoManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -19,10 +20,11 @@ import java.net.URL
  */
 class KinetixApiClient(
     private val context: Context,
-    private var baseUrl: String = "https://sentry-f502.onrender.com/api/v1"
+    private var baseUrl: String = BuildConfig.BASE_URL
 ) {
     private var sessionToken: String? = null
     private val candidateBaseUrls = listOf(
+        BuildConfig.BASE_URL,
         "https://sentry-f502.onrender.com/api/v1",
         "http://192.168.1.108:4000/api/v1",
         "http://192.168.1.124:4000/api/v1",
