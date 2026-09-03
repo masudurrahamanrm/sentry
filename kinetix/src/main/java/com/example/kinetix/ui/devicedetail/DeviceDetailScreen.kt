@@ -418,70 +418,74 @@ fun DeviceDetailScreen(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    // Last Seen Pill (Icon + Time Only)
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color.White,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE0E0E0))
+                    // Last Seen Pill (Icon + Time) + Inline Refresh Button
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color.White,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE0E0E0))
                         ) {
-                            Icon(Icons.Outlined.AccessTime, contentDescription = null, tint = Color(0xFF757575), modifier = Modifier.size(11.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(text = lastSeenText, fontSize = 10.5.sp, color = Color(0xFF757575), fontWeight = FontWeight.Medium)
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Outlined.AccessTime, contentDescription = null, tint = Color(0xFF757575), modifier = Modifier.size(11.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(text = lastSeenText, fontSize = 10.5.sp, color = Color(0xFF757575), fontWeight = FontWeight.Medium)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        // Compact Inline Refresh Sync Button
+                        Surface(
+                            onClick = {
+                                coroutineScope.launch {
+                                    actionMessage = "Syncing live device state..."
+                                    refreshDeviceData()
+                                    delay(1000)
+                                    actionMessage = null
+                                }
+                            },
+                            shape = CircleShape,
+                            color = Color.White,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.35f)),
+                            shadowElevation = 1.5.dp,
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = "Refresh State",
+                                    tint = Color(0xFF0284C7),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
                         }
                     }
                 }
 
-                // Right: Action Buttons (Refresh Sync + Shield Info)
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.align(Alignment.CenterEnd)
+                // Right: Shield Info Button (Symmetrical with Left Button)
+                Surface(
+                    onClick = { showInfoModal = true },
+                    shape = CircleShape,
+                    color = Color.White,
+                    border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF4CAF50).copy(alpha = 0.5f)),
+                    shadowElevation = 2.dp,
+                    modifier = Modifier
+                        .size(42.dp)
+                        .align(Alignment.CenterEnd)
                 ) {
-                    Surface(
-                        onClick = {
-                            coroutineScope.launch {
-                                actionMessage = "Syncing live device state..."
-                                refreshDeviceData()
-                                delay(1000)
-                                actionMessage = null
-                            }
-                        },
-                        shape = CircleShape,
-                        color = Color.White,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.4f)),
-                        shadowElevation = 2.dp,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Default.Refresh,
-                                contentDescription = "Refresh State",
-                                tint = Color(0xFF0284C7),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-
-                    Surface(
-                        onClick = { showInfoModal = true },
-                        shape = CircleShape,
-                        color = Color.White,
-                        border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF4CAF50).copy(alpha = 0.5f)),
-                        shadowElevation = 2.dp,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Outlined.Shield,
-                                contentDescription = "Device Information",
-                                tint = Color(0xFF2E7D32),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Outlined.Shield,
+                            contentDescription = "Device Information",
+                            tint = Color(0xFF2E7D32),
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
             }
