@@ -173,6 +173,83 @@ fun GalleryScreen(
         }
     }
 
+    // Helper to Save 100% Original Photo Downloaded from SentrY
+    fun saveOriginalPhotoFromSentry(item: GalleryItem, originalBase64: String) {
+        if (originalBase64.isBlank()) {
+            Toast.makeText(context, "No original image data received from SentrY", Toast.LENGTH_SHORT).show()
+            return
+        }
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                val cleanName = item.name.replace("[^a-zA-Z0-9._-]".toRegex(), "_").let {
+                    if (!it.contains(".")) "$it.jpg" else it
+                }
+                val filename = "Kinetix_Original_${cleanName}"
+                val mime = if (cleanName.endsWith(".png", true)) "image/png" else "image/jpeg"
+                val rawBytes = Base64.decode(originalBase64, Base64.DEFAULT)
+                var saved = false
+
+                // 1. Save directly to Android MediaStore (Gallery app indexing)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    try {
+                        val contentValues = ContentValues().apply {
+                            put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+                            put(MediaStore.Images.Media.MIME_TYPE, mime)
+                            put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Kinetix")
+                            put(MediaStore.Images.Media.IS_PENDING, 1)
+                        }
+                        val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                        if (uri != null) {
+                            context.contentResolver.openOutputStream(uri)?.use { out ->
+                                out.write(rawBytes)
+                            }
+                            contentValues.clear()
+                            contentValues.put(MediaStore.Images.Media.IS_PENDING, 0)
+                            context.contentResolver.update(uri, contentValues, null, null)
+                            saved = true
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("GalleryScreen", "MediaStore original save failed: ${e.message}")
+                    }
+                }
+
+                // 2. Direct File I/O Fallback into Pictures/Kinetix
+                if (!saved) {
+                    try {
+                        val picturesDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Kinetix")
+                        if (!picturesDir.exists()) picturesDir.mkdirs()
+                        val targetFile = File(picturesDir, filename)
+                        FileOutputStream(targetFile).use { out ->
+                            out.write(rawBytes)
+                        }
+                        android.media.MediaScannerConnection.scanFile(
+                            context,
+                            arrayOf(targetFile.absolutePath),
+                            arrayOf(mime),
+                            null
+                        )
+                        saved = true
+                    } catch (e: Exception) {
+                        android.util.Log.e("GalleryScreen", "File original save failed: ${e.message}")
+                    }
+                }
+
+                withContext(Dispatchers.Main) {
+                    if (saved) {
+                        val sizeMb = String.format(java.util.Locale.US, "%.2f MB", rawBytes.size / (1024f * 1024f))
+                        Toast.makeText(context, "✅ Downloaded 100% Original Photo ($sizeMb) to Pictures/Kinetix!", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(context, "❌ Failed to write photo to storage", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Save error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
     // Helper to Save Image to Controller Device Storage
     fun saveImageToGallery(item: GalleryItem, bitmap: Bitmap?, rawBase64: String? = null, onSaved: (() -> Unit)? = null) {
         val targetBitmap = bitmap ?: decodeBitmap(rawBase64) ?: decodeBitmap(item.previewBase64 ?: item.thumbnailBase64)
@@ -712,45 +789,48 @@ fun GalleryScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            // 1. SAVE / DOWNLOAD ORIGINAL TO PHONE BUTTON
+                            // 1. SAVE / DOWNLOAD 100% ORIGINAL PHOTO FROM SENTRY
                             Button(
                                 onClick = {
-                                    // Step 1: Immediately save the current photo to disk
-                                    saveImageToGallery(item, displayBitmap, fullResolutionBase64)
-
-                                    // Step 2: In the background, fetch full 100% original and upgrade
-                                    if (fullResolutionBase64.isNullOrBlank()) {
+                                    if (!fullResolutionBase64.isNullOrBlank()) {
+                                        saveOriginalPhotoFromSentry(item, fullResolutionBase64!!)
+                                    } else {
                                         coroutineScope.launch {
                                             isDownloadingOriginal = true
                                             try {
+                                                Toast.makeText(context, "📡 Requesting 100% original photo from SentrY...", Toast.LENGTH_SHORT).show()
                                                 val client = KinetixApiClient(context)
                                                 client.requestFullGalleryImage(deviceId, item.id)
+
                                                 var attempts = 0
                                                 var fetchedBase64: String? = null
-                                                while (attempts < 15 && fetchedBase64.isNullOrBlank()) {
-                                                    delay(1000)
+                                                while (attempts < 25 && fetchedBase64.isNullOrBlank()) {
+                                                    delay(800)
                                                     attempts++
                                                     val pollRes = client.getFullGalleryImage(deviceId, item.id)
                                                     val polled = pollRes.getOrNull()?.optString("fullBase64")
-                                                    if (!polled.isNullOrBlank()) {
+                                                    if (!polled.isNullOrBlank() && polled != "null") {
                                                         fetchedBase64 = polled
                                                         break
                                                     }
                                                 }
+
                                                 if (!fetchedBase64.isNullOrBlank()) {
                                                     fullResolutionBase64 = fetchedBase64
                                                     fullBitmap = decodeBitmap(fetchedBase64)
-                                                    saveImageToGallery(item, fullBitmap, fetchedBase64) {
-                                                        Toast.makeText(context, "✨ Upgraded to 100% Original Quality!", Toast.LENGTH_SHORT).show()
-                                                    }
+                                                    saveOriginalPhotoFromSentry(item, fetchedBase64)
+                                                } else {
+                                                    Toast.makeText(context, "⚠️ SentrY device did not respond. Please ensure SentrY service is running.", Toast.LENGTH_LONG).show()
                                                 }
-                                            } catch (_: Exception) {
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Download error: ${e.message}", Toast.LENGTH_SHORT).show()
                                             } finally {
                                                 isDownloadingOriginal = false
                                             }
                                         }
                                     }
                                 },
+                                enabled = !isDownloadingOriginal,
                                 modifier = Modifier
                                     .weight(1.3f)
                                     .height(44.dp),
@@ -765,11 +845,11 @@ fun GalleryScreen(
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Fetching HD...", color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                    Text("Downloading from SentrY...", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 } else {
                                     Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Save to Phone", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text("Download Original", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
 
