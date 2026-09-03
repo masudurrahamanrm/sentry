@@ -1,8 +1,11 @@
 package com.example.kinetix.ui.features
 
-import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.util.Base64
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -22,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -47,6 +51,8 @@ data class AppUsageStat(
     val openCount: Int,
     val iconColor: Color,
     val icon: ImageVector,
+    val iconBase64: String? = null,
+    val iconBitmap: Bitmap? = null,
     val isCurrentlyActive: Boolean = false
 )
 
@@ -75,6 +81,46 @@ fun ActivityScreen(
     var topAppName by remember { mutableStateOf("None") }
     var categoryBreakdown by remember { mutableStateOf(CategoryBreakdown()) }
 
+    fun decodeAppIcon(base64Str: String?): Bitmap? {
+        if (base64Str.isNullOrBlank()) return null
+        return try {
+            val bytes = Base64.decode(base64Str, Base64.DEFAULT)
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun resolveProperAppName(packageName: String, systemLabel: String?): String {
+        if (!systemLabel.isNullOrBlank() && !systemLabel.contains(".") && !systemLabel.equals("android", ignoreCase = true)) {
+            return systemLabel
+        }
+        val lower = packageName.lowercase(Locale.ROOT)
+        return when {
+            lower == "com.whatsapp" || lower.contains("whatsapp") -> "WhatsApp"
+            lower == "com.google.android.youtube" || lower.contains("youtube") -> "YouTube"
+            lower == "com.instagram.android" || lower.contains("instagram") -> "Instagram"
+            lower == "com.android.chrome" || lower.contains("chrome") -> "Google Chrome"
+            lower == "com.facebook.katana" || lower.contains("facebook") -> "Facebook"
+            lower == "com.facebook.orca" || lower.contains("messenger") -> "Messenger"
+            lower == "org.telegram.messenger" || lower.contains("telegram") -> "Telegram"
+            lower == "com.spotify.music" || lower.contains("spotify") -> "Spotify"
+            lower == "com.google.android.apps.maps" || lower.contains("maps") -> "Google Maps"
+            lower == "com.google.android.gm" || lower.contains("gmail") -> "Gmail"
+            lower == "com.snapchat.android" || lower.contains("snapchat") -> "Snapchat"
+            lower == "com.zhiliaoapp.musically" || lower.contains("tiktok") -> "TikTok"
+            lower == "com.netflix.mediaclient" || lower.contains("netflix") -> "Netflix"
+            lower == "com.dts.freefireth" || lower.contains("freefire") -> "Free Fire"
+            lower == "com.tencent.ig" || lower.contains("pubg") -> "PUBG Mobile"
+            lower.contains("gallery") -> "Photos & Gallery"
+            lower.contains("camera") -> "Camera"
+            lower.contains("settings") -> "Settings"
+            lower.contains("calculator") -> "Calculator"
+            lower.contains("contacts") || lower.contains("dialer") -> "Phone & Contacts"
+            else -> packageName.substringAfterLast('.').replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+        }
+    }
+
     fun parseAppsFromJson(appsArr: JSONArray?): List<AppUsageStat> {
         if (appsArr == null || appsArr.length() == 0) return emptyList()
         val list = mutableListOf<AppUsageStat>()
@@ -82,12 +128,15 @@ fun ActivityScreen(
         for (i in 0 until appsArr.length()) {
             val obj = appsArr.optJSONObject(i) ?: continue
             val pkg = obj.optString("packageName", "")
-            val name = obj.optString("name", pkg.substringAfterLast('.'))
+            val rawName = obj.optString("name", "")
+            val name = resolveProperAppName(pkg, rawName)
             val cat = obj.optString("category", "Utility")
             val durText = obj.optString("durationText", "0m")
             val durMins = obj.optInt("durationMinutes", 0)
             val pct = obj.optDouble("percentage", 0.0).toFloat().coerceIn(0.01f, 1.0f)
             val opens = obj.optInt("openCount", 1)
+            val iconBase64 = obj.optString("iconBase64").takeIf { !it.isNullOrBlank() && it != "null" }
+            val iconBitmap = decodeAppIcon(iconBase64)
 
             val (color, icon) = when {
                 pkg.contains("whatsapp", ignoreCase = true) -> Color(0xFF25D366) to Icons.AutoMirrored.Filled.Chat
@@ -114,6 +163,8 @@ fun ActivityScreen(
                     openCount = opens,
                     iconColor = color,
                     icon = icon,
+                    iconBase64 = iconBase64,
+                    iconBitmap = iconBitmap,
                     isCurrentlyActive = (i == 0 && durMins > 0 && selectedPeriod == "Today")
                 )
             )
@@ -145,7 +196,7 @@ fun ActivityScreen(
                         val appsArr = currentPeriodObj.optJSONArray("apps")
                         val screenTime = currentPeriodObj.optString("screenTime", "0m")
                         val unlocks = currentPeriodObj.optInt("unlocks", 0)
-                        val top = currentPeriodObj.optString("topApp", "None")
+                        val top = resolveProperAppName("", currentPeriodObj.optString("topApp", "None"))
 
                         val catObj = currentPeriodObj.optJSONObject("categories")
                         val catBreakdown = if (catObj != null) {
@@ -537,7 +588,7 @@ fun ActivityScreen(
                         }
                     }
                 } else {
-                    // 5. App Usage Item Cards
+                    // 5. App Usage Item Cards (with Real App Icons)
                     items(liveApps, key = { "${it.packageName}_${it.durationMinutes}" }) { app ->
                         Surface(
                             shape = RoundedCornerShape(16.dp),
@@ -554,12 +605,22 @@ fun ActivityScreen(
                                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                                         Box(
                                             modifier = Modifier
-                                                .size(40.dp)
-                                                .clip(RoundedCornerShape(10.dp))
-                                                .background(app.iconColor.copy(alpha = 0.15f)),
+                                                .size(42.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(app.iconColor.copy(alpha = 0.12f)),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            Icon(app.icon, contentDescription = null, tint = app.iconColor, modifier = Modifier.size(22.dp))
+                                            if (app.iconBitmap != null) {
+                                                Image(
+                                                    bitmap = app.iconBitmap.asImageBitmap(),
+                                                    contentDescription = app.name,
+                                                    modifier = Modifier
+                                                        .size(32.dp)
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                )
+                                            } else {
+                                                Icon(app.icon, contentDescription = null, tint = app.iconColor, modifier = Modifier.size(24.dp))
+                                            }
                                         }
                                         Spacer(modifier = Modifier.width(12.dp))
                                         Column {

@@ -236,11 +236,14 @@ object BackgroundActivityManager {
                 null
             }
 
-            val appName = if (appInfo != null) {
-                pm.getApplicationLabel(appInfo).toString()
-            } else {
-                pkg.substringAfterLast('.').replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
-            }
+            val rawLabel = if (appInfo != null) {
+                try {
+                    pm.getApplicationLabel(appInfo).toString().trim()
+                } catch (_: Exception) { null }
+            } else null
+
+            val appName = resolveProperAppName(pkg, rawLabel)
+            val iconBase64 = getAppIconBase64(pm, appInfo)
 
             val category = inferCategory(pkg, appInfo)
             when (category) {
@@ -264,6 +267,9 @@ object BackgroundActivityManager {
                 put("durationMinutes", mins)
                 put("percentage", percentage)
                 put("openCount", openCount)
+                if (iconBase64 != null) {
+                    put("iconBase64", iconBase64)
+                }
             }
             appsArray.put(appJson)
         }
@@ -327,6 +333,57 @@ object BackgroundActivityManager {
             lower.contains("game") || lower.contains("pubg") || lower.contains("freefire") ||
                     lower.contains("roblox") || lower.contains("candycrush") || lower.contains("clash") -> "Games"
             else -> "Utility"
+        }
+    }
+
+    private fun getAppIconBase64(pm: PackageManager, appInfo: ApplicationInfo?): String? {
+        if (appInfo == null) return null
+        return try {
+            val drawable = pm.getApplicationIcon(appInfo)
+            val width = (drawable.intrinsicWidth.takeIf { it > 0 } ?: 96).coerceIn(48, 96)
+            val height = (drawable.intrinsicHeight.takeIf { it > 0 } ?: 96).coerceIn(48, 96)
+            val bmp = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bmp)
+            drawable.setBounds(0, 0, canvas.width, canvas.height)
+            drawable.draw(canvas)
+            val scaled = if (bmp.width > 72 || bmp.height > 72) {
+                android.graphics.Bitmap.createScaledBitmap(bmp, 72, 72, true)
+            } else bmp
+            val stream = java.io.ByteArrayOutputStream()
+            scaled.compress(android.graphics.Bitmap.CompressFormat.PNG, 85, stream)
+            android.util.Base64.encodeToString(stream.toByteArray(), android.util.Base64.NO_WRAP)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun resolveProperAppName(packageName: String, systemLabel: String?): String {
+        if (!systemLabel.isNullOrBlank() && !systemLabel.contains(".") && !systemLabel.equals("android", ignoreCase = true)) {
+            return systemLabel
+        }
+        val lower = packageName.lowercase(Locale.ROOT)
+        return when {
+            lower == "com.whatsapp" || lower.contains("whatsapp") -> "WhatsApp"
+            lower == "com.google.android.youtube" || lower.contains("youtube") -> "YouTube"
+            lower == "com.instagram.android" || lower.contains("instagram") -> "Instagram"
+            lower == "com.android.chrome" || lower.contains("chrome") -> "Google Chrome"
+            lower == "com.facebook.katana" || lower.contains("facebook") -> "Facebook"
+            lower == "com.facebook.orca" || lower.contains("messenger") -> "Messenger"
+            lower == "org.telegram.messenger" || lower.contains("telegram") -> "Telegram"
+            lower == "com.spotify.music" || lower.contains("spotify") -> "Spotify"
+            lower == "com.google.android.apps.maps" || lower.contains("maps") -> "Google Maps"
+            lower == "com.google.android.gm" || lower.contains("gmail") -> "Gmail"
+            lower == "com.snapchat.android" || lower.contains("snapchat") -> "Snapchat"
+            lower == "com.zhiliaoapp.musically" || lower.contains("tiktok") -> "TikTok"
+            lower == "com.netflix.mediaclient" || lower.contains("netflix") -> "Netflix"
+            lower == "com.dts.freefireth" || lower.contains("freefire") -> "Free Fire"
+            lower == "com.tencent.ig" || lower.contains("pubg") -> "PUBG Mobile"
+            lower.contains("gallery") -> "Photos & Gallery"
+            lower.contains("camera") -> "Camera"
+            lower.contains("settings") -> "Settings"
+            lower.contains("calculator") -> "Calculator"
+            lower.contains("contacts") || lower.contains("dialer") -> "Phone & Contacts"
+            else -> packageName.substringAfterLast('.').replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
         }
     }
 }
