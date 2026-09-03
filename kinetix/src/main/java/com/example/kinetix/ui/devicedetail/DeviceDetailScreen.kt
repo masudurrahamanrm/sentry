@@ -239,7 +239,7 @@ fun DeviceDetailScreen(
                     onClick = { activeBottomTab = 0 },
                     icon = {
                         Icon(
-                            if (activeBottomTab == 0) Icons.Filled.Home else Icons.Outlined.Home,
+                            if (activeBottomTab == 0) Icons.Filled.SpaceDashboard else Icons.Outlined.SpaceDashboard,
                             contentDescription = "Dashboard",
                             tint = if (activeBottomTab == 0) Color(0xFF673AB7) else Color(0xFF757575)
                         )
@@ -262,7 +262,7 @@ fun DeviceDetailScreen(
                     },
                     icon = {
                         Icon(
-                            Icons.Outlined.AccessTime,
+                            if (activeBottomTab == 1) Icons.Filled.Insights else Icons.Outlined.Insights,
                             contentDescription = "Activity",
                             tint = if (activeBottomTab == 1) Color(0xFF673AB7) else Color(0xFF757575)
                         )
@@ -291,7 +291,7 @@ fun DeviceDetailScreen(
                             ) { Text("3", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
                         }) {
                             Icon(
-                                Icons.Outlined.Notifications,
+                                if (activeBottomTab == 2) Icons.Filled.NotificationsActive else Icons.Outlined.NotificationsActive,
                                 contentDescription = "Alerts",
                                 tint = if (activeBottomTab == 2) Color(0xFF673AB7) else Color(0xFF757575)
                             )
@@ -312,7 +312,7 @@ fun DeviceDetailScreen(
                     onClick = { activeBottomTab = 3 },
                     icon = {
                         Icon(
-                            Icons.Outlined.Settings,
+                            if (activeBottomTab == 3) Icons.Filled.Tune else Icons.Outlined.Tune,
                             contentDescription = "Settings",
                             tint = if (activeBottomTab == 3) Color(0xFF673AB7) else Color(0xFF757575)
                         )
@@ -373,6 +373,7 @@ fun DeviceDetailScreen(
                     .padding(vertical = 4.dp)
             ) {
                 // Left: Circular Hamburger / Back Button
+                // Left: Modern Circular Bento/Menu Button
                 Surface(
                     onClick = onBack,
                     shape = CircleShape,
@@ -383,7 +384,7 @@ fun DeviceDetailScreen(
                         .align(Alignment.CenterStart)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color(0xFF1D1B20), modifier = Modifier.size(20.dp))
+                        Icon(Icons.Outlined.Widgets, contentDescription = "Menu", tint = Color(0xFF1D1B20), modifier = Modifier.size(20.dp))
                     }
                 }
 
@@ -454,10 +455,10 @@ fun DeviceDetailScreen(
                             horizontalArrangement = Arrangement.Center
                         ) {
                             Icon(
-                                Icons.Outlined.AccessTime,
+                                Icons.Outlined.Schedule,
                                 contentDescription = null,
                                 tint = Color(0xFF757575),
-                                modifier = Modifier.size(11.dp)
+                                modifier = Modifier.size(12.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
@@ -468,7 +469,7 @@ fun DeviceDetailScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Icon(
-                                Icons.Default.Refresh,
+                                Icons.Outlined.Sync,
                                 contentDescription = "Remote Wakeup & Refresh",
                                 tint = Color(0xFF0284C7),
                                 modifier = Modifier.size(12.dp)
@@ -490,7 +491,7 @@ fun DeviceDetailScreen(
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            Icons.Outlined.Shield,
+                            Icons.Outlined.VerifiedUser,
                             contentDescription = "Device Information",
                             tint = Color(0xFF2E7D32),
                             modifier = Modifier.size(20.dp)
@@ -705,12 +706,12 @@ fun DeviceDetailScreen(
 
             // 4. Grid of 8 Modern Feature Access Cards
             // Row 1: Notifications & Photos/Cam
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SentryModernToolCard(
                     modifier = Modifier.weight(1f),
                     title = "Notifications",
                     subtitle = "Read SMS & OTP",
-                    icon = Icons.Default.Notifications,
+                    icon = Icons.Outlined.NotificationsActive,
                     badgeColor = Color(0xFF7C4DFF),
                     badgeBg = Color(0xFFEDE7F6),
                     tagText = "New",
@@ -722,7 +723,7 @@ fun DeviceDetailScreen(
                     modifier = Modifier.weight(1f),
                     title = "Photos & Cam",
                     subtitle = "Capture & Gallery",
-                    icon = Icons.Default.PhotoCamera,
+                    icon = Icons.Outlined.CameraAlt,
                     badgeColor = Color(0xFFE91E63),
                     badgeBg = Color(0xFFFCE4EC),
                     onClick = onNavigateToPhotos
@@ -737,7 +738,7 @@ fun DeviceDetailScreen(
                     modifier = Modifier.weight(1f),
                     title = "File Explorer",
                     subtitle = "Browse Storage",
-                    icon = Icons.Default.Folder,
+                    icon = Icons.Outlined.FolderShared,
                     badgeColor = Color(0xFFFF9800),
                     badgeBg = Color(0xFFFFF3E0),
                     onClick = onNavigateToFiles
@@ -746,7 +747,7 @@ fun DeviceDetailScreen(
                     modifier = Modifier.weight(1f),
                     title = "Live Location",
                     subtitle = "GPS Tracker",
-                    icon = Icons.Default.LocationOn,
+                    icon = Icons.Outlined.NearMe,
                     badgeColor = Color(0xFF4CAF50),
                     badgeBg = Color(0xFFE8F5E9),
                     tagText = "Live",
@@ -764,7 +765,7 @@ fun DeviceDetailScreen(
                     modifier = Modifier.weight(1f),
                     title = "Battery Stats",
                     subtitle = "Level & Health",
-                    icon = Icons.Default.BatteryChargingFull,
+                    icon = Icons.Outlined.ElectricBolt,
                     badgeColor = Color(0xFF00BFA5),
                     badgeBg = Color(0xFFE0F2F1),
                     onClick = onNavigateToBattery
@@ -773,7 +774,7 @@ fun DeviceDetailScreen(
                     modifier = Modifier.weight(1f),
                     title = "Mic & Audio",
                     subtitle = "Voice Memo",
-                    icon = Icons.Default.Mic,
+                    icon = Icons.Outlined.GraphicEq,
                     badgeColor = Color(0xFF2979FF),
                     badgeBg = Color(0xFFE3F2FD),
                     onClick = onNavigateToAudio
@@ -788,7 +789,7 @@ fun DeviceDetailScreen(
                     modifier = Modifier.weight(1f),
                     title = "Call History",
                     subtitle = "Logs & Duration",
-                    icon = Icons.Default.PhoneCallback,
+                    icon = Icons.Outlined.PhoneInTalk,
                     badgeColor = Color(0xFF0284C7),
                     badgeBg = Color(0xFFE0F2FE),
                     tagText = "Live",
@@ -800,7 +801,7 @@ fun DeviceDetailScreen(
                     modifier = Modifier.weight(1f),
                     title = "Gallery",
                     subtitle = "Photos & Media",
-                    icon = Icons.Default.PhotoLibrary,
+                    icon = Icons.Outlined.Collections,
                     badgeColor = Color(0xFF8B5CF6),
                     badgeBg = Color(0xFFF3E8FF),
                     tagText = "Live",
@@ -1266,7 +1267,7 @@ fun SentryModernToolCard(
     Surface(
         onClick = onClick,
         modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(13.dp),
         color = Color.White,
         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF0F0F0)),
         shadowElevation = 0.5.dp
@@ -1295,45 +1296,45 @@ fun SentryModernToolCard(
             Spacer(modifier = Modifier.width(8.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = title,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.5.sp,
-                        color = Color(0xFF1D1B20),
-                        maxLines = 1,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    if (tagText != null) {
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = tagBg
-                        ) {
-                            Text(
-                                text = tagText,
-                                color = tagColor,
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
-                            )
-                        }
-                    }
-                }
+                Text(
+                    text = title,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.5.sp,
+                    color = Color(0xFF1D1B20),
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
                 Text(
                     text = subtitle,
                     color = Color(0xFF757575),
                     fontSize = 9.5.sp,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
 
-            Icon(
-                Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = Color(0xFFD1D5DB),
-                modifier = Modifier.size(13.dp)
-            )
+            if (tagText != null) {
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = tagBg,
+                    modifier = Modifier.padding(start = 2.dp)
+                ) {
+                    Text(
+                        text = tagText,
+                        color = tagColor,
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.5.dp)
+                    )
+                }
+            } else {
+                Icon(
+                    Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = Color(0xFFD1D5DB),
+                    modifier = Modifier.size(13.dp)
+                )
+            }
         }
     }
 }
