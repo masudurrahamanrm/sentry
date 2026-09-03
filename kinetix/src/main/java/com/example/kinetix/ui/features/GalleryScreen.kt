@@ -210,19 +210,24 @@ fun GalleryScreen(
 
     fun parseGalleryJson(arr: JSONArray): List<GalleryItem> {
         val list = mutableListOf<GalleryItem>()
+        val seenIds = mutableSetOf<String>()
         for (i in 0 until arr.length()) {
-            val obj = arr.getJSONObject(i)
+            val obj = arr.optJSONObject(i) ?: continue
             val thumb = obj.optString("thumbnail").takeIf { !it.isNullOrBlank() && it != "null" && it.length > 50 }
             val size = obj.optString("size", "3.2 MB")
             // Filter out corrupted / placeholder 3 B items
             if (thumb == null || (size.endsWith(" B") && (size.removeSuffix(" B").toIntOrNull() ?: 0) < 500)) {
                 continue
             }
+            val rawId = obj.optString("id").takeIf { it.isNotBlank() && it != "null" } ?: "media_${System.currentTimeMillis()}_$i"
+            if (seenIds.contains(rawId)) continue
+            seenIds.add(rawId)
+
             list.add(
                 GalleryItem(
-                    id = obj.optString("id", "media_$i"),
+                    id = rawId,
                     name = obj.optString("name", "IMG_$i.jpg"),
-                    album = obj.optString("album", "Camera"),
+                    album = obj.optString("album", "Camera").ifBlank { "Camera" },
                     mimeType = obj.optString("mimeType", "image/jpeg"),
                     size = size,
                     date = obj.optString("date", "Today"),
@@ -273,13 +278,18 @@ fun GalleryScreen(
                         com.example.kinetix.cache.KinetixDeviceCache.saveCachedGallery(context, deviceId, arr)
                     }
                     withContext(Dispatchers.Main) {
-                        val map = mediaItems.associateBy { it.id }.toMutableMap()
+                        val map = linkedMapOf<String, GalleryItem>()
+                        for (item in mediaItems) {
+                            map[item.id] = item
+                        }
                         for (item in incomingList) {
                             map[item.id] = item
                         }
                         val merged = map.values.sortedByDescending { it.timestamp }.take(300)
-                        mediaItems.clear()
-                        mediaItems.addAll(merged)
+                        if (mediaItems.toList() != merged) {
+                            mediaItems.clear()
+                            mediaItems.addAll(merged)
+                        }
                     }
                 }
 
@@ -294,13 +304,18 @@ fun GalleryScreen(
                             com.example.kinetix.cache.KinetixDeviceCache.saveCachedGallery(context, deviceId, secondArr)
                         }
                         withContext(Dispatchers.Main) {
-                            val map = mediaItems.associateBy { it.id }.toMutableMap()
+                            val map = linkedMapOf<String, GalleryItem>()
+                            for (item in mediaItems) {
+                                map[item.id] = item
+                            }
                             for (item in secondList) {
                                 map[item.id] = item
                             }
                             val merged = map.values.sortedByDescending { it.timestamp }.take(300)
-                            mediaItems.clear()
-                            mediaItems.addAll(merged)
+                            if (mediaItems.toList() != merged) {
+                                mediaItems.clear()
+                                mediaItems.addAll(merged)
+                            }
                             Toast.makeText(context, "🔄 Gallery updated • ${merged.size} photos synced", Toast.LENGTH_SHORT).show()
                         }
                     }
@@ -581,15 +596,16 @@ fun GalleryScreen(
     }
 
     // Available albums
-    val albums = remember(mediaItems.size) {
-        val set = mutableSetOf("All")
+    val albums = remember(mediaItems.toList()) {
+        val set = linkedSetOf("All")
         mediaItems.forEach { set.add(it.album) }
         set.toList()
     }
 
-    val filteredItems = remember(selectedAlbum, mediaItems.size) {
-        if (selectedAlbum == "All") mediaItems
-        else mediaItems.filter { it.album.equals(selectedAlbum, ignoreCase = true) }
+    val filteredItems = remember(selectedAlbum, mediaItems.toList()) {
+        val list = mediaItems.toList()
+        if (selectedAlbum == "All") list
+        else list.filter { it.album.equals(selectedAlbum, ignoreCase = true) }
     }
 
     Scaffold(
@@ -695,7 +711,14 @@ fun GalleryScreen(
                             .fillMaxWidth()
                             .weight(1f)
                     ) {
-                        items(filteredItems, key = { it.id }) { item ->
+                        items(
+                            count = filteredItems.size,
+                            key = { index ->
+                                val it = filteredItems.getOrNull(index)
+                                if (it != null) "${it.id}_${it.timestamp}_$index" else "item_$index"
+                            }
+                        ) { index ->
+                            val item = filteredItems.getOrNull(index) ?: return@items
                             GalleryGridCard(
                                 item = item,
                                 onClick = {
