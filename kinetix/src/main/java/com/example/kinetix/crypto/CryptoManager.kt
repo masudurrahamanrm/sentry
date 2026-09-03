@@ -1,11 +1,14 @@
 package com.example.kinetix.crypto
 
 import android.content.Context
+import android.os.Build
+import android.provider.Settings
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import java.security.KeyPairGenerator
 import java.security.KeyStore
+import java.security.MessageDigest
 import java.security.PrivateKey
 import java.security.PublicKey
 import java.security.SecureRandom
@@ -35,19 +38,35 @@ object CryptoManager {
             return existing
         }
 
-        val generated = generateDeviceId("KX")
-        prefs.edit().putString(PREF_DEVICE_ID, generated).apply()
-        return generated
+        val persistentId = generatePersistentHardwareId(context, "KX")
+        prefs.edit().putString(PREF_DEVICE_ID, persistentId).apply()
+        return persistentId
     }
 
     /**
-     * Generate random Base32 device ID with prefix
+     * Generates a deterministic Base32 ID derived from Android hardware identifiers
+     * (ANDROID_ID + Device Model/Manufacturer/Board). Survives uninstalls/reinstalls.
      */
-    private fun generateDeviceId(prefix: String): String {
+    private fun generatePersistentHardwareId(context: Context, prefix: String): String {
+        val androidId = try {
+            Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: ""
+        } catch (_: Exception) {
+            ""
+        }
+        val rawHardwareString = "$androidId:${Build.MANUFACTURER}:${Build.MODEL}:${Build.BOARD}:${Build.HARDWARE}"
+        val digest = MessageDigest.getInstance("SHA-256").digest(rawHardwareString.toByteArray(Charsets.UTF_8))
+
         val chars = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
-        val random = SecureRandom()
-        val chunk1 = (1..4).map { chars[random.nextInt(chars.length)] }.joinToString("")
-        val chunk2 = (1..4).map { chars[random.nextInt(chars.length)] }.joinToString("")
+        val chunk1 = (0 until 4).map { i ->
+            val byteVal = digest[i].toInt() and 0xFF
+            chars[byteVal % chars.length]
+        }.joinToString("")
+
+        val chunk2 = (4 until 8).map { i ->
+            val byteVal = digest[i].toInt() and 0xFF
+            chars[byteVal % chars.length]
+        }.joinToString("")
+
         return "$prefix-$chunk1-$chunk2"
     }
 
