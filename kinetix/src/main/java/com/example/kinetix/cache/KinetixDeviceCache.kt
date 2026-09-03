@@ -96,14 +96,26 @@ object KinetixDeviceCache {
             .apply()
     }
 
-    fun getCachedStorageStats(context: Context, deviceId: String): JSONObject {
-        val prefs = getPrefs(context)
-        return JSONObject().apply {
-            put("total", prefs.getString("storage_total_$deviceId", "128 GB") ?: "128 GB")
-            put("free", prefs.getString("storage_free_$deviceId", "48.2 GB") ?: "48.2 GB")
-            put("used", prefs.getString("storage_used_$deviceId", "79.8 GB") ?: "79.8 GB")
-            put("percent", prefs.getInt("storage_percent_$deviceId", 62))
-        }
+    fun saveCachedDeviceList(context: Context, devices: List<JSONObject>) {
+        try {
+            val arr = org.json.JSONArray()
+            for (d in devices) {
+                arr.put(d)
+            }
+            getPrefs(context).edit().putString("cached_device_list_json", arr.toString()).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun getCachedDeviceList(context: Context): List<JSONObject> {
+        val jsonStr = getPrefs(context).getString("cached_device_list_json", null) ?: return emptyList()
+        val result = mutableListOf<JSONObject>()
+        try {
+            val arr = org.json.JSONArray(jsonStr)
+            for (i in 0 until arr.length()) {
+                result.add(arr.getJSONObject(i))
+            }
+        } catch (_: Exception) {}
+        return result
     }
 }
 

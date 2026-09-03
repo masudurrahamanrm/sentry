@@ -1,5 +1,6 @@
 package com.example.sentry.ui.companion
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -30,6 +31,12 @@ fun CompanionInfoScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var deviceId by remember { mutableStateOf(com.example.sentry.crypto.CryptoManager.getOrCreateDeviceId(context)) }
+    var deviceName by remember {
+        mutableStateOf(
+            context.getSharedPreferences("sentry_device_prefs", Context.MODE_PRIVATE)
+                .getString("device_custom_name", "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} (Sentry)") ?: "Sentry Device"
+        )
+    }
     var isConnected by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("Connecting to Backend...") }
 
@@ -41,6 +48,11 @@ fun CompanionInfoScreen(
                 if (regRes.isSuccess) {
                     isConnected = true
                     statusText = "Connected to Cloud Backend"
+                    val saved = context.getSharedPreferences("sentry_device_prefs", Context.MODE_PRIVATE)
+                        .getString("device_custom_name", null)
+                    if (!saved.isNullOrBlank()) {
+                        deviceName = saved
+                    }
                 } else {
                     isConnected = false
                     statusText = "Connecting to Backend..."
@@ -84,6 +96,19 @@ fun CompanionInfoScreen(
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     Text(
+                        text = "Device Name",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = deviceName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
                         text = "Device ID",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -92,7 +117,7 @@ fun CompanionInfoScreen(
                     Text(
                         text = deviceId,
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 26.sp,
+                        fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
                         letterSpacing = 1.sp

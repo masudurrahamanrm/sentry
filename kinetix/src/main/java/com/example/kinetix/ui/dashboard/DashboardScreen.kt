@@ -81,8 +81,38 @@ fun DashboardScreen(
     val coroutineScope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
 
-    val pairedDevices = remember { mutableStateListOf<PairedDeviceItem>() }
-    var selectedDevice by remember { mutableStateOf<PairedDeviceItem?>(null) }
+    val pairedDevices = remember {
+        mutableStateListOf<PairedDeviceItem>().apply {
+            val cachedJson = com.example.kinetix.cache.KinetixDeviceCache.getCachedDeviceList(context)
+            if (cachedJson.isNotEmpty()) {
+                for (obj in cachedJson) {
+                    val devId = obj.optString("deviceId", "")
+                    if (devId.isNotBlank()) {
+                        val savedCustomName = com.example.kinetix.cache.KinetixDeviceCache.getDeviceName(context, devId, "")
+                        val finalName = if (savedCustomName.isNotBlank()) savedCustomName else obj.optString("deviceName", "Device")
+                        add(
+                            PairedDeviceItem(
+                                deviceId = devId,
+                                deviceName = finalName,
+                                platform = obj.optString("platform", "Android"),
+                                osVersion = obj.optString("osVersion", "Android 14"),
+                                isOnline = obj.optBoolean("isOnline", true),
+                                lastSeenText = obj.optString("lastSeenText", "Saved Device"),
+                                isThisDevice = obj.optBoolean("isThisDevice", false),
+                                latitude = obj.optDouble("latitude", 22.5726),
+                                longitude = obj.optDouble("longitude", 88.3639),
+                                accuracy = obj.optDouble("accuracy", 3.0),
+                                address = obj.optString("address", "Live GPS Location"),
+                                batteryLevel = obj.optInt("batteryLevel", 87),
+                                batteryStatus = obj.optString("batteryStatus", "Optimal Health (Good)")
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+    var selectedDevice by remember { mutableStateOf<PairedDeviceItem?>(pairedDevices.firstOrNull()) }
     var showDeviceDetails by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
     var activeTab by remember { mutableStateOf(0) }
@@ -276,9 +306,42 @@ fun DashboardScreen(
                 }
 
                 val distinctList = newList.distinctBy { it.deviceId }
+
+                // Save to local cache for 0ms instant display next time app opens
+                val cacheJsonList = distinctList.map { d ->
+                    JSONObject().apply {
+                        put("deviceId", d.deviceId)
+                        put("deviceName", d.deviceName)
+                        put("platform", d.platform)
+                        put("osVersion", d.osVersion)
+                        put("isOnline", d.isOnline)
+                        put("lastSeenText", d.lastSeenText)
+                        put("isThisDevice", d.isThisDevice)
+                        put("latitude", d.latitude)
+                        put("longitude", d.longitude)
+                        put("accuracy", d.accuracy)
+                        put("address", d.address)
+                        put("batteryLevel", d.batteryLevel)
+                        put("batteryStatus", d.batteryStatus)
+                    }
+                }
+                com.example.kinetix.cache.KinetixDeviceCache.saveCachedDeviceList(context, cacheJsonList)
+
                 withContext(Dispatchers.Main) {
-                    pairedDevices.clear()
-                    pairedDevices.addAll(distinctList)
+                    if (pairedDevices.isEmpty()) {
+                        pairedDevices.addAll(distinctList)
+                    } else {
+                        // Smooth in-place update to prevent full-screen re-rendering
+                        for (newItem in distinctList) {
+                            val existingIndex = pairedDevices.indexOfFirst { it.deviceId == newItem.deviceId }
+                            if (existingIndex != -1) {
+                                pairedDevices[existingIndex] = newItem
+                            } else {
+                                pairedDevices.add(newItem)
+                            }
+                        }
+                    }
+
                     if (selectedDevice == null && distinctList.isNotEmpty()) {
                         selectedDevice = distinctList.first()
                     } else if (selectedDevice != null) {

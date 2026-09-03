@@ -36,10 +36,12 @@ class SentryApiClient(
         val deviceId = CryptoManager.getOrCreateDeviceId(context)
         val publicKeyPem = CryptoManager.getPublicKeyPem()
         val capabilities = PermissionManager.getDeviceCapabilities(context)
+        val savedName = context.getSharedPreferences("sentry_device_prefs", Context.MODE_PRIVATE)
+            .getString("device_custom_name", null)
 
         val body = JSONObject().apply {
             put("deviceId", deviceId)
-            put("deviceName", "${Build.MANUFACTURER} ${Build.MODEL} (Sentry)")
+            put("deviceName", savedName ?: "${Build.MANUFACTURER} ${Build.MODEL} (Sentry)")
             put("platform", "Android")
             put("osVersion", "Android ${Build.VERSION.RELEASE}")
             put("appVersion", "1.0.0")
@@ -47,7 +49,16 @@ class SentryApiClient(
             put("capabilities", capabilities)
         }
 
-        post("/devices/register", body, authenticated = false)
+        val result = post("/devices/register", body, authenticated = false)
+        result.onSuccess { res ->
+            val devObj = res.optJSONObject("device")
+            val cloudName = devObj?.optString("deviceName", "")
+            if (!cloudName.isNullOrBlank()) {
+                context.getSharedPreferences("sentry_device_prefs", Context.MODE_PRIVATE)
+                    .edit().putString("device_custom_name", cloudName).apply()
+            }
+        }
+        result
     }
 
     suspend fun syncCapabilities(): Result<JSONObject> = withContext(Dispatchers.IO) {

@@ -14,16 +14,22 @@ export async function registerDeviceHandler(req: Request, res: Response, next: N
     const { deviceId, deviceName, platform, osVersion, appVersion, publicKey, capabilities } = req.body || {};
     const devId = deviceId || device?.deviceId;
     const name = deviceName || device?.deviceName || 'Android Device';
+    let effectiveName = name;
 
     // Persist to MongoDB Cloud Storage
     if (devId && isMongoConnected()) {
       try {
+        const existing = await DeviceModel.findOne({ deviceId: devId }).lean();
+        if (existing?.deviceName && existing.deviceName !== 'Android Device' && !existing.deviceName.endsWith('(Sentry)') && !existing.deviceName.endsWith('(Controller)')) {
+          effectiveName = existing.deviceName;
+        }
+
         await DeviceModel.updateOne(
           { deviceId: devId },
           {
             $set: {
               deviceId: devId,
-              deviceName: name,
+              deviceName: effectiveName,
               platform: platform || 'ANDROID',
               osVersion: osVersion || 'Android 14',
               appVersion: appVersion || '1.0.0',
@@ -48,9 +54,9 @@ export async function registerDeviceHandler(req: Request, res: Response, next: N
     }
 
     res.status(201).json({
-      device: device || {
+      device: device ? { ...device, deviceName: effectiveName } : {
         deviceId: devId,
-        deviceName: name,
+        deviceName: effectiveName,
         platform: platform || 'ANDROID',
         osVersion: osVersion || 'Android 14',
         appVersion: appVersion || '1.0.0',
