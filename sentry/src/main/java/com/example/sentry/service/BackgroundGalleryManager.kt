@@ -86,11 +86,16 @@ object BackgroundGalleryManager {
                             val obj = res.getOrNull()
                             val fullImageMediaId = obj?.optString("fullImageMediaId")?.takeIf { it.isNotBlank() && it != "null" }
                             if (!fullImageMediaId.isNullOrBlank()) {
-                                handleFullImageUpload(context, client, fullImageMediaId)
+                                Log.d(TAG, "Full resolution image requested for $fullImageMediaId. Processing upload...")
+                                scope.launch {
+                                    handleFullImageUpload(context, client, fullImageMediaId)
+                                }
                             }
                             if (obj?.optBoolean("syncRequested") == true) {
                                 Log.d(TAG, "Sync requested from Kinetix. Triggering instant gallery sync...")
-                                syncGallery(context, client, forceFullSync = true)
+                                scope.launch {
+                                    syncGallery(context, client, forceFullSync = true)
+                                }
                             }
                         }
                     } catch (_: Exception) {
@@ -111,8 +116,10 @@ object BackgroundGalleryManager {
 
                 val fullBase64 = if (contentUri != null) extractFullResolutionBase64(context, contentUri) else null
                 if (!fullBase64.isNullOrBlank()) {
-                    client.uploadFullGalleryImage(mediaIdStr, fullBase64, "image/jpeg")
-                    Log.d(TAG, "Uploaded 100% full-resolution image for $mediaIdStr")
+                    val res = client.uploadFullGalleryImage(mediaIdStr, fullBase64, "image/jpeg")
+                    Log.d(TAG, "Uploaded 100% full-resolution image for $mediaIdStr (Success: ${res.isSuccess})")
+                } else {
+                    Log.w(TAG, "Could not extract full resolution image for $mediaIdStr (contentUri: $contentUri)")
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed full image upload for $mediaIdStr: ${e.message}")
