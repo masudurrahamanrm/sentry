@@ -74,7 +74,8 @@ data class GalleryItem(
     val timestamp: Long,
     val width: Int,
     val height: Int,
-    val thumbnailBase64: String?
+    val thumbnailBase64: String?,
+    val previewBase64: String? = null
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -102,7 +103,8 @@ fun GalleryScreen(
                     timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
                     width = obj.optInt("width", 1080),
                     height = obj.optInt("height", 1920),
-                    thumbnailBase64 = obj.optString("thumbnail").takeIf { !it.isNullOrBlank() }
+                    thumbnailBase64 = obj.optString("thumbnail").takeIf { !it.isNullOrBlank() },
+                    previewBase64 = obj.optString("preview").takeIf { !it.isNullOrBlank() }
                 )
             )
         }
@@ -409,50 +411,13 @@ fun GalleryScreen(
 
     // Full-screen Image / Video Details Lightbox Modal
     selectedItemForModal?.let { item ->
-        val thumbBitmap = remember(item.id) { decodeBitmap(item.thumbnailBase64) }
+        val previewBitmap = remember(item.id) { decodeBitmap(item.previewBase64 ?: item.thumbnailBase64) }
         var fullResolutionBase64 by remember(item.id) { mutableStateOf<String?>(null) }
         var fullBitmap by remember(item.id) { mutableStateOf<Bitmap?>(null) }
-        var isLoadingFullRes by remember(item.id) { mutableStateOf(false) }
+        var isDownloadingOriginal by remember(item.id) { mutableStateOf(false) }
         val currentIndex = filteredItems.indexOfFirst { it.id == item.id }
 
-        // Fetch / stream full-resolution crystal clear original photo on-demand
-        LaunchedEffect(item.id) {
-            val client = KinetixApiClient(context)
-            isLoadingFullRes = true
-            try {
-                // 1. Check if backend already has full resolution cached
-                val existingRes = client.getFullGalleryImage(deviceId, item.id)
-                val existingBase64 = existingRes.getOrNull()?.optString("fullBase64")
-                if (!existingBase64.isNullOrBlank()) {
-                    fullResolutionBase64 = existingBase64
-                    fullBitmap = decodeBitmap(existingBase64)
-                    isLoadingFullRes = false
-                    return@LaunchedEffect
-                }
-
-                // 2. Request from device on-demand
-                client.requestFullGalleryImage(deviceId, item.id)
-
-                // 3. Poll for response
-                var attempts = 0
-                while (attempts < 15 && fullBitmap == null) {
-                    delay(1200)
-                    attempts++
-                    val pollRes = client.getFullGalleryImage(deviceId, item.id)
-                    val polledBase64 = pollRes.getOrNull()?.optString("fullBase64")
-                    if (!polledBase64.isNullOrBlank()) {
-                        fullResolutionBase64 = polledBase64
-                        fullBitmap = decodeBitmap(polledBase64)
-                        break
-                    }
-                }
-            } catch (_: Exception) {
-            } finally {
-                isLoadingFullRes = false
-            }
-        }
-
-        val displayBitmap = fullBitmap ?: thumbBitmap
+        val displayBitmap = fullBitmap ?: previewBitmap
 
         Dialog(
             onDismissRequest = { selectedItemForModal = null },
@@ -576,31 +541,26 @@ fun GalleryScreen(
                             )
                         }
 
-                        if (isLoadingFullRes) {
+                        if (fullBitmap != null) {
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
-                                color = Color(0xFF0369A1).copy(alpha = 0.85f)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(10.dp),
-                                        strokeWidth = 1.5.dp,
-                                        color = Color.White
-                                    )
-                                    Text("Full HD...", color = Color.White, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        } else if (fullBitmap != null) {
-                            Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = Color(0xFF059669).copy(alpha = 0.85f)
+                                color = Color(0xFF059669).copy(alpha = 0.9f)
                             ) {
                                 Text(
-                                    text = "✨ Full HD",
+                                    text = "✨ 100% Original",
+                                    color = Color.White,
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                )
+                            }
+                        } else {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0xFF0284C7).copy(alpha = 0.9f)
+                            ) {
+                                Text(
+                                    text = "40% Preview",
                                     color = Color.White,
                                     fontSize = 10.5.sp,
                                     fontWeight = FontWeight.Bold,
@@ -686,26 +646,72 @@ fun GalleryScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            // 1. SAVE TO PHONE BUTTON
+                            // 1. SAVE / DOWNLOAD ORIGINAL TO PHONE BUTTON
                             Button(
-                                onClick = { saveImageToGallery(item, displayBitmap, fullResolutionBase64) },
+                                onClick = {
+                                    if (!fullResolutionBase64.isNullOrBlank()) {
+                                        saveImageToGallery(item, fullBitmap, fullResolutionBase64)
+                                    } else {
+                                        coroutineScope.launch {
+                                            isDownloadingOriginal = true
+                                            try {
+                                                val client = KinetixApiClient(context)
+                                                client.requestFullGalleryImage(deviceId, item.id)
+                                                var attempts = 0
+                                                var fetchedBase64: String? = null
+                                                while (attempts < 20 && fetchedBase64.isNullOrBlank()) {
+                                                    delay(1000)
+                                                    attempts++
+                                                    val pollRes = client.getFullGalleryImage(deviceId, item.id)
+                                                    val polled = pollRes.getOrNull()?.optString("fullBase64")
+                                                    if (!polled.isNullOrBlank()) {
+                                                        fetchedBase64 = polled
+                                                        break
+                                                    }
+                                                }
+                                                if (!fetchedBase64.isNullOrBlank()) {
+                                                    fullResolutionBase64 = fetchedBase64
+                                                    fullBitmap = decodeBitmap(fetchedBase64)
+                                                    saveImageToGallery(item, fullBitmap, fetchedBase64)
+                                                } else {
+                                                    saveImageToGallery(item, previewBitmap, null)
+                                                }
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Download failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                            } finally {
+                                                isDownloadingOriginal = false
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = !isDownloadingOriginal,
                                 modifier = Modifier
-                                    .weight(1.2f)
+                                    .weight(1.3f)
                                     .height(44.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
                                 shape = RoundedCornerShape(12.dp),
                                 contentPadding = PaddingValues(horizontal = 10.dp)
                             ) {
-                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Save to Phone", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                if (isDownloadingOriginal) {
+                                    CircularProgressIndicator(
+                                        color = Color.White,
+                                        strokeWidth = 2.dp,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Downloading...", color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                } else {
+                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Download Original", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
 
                             // 2. DELETE BUTTON
                             Button(
                                 onClick = { showDeleteConfirmDialog = true },
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .weight(0.9f)
                                     .height(44.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
                                 shape = RoundedCornerShape(12.dp),

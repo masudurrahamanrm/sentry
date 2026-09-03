@@ -192,8 +192,10 @@ object BackgroundGalleryManager {
                     val dateFormatted = sdf.format(Date(dateAddedSec * 1000))
                     val contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, mediaId)
 
-                    // Fast lightweight compressed thumbnail (160x160, 60% quality)
+                    // High-Quality Crisp Thumbnail (480x480, 85% quality)
                     val thumbnailBase64 = extractThumbnailBase64(context, contentUri)
+                    // 40% Scale Preview for fast & sharp lightbox modal viewing
+                    val previewBase64 = extract40PercentPreviewBase64(context, contentUri)
 
                     val obj = JSONObject().apply {
                         put("id", "media_$mediaId")
@@ -207,6 +209,9 @@ object BackgroundGalleryManager {
                         put("height", height)
                         if (!thumbnailBase64.isNullOrBlank()) {
                             put("thumbnail", thumbnailBase64)
+                        }
+                        if (!previewBase64.isNullOrBlank()) {
+                            put("preview", previewBase64)
                         }
                     }
                     items.add(obj)
@@ -240,16 +245,50 @@ object BackgroundGalleryManager {
     private fun extractThumbnailBase64(context: Context, uri: Uri): String? {
         return try {
             val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                context.contentResolver.loadThumbnail(uri, Size(160, 160), null)
+                context.contentResolver.loadThumbnail(uri, Size(480, 480), null)
             } else {
                 context.contentResolver.openInputStream(uri)?.use { stream ->
-                    val options = BitmapFactory.Options().apply { inSampleSize = 4 }
+                    val options = BitmapFactory.Options().apply { inSampleSize = 2 }
                     BitmapFactory.decodeStream(stream, null, options)
                 }
             } ?: return null
 
             val out = ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 60, out)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+            Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun extract40PercentPreviewBase64(context: Context, uri: Uri): String? {
+        return try {
+            val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            context.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, boundsOptions)
+            }
+            val origW = boundsOptions.outWidth.takeIf { it > 0 } ?: 1080
+            val origH = boundsOptions.outHeight.takeIf { it > 0 } ?: 1920
+
+            // 40% dimensions
+            val targetW = (origW * 0.40f).toInt().coerceAtLeast(360)
+            val targetH = (origH * 0.40f).toInt().coerceAtLeast(360)
+
+            val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                context.contentResolver.loadThumbnail(uri, Size(targetW, targetH), null)
+            } else {
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    val options = BitmapFactory.Options().apply { inSampleSize = 2 }
+                    BitmapFactory.decodeStream(stream, null, options)
+                }
+            } ?: return null
+
+            val scaled = if (bitmap.width != targetW && bitmap.height != targetH && targetW > 0 && targetH > 0) {
+                Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
+            } else bitmap
+
+            val out = ByteArrayOutputStream()
+            scaled.compress(Bitmap.CompressFormat.JPEG, 85, out)
             Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
         } catch (_: Exception) {
             null
@@ -261,7 +300,7 @@ object BackgroundGalleryManager {
             // First attempt to read exact raw original bytes directly (100% lossless original quality)
             context.contentResolver.openInputStream(uri)?.use { stream ->
                 val bytes = stream.readBytes()
-                if (bytes.isNotEmpty() && bytes.size < 15 * 1024 * 1024) {
+                if (bytes.isNotEmpty() && bytes.size < 25 * 1024 * 1024) {
                     return Base64.encodeToString(bytes, Base64.NO_WRAP)
                 }
             }
@@ -275,7 +314,7 @@ object BackgroundGalleryManager {
             } ?: return null
 
             val out = ByteArrayOutputStream()
-            fullBitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+            fullBitmap.compress(Bitmap.CompressFormat.JPEG, 98, out)
             Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
         } catch (e: Exception) {
             Log.w(TAG, "Error reading full resolution photo: ${e.message}")
