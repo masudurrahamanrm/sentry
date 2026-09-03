@@ -13,6 +13,7 @@ import android.provider.MediaStore
 import android.util.Base64
 import android.widget.Toast
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -725,13 +726,13 @@ fun GalleryScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black)
+                    .background(Color(0xFFF8FAFC))
             ) {
                 // Main Interactive Image with Pinch-to-Zoom & Pan & Rotation
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(bottom = 140.dp)
+                        .padding(bottom = 150.dp, top = 80.dp)
                         .pointerInput(Unit) {
                             detectTransformGestures { _, pan, zoom, _ ->
                                 scale = (scale * zoom).coerceIn(1f, 5f)
@@ -763,145 +764,177 @@ fun GalleryScreen(
                         )
                     } else {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.BrokenImage, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(64.dp))
+                            Icon(Icons.Default.BrokenImage, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(64.dp))
                         }
                     }
                 }
 
                 // Previous Photo Chevron
                 if (currentIndex > 0) {
-                    IconButton(
-                        onClick = {
-                            scale = 1f
-                            offsetX = 0f
-                            offsetY = 0f
-                            rotationAngle = 0f
-                            selectedItemForModal = filteredItems[currentIndex - 1]
-                        },
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.White,
+                        shadowElevation = 6.dp,
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                         modifier = Modifier
                             .align(Alignment.CenterStart)
-                            .padding(start = 12.dp)
-                            .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                            .padding(start = 14.dp)
+                            .size(42.dp)
                     ) {
-                        Icon(Icons.Default.ChevronLeft, contentDescription = "Previous", tint = Color.White, modifier = Modifier.size(28.dp))
+                        IconButton(
+                            onClick = {
+                                scale = 1f
+                                offsetX = 0f
+                                offsetY = 0f
+                                rotationAngle = 0f
+                                selectedItemForModal = filteredItems[currentIndex - 1]
+                            }
+                        ) {
+                            Icon(Icons.Default.ChevronLeft, contentDescription = "Previous", tint = Color(0xFF1E293B), modifier = Modifier.size(24.dp))
+                        }
                     }
                 }
 
                 // Next Photo Chevron
                 if (currentIndex >= 0 && currentIndex < filteredItems.size - 1) {
-                    IconButton(
-                        onClick = {
-                            scale = 1f
-                            offsetX = 0f
-                            offsetY = 0f
-                            rotationAngle = 0f
-                            selectedItemForModal = filteredItems[currentIndex + 1]
-                        },
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.White,
+                        shadowElevation = 6.dp,
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
-                            .padding(end = 12.dp)
-                            .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                            .padding(end = 14.dp)
+                            .size(42.dp)
                     ) {
-                        Icon(Icons.Default.ChevronRight, contentDescription = "Next", tint = Color.White, modifier = Modifier.size(28.dp))
+                        IconButton(
+                            onClick = {
+                                scale = 1f
+                                offsetX = 0f
+                                offsetY = 0f
+                                rotationAngle = 0f
+                                selectedItemForModal = filteredItems[currentIndex + 1]
+                            }
+                        ) {
+                            Icon(Icons.Default.ChevronRight, contentDescription = "Next", tint = Color(0xFF1E293B), modifier = Modifier.size(24.dp))
+                        }
                     }
                 }
 
-                // Top Floating Action Bar
-                Row(
+                // Top Floating Modern Glass Capsule
+                Surface(
+                    shape = RoundedCornerShape(28.dp),
+                    color = Color.White,
+                    shadowElevation = 6.dp,
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 42.dp, start = 16.dp, end = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 14.dp)
+                        .padding(top = 40.dp)
+                        .align(Alignment.TopCenter)
                 ) {
-                    // Close Button
-                    IconButton(
-                        onClick = { selectedItemForModal = null },
-                        modifier = Modifier.background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                    ) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
-                    }
-
-                    // Resolution Status / Album Pill
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Close Button
                         Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color.Black.copy(alpha = 0.65f)
+                            shape = CircleShape,
+                            color = Color(0xFFF1F5F9),
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            IconButton(onClick = { selectedItemForModal = null }) {
+                                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color(0xFF0F172A), modifier = Modifier.size(20.dp))
+                            }
+                        }
+
+                        // Center: Album & Resolution Status
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
-                                text = "${item.album} (${currentIndex + 1}/${filteredItems.size})",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                text = "${item.album} • ${currentIndex + 1}/${filteredItems.size}",
+                                color = Color(0xFF0F172A),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
                             )
-                        }
 
-                        if (fullBitmap != null) {
-                            Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = Color(0xFF059669).copy(alpha = 0.9f)
-                            ) {
-                                Text(
-                                    text = "✨ 100% Original",
-                                    color = Color.White,
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-                                )
+                            if (fullBitmap != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFECFDF5),
+                                    border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                                ) {
+                                    Text(
+                                        text = "✨ 100% Original",
+                                        color = Color(0xFF059669),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            } else {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFF0F9FF),
+                                    border = BorderStroke(1.dp, Color(0xFFBAE6FD))
+                                ) {
+                                    Text(
+                                        text = "40% Preview",
+                                        color = Color(0xFF0284C7),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
                             }
-                        } else {
+                        }
+
+                        // Right Action Tools: Rotate & Info
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = Color(0xFF0284C7).copy(alpha = 0.9f)
+                                shape = CircleShape,
+                                color = Color(0xFFF1F5F9),
+                                modifier = Modifier.size(38.dp)
                             ) {
-                                Text(
-                                    text = "40% Preview",
-                                    color = Color.White,
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-                                )
+                                IconButton(onClick = { rotationAngle = (rotationAngle + 90f) % 360f }) {
+                                    Icon(Icons.AutoMirrored.Filled.RotateRight, contentDescription = "Rotate", tint = Color(0xFF334155), modifier = Modifier.size(20.dp))
+                                }
                             }
-                        }
-                    }
 
-                    // Top Action Tools: Rotate & Reset & Info
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        IconButton(
-                            onClick = { rotationAngle = (rotationAngle + 90f) % 360f },
-                            modifier = Modifier.background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.RotateRight, contentDescription = "Rotate", tint = Color.White)
-                        }
-
-                        IconButton(
-                            onClick = { showDetailsSheet = !showDetailsSheet },
-                            modifier = Modifier.background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                        ) {
-                            Icon(Icons.Default.Info, contentDescription = "Details", tint = Color.White)
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFFF1F5F9),
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                IconButton(onClick = { showDetailsSheet = !showDetailsSheet }) {
+                                    Icon(Icons.Default.Info, contentDescription = "Details", tint = Color(0xFF334155), modifier = Modifier.size(20.dp))
+                                }
+                            }
                         }
                     }
                 }
 
-                // Bottom Pro Toolbar & Metadata Sheet
+                // Bottom Modern White Pro Toolbar
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter),
-                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                    color = Color(0xFF1E293B),
-                    shadowElevation = 8.dp
+                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                    color = Color.White,
+                    shadowElevation = 16.dp,
+                    border = BorderStroke(1.dp, Color(0xFFF1F5F9))
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 18.dp, vertical = 14.dp)
+                            .padding(horizontal = 20.dp, vertical = 16.dp)
                     ) {
-                        // Title & Specs Row
+                        // Title & Resolution Row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
@@ -911,36 +944,38 @@ fun GalleryScreen(
                                 Text(
                                     text = item.name,
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 14.5.sp,
-                                    color = Color.White,
+                                    fontSize = 15.sp,
+                                    color = Color(0xFF0F172A),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = "${item.date} • ${item.size}",
-                                    fontSize = 11.5.sp,
-                                    color = Color(0xFF94A3B8)
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF64748B),
+                                    fontWeight = FontWeight.Medium
                                 )
                             }
 
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFF334155)
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFF0F9FF),
+                                border = BorderStroke(1.dp, Color(0xFFBAE6FD))
                             ) {
                                 Text(
                                     text = "${item.width} x ${item.height}",
-                                    fontSize = 11.5.sp,
-                                    color = Color(0xFF38BDF8),
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF0284C7),
                                     fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                                 )
                             }
                         }
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Action Buttons Row: Save, Delete, Share, Copy
+                        // Action Buttons Row: Download, Delete, Share
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -966,9 +1001,9 @@ fun GalleryScreen(
                                 enabled = !isBgDownloading,
                                 modifier = Modifier
                                     .weight(1.3f)
-                                    .height(44.dp),
+                                    .height(46.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 contentPadding = PaddingValues(horizontal = 10.dp)
                             ) {
                                 if (isBgDownloading) {
@@ -978,11 +1013,11 @@ fun GalleryScreen(
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Downloading in Background...", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text("Downloading...", color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                                 } else {
-                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(17.dp), tint = Color.White)
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Download Original", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text("Download Original", color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
 
@@ -991,25 +1026,26 @@ fun GalleryScreen(
                                 onClick = { showDeleteConfirmDialog = true },
                                 modifier = Modifier
                                     .weight(0.9f)
-                                    .height(44.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-                                shape = RoundedCornerShape(12.dp),
+                                    .height(46.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                                shape = RoundedCornerShape(14.dp),
                                 contentPadding = PaddingValues(horizontal = 10.dp)
                             ) {
-                                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(17.dp), tint = Color.White)
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Delete", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Delete", color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
                             }
 
                             // 3. SHARE BUTTON
-                            IconButton(
-                                onClick = { shareImage(item, displayBitmap, fullResolutionBase64) },
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0xFF334155))
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFFF1F5F9),
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier.size(46.dp)
                             ) {
-                                Icon(Icons.Default.Share, contentDescription = "Share", tint = Color.White, modifier = Modifier.size(18.dp))
+                                IconButton(onClick = { shareImage(item, displayBitmap, fullResolutionBase64) }) {
+                                    Icon(Icons.Default.Share, contentDescription = "Share", tint = Color(0xFF334155), modifier = Modifier.size(18.dp))
+                                }
                             }
                         }
                     }
@@ -1019,8 +1055,9 @@ fun GalleryScreen(
                 if (showDeleteConfirmDialog) {
                     AlertDialog(
                         onDismissRequest = { showDeleteConfirmDialog = false },
-                        title = { Text("Delete Photo?", fontWeight = FontWeight.Bold) },
-                        text = { Text("This will remove '${item.name}' from your gallery records.") },
+                        containerColor = Color.White,
+                        title = { Text("Delete Photo?", fontWeight = FontWeight.Bold, color = Color(0xFF0F172A)) },
+                        text = { Text("This will remove '${item.name}' from your gallery records.", color = Color(0xFF475569)) },
                         confirmButton = {
                             TextButton(
                                 onClick = { deleteImage(item) },
@@ -1031,7 +1068,7 @@ fun GalleryScreen(
                         },
                         dismissButton = {
                             TextButton(onClick = { showDeleteConfirmDialog = false }) {
-                                Text("Cancel")
+                                Text("Cancel", color = Color(0xFF64748B))
                             }
                         }
                     )
@@ -1041,15 +1078,16 @@ fun GalleryScreen(
                 if (showDetailsSheet) {
                     AlertDialog(
                         onDismissRequest = { showDetailsSheet = false },
-                        title = { Text("Image Information", fontWeight = FontWeight.Bold) },
+                        containerColor = Color.White,
+                        title = { Text("Image Information", fontWeight = FontWeight.Bold, color = Color(0xFF0F172A)) },
                         text = {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("File Name: ${item.name}", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                                Text("Album: ${item.album}", fontSize = 13.sp)
-                                Text("Resolution: ${item.width} x ${item.height} px", fontSize = 13.sp)
-                                Text("File Size: ${item.size}", fontSize = 13.sp)
-                                Text("MIME Type: ${item.mimeType}", fontSize = 13.sp)
-                                Text("Captured: ${item.date}", fontSize = 13.sp)
+                                Text("File Name: ${item.name}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A))
+                                Text("Album: ${item.album}", fontSize = 13.sp, color = Color(0xFF475569))
+                                Text("Resolution: ${item.width} x ${item.height} px", fontSize = 13.sp, color = Color(0xFF475569))
+                                Text("File Size: ${item.size}", fontSize = 13.sp, color = Color(0xFF475569))
+                                Text("MIME Type: ${item.mimeType}", fontSize = 13.sp, color = Color(0xFF475569))
+                                Text("Captured: ${item.date}", fontSize = 13.sp, color = Color(0xFF475569))
                             }
                         },
                         confirmButton = {
@@ -1058,12 +1096,12 @@ fun GalleryScreen(
                                 Toast.makeText(context, "Copied details to clipboard", Toast.LENGTH_SHORT).show()
                                 showDetailsSheet = false
                             }) {
-                                Text("Copy Details")
+                                Text("Copy Details", color = Color(0xFF0284C7), fontWeight = FontWeight.Bold)
                             }
                         },
                         dismissButton = {
                             TextButton(onClick = { showDetailsSheet = false }) {
-                                Text("Close")
+                                Text("Close", color = Color(0xFF64748B))
                             }
                         }
                     )
