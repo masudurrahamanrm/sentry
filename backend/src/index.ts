@@ -21,6 +21,25 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ONLINE',
+    service: 'kinetix-sentry-developer-backend',
+    environment: process.env.NODE_ENV || 'development',
+    version: '1.0.0-beta',
+    endpoints: {
+      health: '/health',
+      api: '/api/v1',
+      ws: '/ws'
+    },
+    storage: {
+      mongoConnected: isMongoConnected(),
+      r2Configured: r2Service.isConfigured()
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.get('/health', (req, res) => {
   res.json({
     status: 'HEALTHY',
