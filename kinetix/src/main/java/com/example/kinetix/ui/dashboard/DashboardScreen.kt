@@ -275,14 +275,15 @@ fun DashboardScreen(
                     }
                 }
 
+                val distinctList = newList.distinctBy { it.deviceId }
                 withContext(Dispatchers.Main) {
                     pairedDevices.clear()
-                    pairedDevices.addAll(newList)
-                    if (selectedDevice == null && newList.isNotEmpty()) {
-                        selectedDevice = newList.first()
+                    pairedDevices.addAll(distinctList)
+                    if (selectedDevice == null && distinctList.isNotEmpty()) {
+                        selectedDevice = distinctList.first()
                     } else if (selectedDevice != null) {
                         // Keep selectedDevice fresh with updated coords
-                        val updatedMatch = newList.firstOrNull { it.deviceId == selectedDevice!!.deviceId }
+                        val updatedMatch = distinctList.firstOrNull { it.deviceId == selectedDevice!!.deviceId }
                         if (updatedMatch != null) {
                             selectedDevice = updatedMatch
                         }
@@ -290,7 +291,7 @@ fun DashboardScreen(
 
                     // Push multi-device location data to Leaflet JS
                     val jsonArr = JSONArray()
-                    for (d in newList) {
+                    for (d in distinctList) {
                         val obj = JSONObject().apply {
                             put("deviceId", d.deviceId)
                             put("deviceName", d.deviceName)
@@ -816,7 +817,7 @@ fun DashboardScreen(
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.fillMaxSize()
                             ) {
-                                items(pairedDevices, key = { it.deviceId }) { device ->
+                                items(pairedDevices) { device ->
                                     val isSelected = selectedDevice?.deviceId == device.deviceId
 
                                     DashboardDeviceCard(
