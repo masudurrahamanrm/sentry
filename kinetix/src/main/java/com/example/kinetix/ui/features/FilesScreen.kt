@@ -46,6 +46,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 
 data class FileEntry(
     val name: String,
@@ -279,13 +280,25 @@ fun FilesScreen(deviceId: String, onBack: () -> Unit) {
             )
         }
     ) { padding ->
-        Column(
+        PullToRefreshBox(
+            isRefreshing = isLoading,
+            onRefresh = {
+                coroutineScope.launch {
+                    isLoading = true
+                    fetchFiles()
+                    isLoading = false
+                }
+            },
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFFBFBFE))
                 .padding(padding)
-                .padding(horizontal = 16.dp)
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFFFBFBFE))
+                    .padding(horizontal = 16.dp)
+            ) {
             // Status feedback banner
             AnimatedVisibility(visible = statusMessage != null, enter = fadeIn(), exit = fadeOut()) {
                 Surface(
@@ -691,6 +704,7 @@ fun FilesScreen(deviceId: String, onBack: () -> Unit) {
             }
         }
     }
+}
 
     // 6. File Details & Remote Download Action Sheet Modal
     if (selectedFile != null) {

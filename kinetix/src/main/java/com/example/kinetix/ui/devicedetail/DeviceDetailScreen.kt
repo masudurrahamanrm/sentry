@@ -42,6 +42,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun DeviceDetailScreen(
@@ -87,6 +89,7 @@ fun DeviceDetailScreen(
     var actionMessage by remember { mutableStateOf<String?>(null) }
     val pagerState = rememberPagerState(initialPage = 0) { 4 }
     var isIconHidden by remember(deviceId) { mutableStateOf(false) }
+    var isRefreshingDashboard by remember { mutableStateOf(false) }
 
     suspend fun refreshDeviceData(): Boolean {
         return withContext(Dispatchers.IO) {
@@ -349,15 +352,26 @@ fun DeviceDetailScreen(
                     )
                 }
                 else -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color(0xFFFBFBFE))
-                            .statusBarsPadding()
-                            .padding(horizontal = 16.dp)
-                            .verticalScroll(rememberScrollState())
+                    PullToRefreshBox(
+                        isRefreshing = isRefreshingDashboard,
+                        onRefresh = {
+                            coroutineScope.launch {
+                                isRefreshingDashboard = true
+                                refreshDeviceData()
+                                isRefreshingDashboard = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
                     ) {
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color(0xFFFBFBFE))
+                                .statusBarsPadding()
+                                .padding(horizontal = 16.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            Spacer(modifier = Modifier.height(10.dp))
 
             // 1. Top Bar Header (Circular Menu Button, Centered Device Name & Status, Right Action Buttons)
             Box(
@@ -1009,6 +1023,7 @@ fun DeviceDetailScreen(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+                        }
                     }
                 }
             }

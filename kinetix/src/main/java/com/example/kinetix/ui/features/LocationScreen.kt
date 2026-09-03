@@ -25,6 +25,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LocationScreen(deviceId: String, onBack: () -> Unit) {
@@ -76,93 +78,119 @@ fun LocationScreen(deviceId: String, onBack: () -> Unit) {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
+                },
+                actions = {
+                    IconButton(onClick = {
+                        coroutineScope.launch {
+                            isFetching = true
+                            refreshLocation()
+                            delay(400)
+                            isFetching = false
+                        }
+                    }) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                    }
                 }
             )
         }
     ) { padding ->
-        Column(
+        PullToRefreshBox(
+            isRefreshing = isFetching,
+            onRefresh = {
+                coroutineScope.launch {
+                    isFetching = true
+                    refreshLocation()
+                    delay(400)
+                    isFetching = false
+                }
+            },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp)
         ) {
-            // Live Status Card
-            Box(
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFF1E293B)),
-                contentAlignment = Alignment.Center
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp)
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(16.dp)
+                // Live Status Card
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color(0xFF1E293B)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        Icons.Default.GpsFixed,
-                        contentDescription = null,
-                        tint = Color(0xFF4CAF50),
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        address,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        "Accuracy: ±${accuracy.toInt()}m • GPS Live Fix",
-                        color = Color(0xFF94A3B8),
-                        fontSize = 13.sp
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Coordinates Details Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            ) {
-                Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                    Text("Telemetry Coordinates", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    DetailRow("Latitude", String.format("%.6f°", latitude))
-                    DetailRow("Longitude", String.format("%.6f°", longitude))
-                    DetailRow("Accuracy", "±${accuracy.toInt()} meters")
-                    DetailRow("Altitude", String.format("%.1f m Above Sea Level", altitude))
-                    DetailRow("Speed", String.format("%.1f km/h", speed))
-                    DetailRow("Provider", "GPS / FusedLocationProvider")
-                    DetailRow("Device ID", deviceId)
-                    DetailRow("Status", lastFixTime)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(
-                onClick = {
-                    coroutineScope.launch {
-                        isFetching = true
-                        refreshLocation()
-                        delay(600)
-                        isFetching = false
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.GpsFixed,
+                            contentDescription = null,
+                            tint = Color(0xFF4CAF50),
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            address,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Accuracy: ±${accuracy.toInt()}m • GPS Live Fix",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 13.sp
+                        )
                     }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                enabled = !isFetching
-            ) {
-                Icon(Icons.Default.MyLocation, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(if (isFetching) "Acquiring Fix..." else "Refresh High-Precision GPS")
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Coordinates Details Card
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                        Text("Telemetry Coordinates", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        DetailRow("Latitude", String.format("%.6f°", latitude))
+                        DetailRow("Longitude", String.format("%.6f°", longitude))
+                        DetailRow("Accuracy", "±${accuracy.toInt()} meters")
+                        DetailRow("Altitude", String.format("%.1f m Above Sea Level", altitude))
+                        DetailRow("Speed", String.format("%.1f km/h", speed))
+                        DetailRow("Provider", "GPS / FusedLocationProvider")
+                        DetailRow("Device ID", deviceId)
+                        DetailRow("Status", lastFixTime)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = {
+                        coroutineScope.launch {
+                            isFetching = true
+                            refreshLocation()
+                            delay(600)
+                            isFetching = false
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    enabled = !isFetching
+                ) {
+                    Icon(Icons.Default.MyLocation, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(if (isFetching) "Acquiring Fix..." else "Refresh High-Precision GPS")
+                }
             }
         }
     }

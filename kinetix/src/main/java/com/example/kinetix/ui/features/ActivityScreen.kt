@@ -30,6 +30,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 
 data class AppUsageStat(
     val name: String,
@@ -235,15 +236,27 @@ fun ActivityScreen(
             )
         }
     ) { padding ->
-        LazyColumn(
+        PullToRefreshBox(
+            isRefreshing = isLoading,
+            onRefresh = {
+                coroutineScope.launch {
+                    isLoading = true
+                    fetchActivityData()
+                    isLoading = false
+                }
+            },
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFFBFBFE))
                 .padding(padding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = PaddingValues(top = 10.dp, bottom = 32.dp)
         ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFFFBFBFE))
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = PaddingValues(top = 10.dp, bottom = 32.dp)
+            ) {
             // 1. Period Selector Chips (Today, Yesterday, 7 Days)
             item {
                 Row(
@@ -528,6 +541,7 @@ fun ActivityScreen(
             }
         }
     }
+}
 }
 
 @Composable

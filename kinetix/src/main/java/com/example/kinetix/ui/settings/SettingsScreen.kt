@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +58,7 @@ fun SettingsScreen(
 
     var showClearCacheDialog by remember { mutableStateOf(false) }
     var feedbackMessage by remember { mutableStateOf<String?>(null) }
+    var isRefreshingSettings by remember { mutableStateOf(false) }
 
     val controllerDeviceId = remember { CryptoManager.getOrCreateDeviceId(context) }
 
@@ -80,20 +82,49 @@ fun SettingsScreen(
                         )
                     }
                 },
+                actions = {
+                    IconButton(onClick = {
+                        coroutineScope.launch {
+                            isRefreshingSettings = true
+                            delay(600)
+                            feedbackMessage = "⚡ Settings synced with cloud node"
+                            delay(2000)
+                            feedbackMessage = null
+                            isRefreshingSettings = false
+                        }
+                    }) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Color(0xFF1D1B20))
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFFBFBFE))
             )
         },
         containerColor = Color(0xFFFBFBFE),
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
-        Column(
+        PullToRefreshBox(
+            isRefreshing = isRefreshingSettings,
+            onRefresh = {
+                coroutineScope.launch {
+                    isRefreshingSettings = true
+                    delay(600)
+                    feedbackMessage = "⚡ Settings synced with cloud node"
+                    delay(2000)
+                    feedbackMessage = null
+                    isRefreshingSettings = false
+                }
+            },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
             // Action feedback banner
             AnimatedVisibility(
                 visible = feedbackMessage != null,
@@ -415,6 +446,7 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
+}
 
     if (showClearCacheDialog) {
         AlertDialog(

@@ -42,6 +42,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -260,13 +261,25 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
             )
         }
     ) { padding ->
-        Column(
+        PullToRefreshBox(
+            isRefreshing = isLoading,
+            onRefresh = {
+                coroutineScope.launch {
+                    isLoading = true
+                    fetchLiveNotifications()
+                    isLoading = false
+                }
+            },
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFFBFBFE))
                 .padding(padding)
-                .padding(horizontal = 16.dp)
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFFFBFBFE))
+                    .padding(horizontal = 16.dp)
+            ) {
             // Copied snackbar feedback
             AnimatedVisibility(visible = copiedMessage != null, enter = fadeIn(), exit = fadeOut()) {
                 Surface(
@@ -589,6 +602,7 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                 }
             }
         }
+    }
     }
 
     // Fullscreen Attached Photo Preview Dialog

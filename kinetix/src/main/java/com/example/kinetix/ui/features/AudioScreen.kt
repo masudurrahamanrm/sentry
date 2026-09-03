@@ -18,6 +18,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -401,6 +402,8 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
         }
     }
 
+    var isRefreshingAudio by remember { mutableStateOf(false) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -416,21 +419,39 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = { coroutineScope.launch { fetchAudioList() } }) {
+                    IconButton(onClick = {
+                        coroutineScope.launch {
+                            isRefreshingAudio = true
+                            fetchAudioList()
+                            isRefreshingAudio = false
+                        }
+                    }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Color(0xFF0284C7))
                     }
                 }
             )
         }
     ) { padding ->
-        LazyColumn(
+        PullToRefreshBox(
+            isRefreshing = isRefreshingAudio,
+            onRefresh = {
+                coroutineScope.launch {
+                    isRefreshingAudio = true
+                    fetchAudioList()
+                    isRefreshingAudio = false
+                }
+            },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = PaddingValues(bottom = 24.dp)
         ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = PaddingValues(bottom = 24.dp)
+            ) {
             // 1. HERO LIVE LISTENING CARD
             item {
                 Surface(
@@ -998,4 +1019,5 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
             }
         }
     }
+}
 }

@@ -32,6 +32,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -863,54 +864,67 @@ fun DashboardScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        if (pairedDevices.isEmpty()) {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "Searching for Sentry devices...",
-                                    color = Color.Gray,
-                                    fontSize = 14.sp
-                                )
-                            }
-                        } else {
-                            LazyColumn(
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.fillMaxSize()
-                            ) {
-                                items(pairedDevices) { device ->
-                                    val isSelected = selectedDevice?.deviceId == device.deviceId
-
-                                    DashboardDeviceCard(
-                                        device = device,
-                                        isSelected = isSelected,
-                                        onTap = {
-                                            selectedDevice = device
-                                            showDeviceDetails = true
-                                            val js = "if(window.focusDevice) window.focusDevice(${device.latitude}, ${device.longitude}, '${device.deviceId}');"
-                                            webViewRef?.evaluateJavascript(js, null)
-                                        },
-                                        onHoldComplete = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            try {
-                                                val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
-                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                                    vibrator?.vibrate(android.os.VibrationEffect.createOneShot(120, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
-                                                } else {
-                                                    vibrator?.vibrate(120)
-                                                }
-                                            } catch (_: Exception) {}
-
-                                            deviceToRename = device
-                                            renameInputText = device.deviceName
-                                        },
-                                        onOpenControlHub = {
-                                            if (!device.isThisDevice) {
-                                                onNavigateToDeviceDetail(device.deviceId)
-                                            }
-                                        }
+                        PullToRefreshBox(
+                            isRefreshing = isRefreshing,
+                            onRefresh = {
+                                coroutineScope.launch {
+                                    isRefreshing = true
+                                    fetchDevices()
+                                    delay(500)
+                                    isRefreshing = false
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            if (pairedDevices.isEmpty()) {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "Searching for Sentry devices...",
+                                        color = Color.Gray,
+                                        fontSize = 14.sp
                                     )
+                                }
+                            } else {
+                                LazyColumn(
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxSize()
+                                ) {
+                                    items(pairedDevices) { device ->
+                                        val isSelected = selectedDevice?.deviceId == device.deviceId
+
+                                        DashboardDeviceCard(
+                                            device = device,
+                                            isSelected = isSelected,
+                                            onTap = {
+                                                selectedDevice = device
+                                                showDeviceDetails = true
+                                                val js = "if(window.focusDevice) window.focusDevice(${device.latitude}, ${device.longitude}, '${device.deviceId}');"
+                                                webViewRef?.evaluateJavascript(js, null)
+                                            },
+                                            onHoldComplete = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                try {
+                                                    val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+                                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                        vibrator?.vibrate(android.os.VibrationEffect.createOneShot(120, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+                                                    } else {
+                                                        vibrator?.vibrate(120)
+                                                    }
+                                                } catch (_: Exception) {}
+
+                                                deviceToRename = device
+                                                renameInputText = device.deviceName
+                                            },
+                                            onOpenControlHub = {
+                                                if (!device.isThisDevice) {
+                                                    onNavigateToDeviceDetail(device.deviceId)
+                                                }
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
