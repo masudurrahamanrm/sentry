@@ -100,9 +100,12 @@ fun DeviceDetailScreen(
                             val id = item.optString("deviceId", item.optString("device_id", ""))
                             if (id == deviceId) {
                                 val fetchedName = item.optString("deviceName", item.optString("device_name", ""))
-                                if (fetchedName.isNotBlank()) {
-                                    deviceName = fetchedName
-                                    com.example.kinetix.cache.KinetixDeviceCache.saveDeviceName(context, deviceId, fetchedName)
+                                val savedCustomName = com.example.kinetix.cache.KinetixDeviceCache.getDeviceName(context, deviceId, "")
+                                val finalName = if (savedCustomName.isNotBlank()) savedCustomName else fetchedName
+                                if (finalName.isNotBlank()) {
+                                    withContext(Dispatchers.Main) {
+                                        deviceName = finalName
+                                    }
                                 }
                                 osVersion = item.optString("osVersion", item.optString("os_version", "Android 16"))
                                 isOnline = item.optString("status", "ONLINE") == "ONLINE"
@@ -130,11 +133,6 @@ fun DeviceDetailScreen(
                 if (battRes.isSuccess) {
                     val bObj = battRes.getOrNull()
                     if (bObj != null) {
-                        val serverDevName = bObj.optString("deviceName", "")
-                        if (serverDevName.isNotBlank()) {
-                            deviceName = serverDevName
-                            com.example.kinetix.cache.KinetixDeviceCache.saveDeviceName(context, deviceId, serverDevName)
-                        }
                         val pct = bObj.optInt("percentage", bObj.optInt("level", 44))
                         val isCharging = bObj.optBoolean("isCharging", false)
                         val status = bObj.optString("chargingStatus", "")

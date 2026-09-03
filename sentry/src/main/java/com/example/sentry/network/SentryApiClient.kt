@@ -36,12 +36,11 @@ class SentryApiClient(
         val deviceId = CryptoManager.getOrCreateDeviceId(context)
         val publicKeyPem = CryptoManager.getPublicKeyPem()
         val capabilities = PermissionManager.getDeviceCapabilities(context)
-        val savedName = context.getSharedPreferences("sentry_device_prefs", Context.MODE_PRIVATE)
-            .getString("device_custom_name", null)
+        val savedName = com.example.sentry.config.SentryDeviceConfig.getDeviceName(context)
 
         val body = JSONObject().apply {
             put("deviceId", deviceId)
-            put("deviceName", savedName ?: "${Build.MANUFACTURER} ${Build.MODEL} (Sentry)")
+            put("deviceName", savedName)
             put("platform", "Android")
             put("osVersion", "Android ${Build.VERSION.RELEASE}")
             put("appVersion", "1.0.0")
@@ -54,8 +53,7 @@ class SentryApiClient(
             val devObj = res.optJSONObject("device")
             val cloudName = devObj?.optString("deviceName", "")
             if (!cloudName.isNullOrBlank()) {
-                context.getSharedPreferences("sentry_device_prefs", Context.MODE_PRIVATE)
-                    .edit().putString("device_custom_name", cloudName).apply()
+                com.example.sentry.config.SentryDeviceConfig.setDeviceName(context, cloudName)
             }
         }
         result
