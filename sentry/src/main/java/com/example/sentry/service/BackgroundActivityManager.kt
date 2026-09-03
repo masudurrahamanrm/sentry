@@ -161,23 +161,51 @@ object BackgroundActivityManager {
             }
         }
 
-        // 1. Calculate Unlocks & App Opens from UsageEvents
+        // 1. Calculate Unlocks, App Opens, and Real-time Foreground Duration from UsageEvents
         var unlocksCount = 0
         val appOpensMap = mutableMapOf<String, Int>()
+        val realTimeUsageMap = mutableMapOf<String, Long>()
+        val lastResumeTimeMap = mutableMapOf<String, Long>()
+
         try {
             val events = usm.queryEvents(startTime, endTime)
             val event = UsageEvents.Event()
             while (events.hasNextEvent()) {
                 events.getNextEvent(event)
+                val pkg = event.packageName
+
                 if (event.eventType == UsageEvents.Event.KEYGUARD_HIDDEN ||
                     event.eventType == UsageEvents.Event.SCREEN_INTERACTIVE
                 ) {
                     unlocksCount++
                 }
-                if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
-                    val pkg = event.packageName
-                    if (!pkg.isNullOrBlank()) {
-                        appOpensMap[pkg] = (appOpensMap[pkg] ?: 0) + 1
+
+                if (!pkg.isNullOrBlank()) {
+                    when (event.eventType) {
+                        UsageEvents.Event.ACTIVITY_RESUMED -> {
+                            appOpensMap[pkg] = (appOpensMap[pkg] ?: 0) + 1
+                            lastResumeTimeMap[pkg] = event.timeStamp
+                        }
+                        UsageEvents.Event.ACTIVITY_PAUSED,
+                        UsageEvents.Event.ACTIVITY_STOPPED -> {
+                            val resumeTs = lastResumeTimeMap.remove(pkg)
+                            if (resumeTs != null && event.timeStamp >= resumeTs) {
+                                val duration = event.timeStamp - resumeTs
+                                if (duration > 500) {
+                                    realTimeUsageMap[pkg] = (realTimeUsageMap[pkg] ?: 0L) + duration
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // If an app is currently resumed and still in foreground up to endTime
+            for ((pkg, resumeTs) in lastResumeTimeMap) {
+                if (endTime >= resumeTs) {
+                    val duration = (endTime - resumeTs).coerceAtMost(4 * 3600_000L)
+                    if (duration > 500) {
+                        realTimeUsageMap[pkg] = (realTimeUsageMap[pkg] ?: 0L) + duration
                     }
                 }
             }
@@ -188,17 +216,35 @@ object BackgroundActivityManager {
             unlocksCount = (appOpensMap.values.sum() / 3).coerceAtLeast(1)
         }
 
-        // 2. Query UsageStats
-        val statsList = try {
-            usm.queryUsageStats(UsageStatsManager.INTERVAL_BEST, startTime, endTime)
-        } catch (_: Exception) {
-            emptyList()
+        // 2. Query UsageStats via queryAndAggregateUsageStats & queryUsageStats
+        val aggregatedMap = mutableMapOf<String, Long>()
+        try {
+            val aggStats = usm.queryAndAggregateUsageStats(startTime, endTime)
+            if (!aggStats.isNullOrEmpty()) {
+                for ((pkg, st) in aggStats) {
+                    if (st.totalTimeInForeground > 1000) {
+                        aggregatedMap[pkg] = st.totalTimeInForeground
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        if (aggregatedMap.isEmpty()) {
+            try {
+                val statsList = usm.queryUsageStats(UsageStatsManager.INTERVAL_BEST, startTime, endTime)
+                for (st in statsList) {
+                    if (st.totalTimeInForeground > 1000) {
+                        aggregatedMap[st.packageName] = (aggregatedMap[st.packageName] ?: 0L) + st.totalTimeInForeground
+                    }
+                }
+            } catch (_: Exception) {}
         }
 
-        val aggregatedMap = mutableMapOf<String, Long>()
-        for (st in statsList) {
-            if (st.totalTimeInForeground > 1000) { // filter out 0 foreground
-                aggregatedMap[st.packageName] = (aggregatedMap[st.packageName] ?: 0L) + st.totalTimeInForeground
+        // Merge real-time event calculations for maximum accuracy (especially after midnight)
+        for ((pkg, eventDuration) in realTimeUsageMap) {
+            val existing = aggregatedMap[pkg] ?: 0L
+            if (eventDuration > existing) {
+                aggregatedMap[pkg] = eventDuration
             }
         }
 
@@ -211,7 +257,7 @@ object BackgroundActivityManager {
             "com.example.sentry"
         )
 
-        val filteredEntries = aggregatedMap.filter { !ignoredPackages.contains(it.key) && it.value > 15_000 }
+        val filteredEntries = aggregatedMap.filter { !ignoredPackages.contains(it.key) && it.value > 10_000 }
         val totalForegroundMs = filteredEntries.values.sum()
 
         var socialMs = 0L
