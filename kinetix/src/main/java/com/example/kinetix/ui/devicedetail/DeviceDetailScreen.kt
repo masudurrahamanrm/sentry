@@ -3,8 +3,10 @@ package com.example.kinetix.ui.devicedetail
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -88,8 +90,9 @@ fun DeviceDetailScreen(
     var activeBottomTab by remember { mutableIntStateOf(0) }
     var isIconHidden by remember(deviceId) { mutableStateOf(false) }
 
-    suspend fun refreshDeviceData() {
-        withContext(Dispatchers.IO) {
+    suspend fun refreshDeviceData(): Boolean {
+        return withContext(Dispatchers.IO) {
+            var foundOnline = false
             try {
                 val client = com.example.kinetix.network.KinetixApiClient(context)
                 val res = client.listAvailableDevices()
@@ -111,6 +114,7 @@ fun DeviceDetailScreen(
                                 osVersion = item.optString("osVersion", item.optString("os_version", "Android 16"))
                                 val statusStr = item.optString("status", "ONLINE")
                                 val online = statusStr.equals("ONLINE", ignoreCase = true)
+                                foundOnline = online
                                 val fetchedLastSeen = item.optString("lastSeenAt", "")
 
                                 val formattedLastSeen = if (online) {
@@ -173,11 +177,13 @@ fun DeviceDetailScreen(
                         }
                     }
                 }
+            } catch (_: Exception) {}
 
-                // Fetch live battery & hardware telemetry (percentage, network, uptime, wallpaper)
-                val battRes = client.getBatteryTelemetry(deviceId)
-                if (battRes.isSuccess) {
-                    val bObj = battRes.getOrNull()
+            try {
+                val client = com.example.kinetix.network.KinetixApiClient(context)
+                val telRes = client.getBatteryTelemetry(deviceId)
+                if (telRes.isSuccess) {
+                    val bObj = telRes.getOrNull()
                     if (bObj != null) {
                         val pct = bObj.optInt("percentage", bObj.optInt("level", 44))
                         val isCharging = bObj.optBoolean("isCharging", false)
@@ -211,6 +217,7 @@ fun DeviceDetailScreen(
                     }
                 }
             } catch (_: Exception) {}
+            foundOnline
         }
     }
 
@@ -397,17 +404,24 @@ fun DeviceDetailScreen(
                         onClick = {
                             coroutineScope.launch {
                                 actionMessage = "⚡ Awakening remote phone & syncing..."
+                                var wakeSuccess = false
                                 withContext(Dispatchers.IO) {
                                     try {
                                         val client = com.example.kinetix.network.KinetixApiClient(context)
-                                        client.wakeDevice(deviceId)
+                                        val res = client.wakeDevice(deviceId)
+                                        if (res.isSuccess) {
+                                            wakeSuccess = true
+                                        }
                                     } catch (_: Exception) {}
                                 }
-                                refreshDeviceData()
-                                delay(800)
-                                refreshDeviceData()
-                                actionMessage = "✅ Connection Active • Synced"
-                                delay(2000)
+                                delay(600)
+                                val online = refreshDeviceData()
+                                if (online || wakeSuccess) {
+                                    actionMessage = "✅ Remote Wakeup Successful • Connected ⚡"
+                                } else {
+                                    actionMessage = "❌ Remote Wakeup Unsuccessful • Offline ⚠️"
+                                }
+                                delay(2800)
                                 actionMessage = null
                             }
                         },
@@ -463,6 +477,45 @@ fun DeviceDetailScreen(
                             tint = Color(0xFF2E7D32),
                             modifier = Modifier.size(20.dp)
                         )
+                    }
+                }
+            }
+
+            // Action Feedback Notification Pill Banner
+            AnimatedVisibility(
+                visible = actionMessage != null,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                actionMessage?.let { msg ->
+                    val isError = msg.contains("❌") || msg.contains("Unsuccessful")
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isError) Color(0xFFFFEBEE) else Color(0xFFE8F5E9),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isError) Color(0xFFEF5350).copy(alpha = 0.5f) else Color(0xFF4CAF50).copy(alpha = 0.5f)
+                        ),
+                        shadowElevation = 2.dp
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = msg,
+                                color = if (isError) Color(0xFFC62828) else Color(0xFF2E7D32),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
                     }
                 }
             }
