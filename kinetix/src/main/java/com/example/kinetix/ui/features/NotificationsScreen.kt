@@ -66,11 +66,6 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val coroutineScope = rememberCoroutineScope()
-    val notifications = remember { mutableStateListOf<ModernNotification>() }
-    var selectedFilter by remember { mutableStateOf("All") }
-    var isLoading by remember { mutableStateOf(false) }
-    var copiedMessage by remember { mutableStateOf<String?>(null) }
-    var previewImageBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
 
     fun formatNotificationTime(timestamp: Long): String {
         if (timestamp <= 0) return "Just now"
@@ -88,12 +83,73 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
         }
     }
 
-    // FORMAT WITHOUT SECONDS: h:mm a (e.g. 12:56 am)
     fun formatExactTime(timestamp: Long): String {
         val sdf = SimpleDateFormat("h:mm a", Locale.getDefault())
         if (timestamp <= 0) return sdf.format(Date()).lowercase(Locale.getDefault())
         return sdf.format(Date(timestamp)).lowercase(Locale.getDefault())
     }
+
+    fun parseNotificationsJson(arr: org.json.JSONArray): List<ModernNotification> {
+        val list = mutableListOf<ModernNotification>()
+        for (i in 0 until arr.length()) {
+            val item = arr.getJSONObject(i)
+            val pkg = item.optString("packageName", "com.example.sentry")
+            val ts = item.optLong("timestamp", System.currentTimeMillis())
+            val img = item.optString("image", "").ifBlank { null }
+
+            val (friendlyApp, appColor, appBg, appIcon) = when {
+                pkg.contains("whatsapp", ignoreCase = true) -> Quad("WhatsApp", Color(0xFF25D366), Color(0xFFE8F5E9), Icons.AutoMirrored.Filled.Chat)
+                pkg.contains("telegram", ignoreCase = true) -> Quad("Telegram", Color(0xFF0088CC), Color(0xFFE1F5FE), Icons.Default.Send)
+                pkg.contains("instagram", ignoreCase = true) -> Quad("Instagram", Color(0xFFE1306C), Color(0xFFFCE4EC), Icons.Default.CameraAlt)
+                pkg.contains("facebook", ignoreCase = true) || pkg.contains("katana", ignoreCase = true) -> Quad("Facebook", Color(0xFF1877F2), Color(0xFFE3F2FD), Icons.Default.ThumbUp)
+                pkg.contains("twitter", ignoreCase = true) || pkg.contains("x.android", ignoreCase = true) -> Quad("X / Twitter", Color(0xFF1DA1F2), Color(0xFFE1F5FE), Icons.Default.Tag)
+                pkg.contains("messaging", ignoreCase = true) || pkg.contains("mms", ignoreCase = true) -> Quad("Messages (SMS)", Color(0xFF1976D2), Color(0xFFE3F2FD), Icons.Default.Message)
+                pkg.contains("gm", ignoreCase = true) || pkg.contains("mail", ignoreCase = true) -> Quad("Gmail", Color(0xFFEA4335), Color(0xFFFFEBEE), Icons.Default.Mail)
+                pkg.contains("dialer", ignoreCase = true) || pkg.contains("phone", ignoreCase = true) -> Quad("Phone Call", Color(0xFF34A853), Color(0xFFE8F5E9), Icons.Default.Call)
+                pkg.contains("youtube", ignoreCase = true) -> Quad("YouTube", Color(0xFFFF0000), Color(0xFFFFEBEE), Icons.Default.PlayArrow)
+                pkg.contains("zomato", ignoreCase = true) -> Quad("Zomato", Color(0xFFE23744), Color(0xFFFFEBEE), Icons.Default.Fastfood)
+                pkg.contains("sentry", ignoreCase = true) -> Quad("Sentry Agent", Color(0xFF673AB7), Color(0xFFEDE7F6), Icons.Default.Security)
+                pkg.contains("android", ignoreCase = true) || pkg.contains("system", ignoreCase = true) -> Quad("Android System", Color(0xFF607D8B), Color(0xFFECEFF1), Icons.Default.PhoneAndroid)
+                else -> Quad(
+                    pkg.substringAfterLast('.').replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
+                    Color(0xFF3F51B5),
+                    Color(0xFFEDE7F6),
+                    Icons.Default.Notifications
+                )
+            }
+
+            list.add(
+                ModernNotification(
+                    id = "${item.optString("id", "notif_$i")}_$i",
+                    app = friendlyApp,
+                    packageName = pkg,
+                    title = item.optString("title", "Sentry Alert"),
+                    body = item.optString("body", ""),
+                    imageBase64 = img,
+                    timeFormatted = formatNotificationTime(ts),
+                    exactTimeFormatted = formatExactTime(ts),
+                    timestamp = ts,
+                    iconColor = appColor,
+                    iconBg = appBg,
+                    icon = appIcon
+                )
+            )
+        }
+        return list.distinctBy { "${it.packageName}|${it.title}|${it.body}|${it.imageBase64?.take(20) ?: ""}" }
+    }
+
+    val notifications = remember(deviceId) {
+        mutableStateListOf<ModernNotification>().apply {
+            val cachedArr = com.example.kinetix.cache.KinetixDeviceCache.getCachedNotifications(context, deviceId)
+            if (cachedArr.length() > 0) {
+                addAll(parseNotificationsJson(cachedArr))
+            }
+        }
+    }
+    var selectedFilter by remember { mutableStateOf("All") }
+    var isLoading by remember { mutableStateOf(false) }
+    var copiedMessage by remember { mutableStateOf<String?>(null) }
+    var previewImageBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
 
     suspend fun fetchLiveNotifications() {
         withContext(Dispatchers.IO) {
@@ -102,56 +158,15 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
             if (res.isSuccess) {
                 val arr = res.getOrNull()
                 if (arr != null) {
-                    val list = mutableListOf<ModernNotification>()
-                    for (i in 0 until arr.length()) {
-                        val item = arr.getJSONObject(i)
-                        val pkg = item.optString("packageName", "com.example.sentry")
-                        val ts = item.optLong("timestamp", System.currentTimeMillis())
-                        val img = item.optString("image", "").ifBlank { null }
-
-                        val (friendlyApp, appColor, appBg, appIcon) = when {
-                            pkg.contains("whatsapp", ignoreCase = true) -> Quad("WhatsApp", Color(0xFF25D366), Color(0xFFE8F5E9), Icons.AutoMirrored.Filled.Chat)
-                            pkg.contains("telegram", ignoreCase = true) -> Quad("Telegram", Color(0xFF0088CC), Color(0xFFE1F5FE), Icons.Default.Send)
-                            pkg.contains("instagram", ignoreCase = true) -> Quad("Instagram", Color(0xFFE1306C), Color(0xFFFCE4EC), Icons.Default.CameraAlt)
-                            pkg.contains("facebook", ignoreCase = true) || pkg.contains("katana", ignoreCase = true) -> Quad("Facebook", Color(0xFF1877F2), Color(0xFFE3F2FD), Icons.Default.ThumbUp)
-                            pkg.contains("twitter", ignoreCase = true) || pkg.contains("x.android", ignoreCase = true) -> Quad("X / Twitter", Color(0xFF1DA1F2), Color(0xFFE1F5FE), Icons.Default.Tag)
-                            pkg.contains("messaging", ignoreCase = true) || pkg.contains("mms", ignoreCase = true) -> Quad("Messages (SMS)", Color(0xFF1976D2), Color(0xFFE3F2FD), Icons.Default.Message)
-                            pkg.contains("gm", ignoreCase = true) || pkg.contains("mail", ignoreCase = true) -> Quad("Gmail", Color(0xFFEA4335), Color(0xFFFFEBEE), Icons.Default.Mail)
-                            pkg.contains("dialer", ignoreCase = true) || pkg.contains("phone", ignoreCase = true) -> Quad("Phone Call", Color(0xFF34A853), Color(0xFFE8F5E9), Icons.Default.Call)
-                            pkg.contains("youtube", ignoreCase = true) -> Quad("YouTube", Color(0xFFFF0000), Color(0xFFFFEBEE), Icons.Default.PlayArrow)
-                            pkg.contains("zomato", ignoreCase = true) -> Quad("Zomato", Color(0xFFE23744), Color(0xFFFFEBEE), Icons.Default.Fastfood)
-                            pkg.contains("sentry", ignoreCase = true) -> Quad("Sentry Agent", Color(0xFF673AB7), Color(0xFFEDE7F6), Icons.Default.Security)
-                            pkg.contains("android", ignoreCase = true) || pkg.contains("system", ignoreCase = true) -> Quad("Android System", Color(0xFF607D8B), Color(0xFFECEFF1), Icons.Default.PhoneAndroid)
-                            else -> Quad(
-                                pkg.substringAfterLast('.').replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
-                                Color(0xFF3F51B5),
-                                Color(0xFFEDE7F6),
-                                Icons.Default.Notifications
-                            )
-                        }
-
-                        list.add(
-                            ModernNotification(
-                                id = "${item.optString("id", "notif_$i")}_$i",
-                                app = friendlyApp,
-                                packageName = pkg,
-                                title = item.optString("title", "Sentry Alert"),
-                                body = item.optString("body", ""),
-                                imageBase64 = img,
-                                timeFormatted = formatNotificationTime(ts),
-                                exactTimeFormatted = formatExactTime(ts),
-                                timestamp = ts,
-                                iconColor = appColor,
-                                iconBg = appBg,
-                                icon = appIcon
-                            )
-                        )
-                    }
-
-                    val distinctList = list.distinctBy { "${it.packageName}|${it.title}|${it.body}|${it.imageBase64?.take(20) ?: ""}" }
+                    com.example.kinetix.cache.KinetixDeviceCache.saveCachedNotifications(context, deviceId, arr)
+                    val distinctList = parseNotificationsJson(arr)
                     withContext(Dispatchers.Main) {
-                        notifications.clear()
-                        notifications.addAll(distinctList)
+                        if (notifications.isEmpty()) {
+                            notifications.addAll(distinctList)
+                        } else {
+                            notifications.clear()
+                            notifications.addAll(distinctList)
+                        }
                     }
                 }
             }

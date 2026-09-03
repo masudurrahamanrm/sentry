@@ -87,7 +87,37 @@ fun GalleryScreen(
     val clipboardManager = LocalClipboardManager.current
     val coroutineScope = rememberCoroutineScope()
 
-    val mediaItems = remember { mutableStateListOf<GalleryItem>() }
+    fun parseGalleryJson(arr: JSONArray): List<GalleryItem> {
+        val list = mutableListOf<GalleryItem>()
+        for (i in 0 until arr.length()) {
+            val obj = arr.getJSONObject(i)
+            list.add(
+                GalleryItem(
+                    id = obj.optString("id", "media_$i"),
+                    name = obj.optString("name", "IMG_$i.jpg"),
+                    album = obj.optString("album", "Camera"),
+                    mimeType = obj.optString("mimeType", "image/jpeg"),
+                    size = obj.optString("size", "3.2 MB"),
+                    date = obj.optString("date", "Today"),
+                    timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+                    width = obj.optInt("width", 1080),
+                    height = obj.optInt("height", 1920),
+                    thumbnailBase64 = obj.optString("thumbnail").takeIf { !it.isNullOrBlank() }
+                )
+            )
+        }
+        return list
+    }
+
+    // Media Items (Initialized from 0ms Local Cache)
+    val mediaItems = remember(deviceId) {
+        mutableStateListOf<GalleryItem>().apply {
+            val cachedArr = com.example.kinetix.cache.KinetixDeviceCache.getCachedGallery(context, deviceId)
+            if (cachedArr.length() > 0) {
+                addAll(parseGalleryJson(cachedArr))
+            }
+        }
+    }
     var selectedAlbum by remember { mutableStateOf("All") }
     var selectedItemForModal by remember { mutableStateOf<GalleryItem?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
@@ -105,27 +135,17 @@ fun GalleryScreen(
                 val res = client.getGalleryMedia(deviceId)
                 if (res.isSuccess) {
                     val arr = res.getOrNull() ?: JSONArray()
-                    val list = mutableListOf<GalleryItem>()
-                    for (i in 0 until arr.length()) {
-                        val obj = arr.getJSONObject(i)
-                        list.add(
-                            GalleryItem(
-                                id = obj.optString("id", "media_$i"),
-                                name = obj.optString("name", "IMG_$i.jpg"),
-                                album = obj.optString("album", "Camera"),
-                                mimeType = obj.optString("mimeType", "image/jpeg"),
-                                size = obj.optString("size", "3.2 MB"),
-                                date = obj.optString("date", "Today"),
-                                timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
-                                width = obj.optInt("width", 1080),
-                                height = obj.optInt("height", 1920),
-                                thumbnailBase64 = obj.optString("thumbnail").takeIf { !it.isNullOrBlank() }
-                            )
-                        )
+                    if (arr.length() > 0) {
+                        com.example.kinetix.cache.KinetixDeviceCache.saveCachedGallery(context, deviceId, arr)
                     }
+                    val list = parseGalleryJson(arr)
                     withContext(Dispatchers.Main) {
-                        mediaItems.clear()
-                        mediaItems.addAll(list)
+                        if (mediaItems.isEmpty()) {
+                            mediaItems.addAll(list)
+                        } else if (list.isNotEmpty()) {
+                            mediaItems.clear()
+                            mediaItems.addAll(list)
+                        }
                     }
                 }
             } catch (_: Exception) {}

@@ -66,7 +66,40 @@ fun CallHistoryScreen(deviceId: String, onBack: () -> Unit) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    val callLogs = remember { mutableStateListOf<CallLogItem>() }
+    fun parseCallsJson(arr: org.json.JSONArray): List<CallLogItem> {
+        val list = mutableListOf<CallLogItem>()
+        for (i in 0 until arr.length()) {
+            val item = arr.getJSONObject(i)
+            val rawType = item.optString("type", "INCOMING").uppercase()
+            val cType = when {
+                rawType.contains("MISSED") -> CallType.MISSED
+                rawType.contains("OUT") -> CallType.OUTGOING
+                rawType.contains("REJECT") -> CallType.REJECTED
+                else -> CallType.INCOMING
+            }
+            list.add(
+                CallLogItem(
+                    id = item.optString("id", "call_$i"),
+                    name = item.optString("name").takeIf { n -> n.isNotBlank() && n != "null" && n != "Unknown" },
+                    number = item.optString("number", "+1 (555) 019-2834"),
+                    type = cType,
+                    date = item.optString("date", "Today, 10:45 AM"),
+                    duration = item.optString("duration", if (cType == CallType.MISSED) "Missed" else "2m 14s"),
+                    timestamp = item.optLong("timestamp", System.currentTimeMillis() - i * 3600000)
+                )
+            )
+        }
+        return list
+    }
+
+    val callLogs = remember(deviceId) {
+        mutableStateListOf<CallLogItem>().apply {
+            val cachedArr = com.example.kinetix.cache.KinetixDeviceCache.getCachedCalls(context, deviceId)
+            if (cachedArr.length() > 0) {
+                addAll(parseCallsJson(cachedArr))
+            }
+        }
+    }
     var activeFilter by remember { mutableStateOf(CallFilter.ALL) }
     var searchQuery by remember { mutableStateOf("") }
     var isRefreshing by remember { mutableStateOf(false) }
@@ -79,31 +112,15 @@ fun CallHistoryScreen(deviceId: String, onBack: () -> Unit) {
                 if (res.isSuccess) {
                     val arr = res.getOrNull()
                     if (arr != null && arr.length() > 0) {
-                        val list = mutableListOf<CallLogItem>()
-                        for (i in 0 until arr.length()) {
-                            val item = arr.getJSONObject(i)
-                            val rawType = item.optString("type", "INCOMING").uppercase()
-                            val cType = when {
-                                rawType.contains("MISSED") -> CallType.MISSED
-                                rawType.contains("OUT") -> CallType.OUTGOING
-                                rawType.contains("REJECT") -> CallType.REJECTED
-                                else -> CallType.INCOMING
-                            }
-                            list.add(
-                                CallLogItem(
-                                    id = item.optString("id", "call_$i"),
-                                    name = item.optString("name").takeIf { n -> n.isNotBlank() && n != "null" && n != "Unknown" },
-                                    number = item.optString("number", "+1 (555) 019-2834"),
-                                    type = cType,
-                                    date = item.optString("date", "Today, 10:45 AM"),
-                                    duration = item.optString("duration", if (cType == CallType.MISSED) "Missed" else "2m 14s"),
-                                    timestamp = item.optLong("timestamp", System.currentTimeMillis() - i * 3600000)
-                                )
-                            )
-                        }
+                        com.example.kinetix.cache.KinetixDeviceCache.saveCachedCalls(context, deviceId, arr)
+                        val list = parseCallsJson(arr)
                         withContext(Dispatchers.Main) {
-                            callLogs.clear()
-                            callLogs.addAll(list)
+                            if (callLogs.isEmpty()) {
+                                callLogs.addAll(list)
+                            } else if (list.isNotEmpty()) {
+                                callLogs.clear()
+                                callLogs.addAll(list)
+                            }
                         }
                     }
                 }

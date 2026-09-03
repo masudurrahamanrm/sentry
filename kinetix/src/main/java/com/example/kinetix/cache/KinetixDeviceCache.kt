@@ -117,6 +117,94 @@ object KinetixDeviceCache {
         } catch (_: Exception) {}
         return result
     }
+
+    // Generic JSON array cache helper
+    fun saveJsonArray(context: Context, key: String, arr: org.json.JSONArray) {
+        try {
+            getPrefs(context).edit().putString(key, arr.toString()).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun getJsonArray(context: Context, key: String): org.json.JSONArray {
+        val str = getPrefs(context).getString(key, null) ?: return org.json.JSONArray()
+        return try {
+            org.json.JSONArray(str)
+        } catch (_: Exception) {
+            org.json.JSONArray()
+        }
+    }
+
+    // Feature specific caches
+    fun saveCachedNotifications(context: Context, deviceId: String, arr: org.json.JSONArray) {
+        saveJsonArray(context, "notifs_$deviceId", arr)
+    }
+
+    fun getCachedNotifications(context: Context, deviceId: String): org.json.JSONArray {
+        return getJsonArray(context, "notifs_$deviceId")
+    }
+
+    fun saveCachedPhotos(context: Context, deviceId: String, arr: org.json.JSONArray) {
+        saveJsonArray(context, "photos_$deviceId", arr)
+    }
+
+    fun getCachedPhotos(context: Context, deviceId: String): org.json.JSONArray {
+        return getJsonArray(context, "photos_$deviceId")
+    }
+
+    fun saveCachedGallery(context: Context, deviceId: String, arr: org.json.JSONArray) {
+        saveJsonArray(context, "gallery_$deviceId", arr)
+    }
+
+    fun getCachedGallery(context: Context, deviceId: String): org.json.JSONArray {
+        return getJsonArray(context, "gallery_$deviceId")
+    }
+
+    fun saveCachedFiles(context: Context, deviceId: String, path: String, arr: org.json.JSONArray) {
+        saveJsonArray(context, "files_${deviceId}_${path.hashCode()}", arr)
+    }
+
+    fun getCachedFiles(context: Context, deviceId: String, path: String): org.json.JSONArray {
+        return getJsonArray(context, "files_${deviceId}_${path.hashCode()}")
+    }
+
+    fun saveCachedCalls(context: Context, deviceId: String, arr: org.json.JSONArray) {
+        saveJsonArray(context, "calls_$deviceId", arr)
+    }
+
+    fun getCachedCalls(context: Context, deviceId: String): org.json.JSONArray {
+        return getJsonArray(context, "calls_$deviceId")
+    }
+
+    fun saveCachedAudio(context: Context, deviceId: String, arr: org.json.JSONArray) {
+        saveJsonArray(context, "audio_$deviceId", arr)
+    }
+
+    fun getCachedAudio(context: Context, deviceId: String): org.json.JSONArray {
+        return getJsonArray(context, "audio_$deviceId")
+    }
+
+    fun saveCachedActivity(context: Context, deviceId: String, arr: org.json.JSONArray) {
+        saveJsonArray(context, "activity_$deviceId", arr)
+    }
+
+    fun getCachedActivity(context: Context, deviceId: String): org.json.JSONArray {
+        return getJsonArray(context, "activity_$deviceId")
+    }
+
+    fun saveCachedLocation(context: Context, deviceId: String, obj: JSONObject) {
+        try {
+            getPrefs(context).edit().putString("loc_$deviceId", obj.toString()).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun getCachedLocation(context: Context, deviceId: String): JSONObject? {
+        val str = getPrefs(context).getString("loc_$deviceId", null) ?: return null
+        return try {
+            JSONObject(str)
+        } catch (_: Exception) {
+            null
+        }
+    }
 }
 
 data class CachedTelemetry(

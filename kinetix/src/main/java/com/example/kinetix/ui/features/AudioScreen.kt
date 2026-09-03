@@ -69,8 +69,34 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
     var snippetCountdown by remember { mutableIntStateOf(10) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
 
-    // Archive & Playback State
-    val audioList = remember { mutableStateListOf<AudioItem>() }
+    fun parseAudioJson(arr: org.json.JSONArray): List<AudioItem> {
+        val items = mutableListOf<AudioItem>()
+        for (i in 0 until arr.length()) {
+            val item = arr.getJSONObject(i)
+            items.add(
+                AudioItem(
+                    id = item.optString("id", "rec_$i"),
+                    name = item.optString("name", "audio_clip.m4a"),
+                    duration = item.optString("duration", "0:10"),
+                    size = item.optString("size", "160 KB"),
+                    date = item.optString("date", "Just now"),
+                    base64 = item.optString("base64").takeIf { b -> b.isNotBlank() && b != "null" },
+                    r2Url = item.optString("r2Url").takeIf { u -> u.isNotBlank() && u != "null" }
+                )
+            )
+        }
+        return items
+    }
+
+    // Archive & Playback State (Initialized from 0ms Local Cache)
+    val audioList = remember(deviceId) {
+        mutableStateListOf<AudioItem>().apply {
+            val cachedArr = com.example.kinetix.cache.KinetixDeviceCache.getCachedAudio(context, deviceId)
+            if (cachedArr.length() > 0) {
+                addAll(parseAudioJson(cachedArr))
+            }
+        }
+    }
     var currentlyPlayingId by remember { mutableStateOf<String?>(null) }
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
 
@@ -170,24 +196,17 @@ fun AudioScreen(deviceId: String, onBack: () -> Unit) {
             if (res.isSuccess) {
                 val arr = res.getOrNull()
                 if (arr != null) {
-                    val items = mutableListOf<AudioItem>()
-                    for (i in 0 until arr.length()) {
-                        val item = arr.getJSONObject(i)
-                        items.add(
-                            AudioItem(
-                                id = item.optString("id", "rec_$i"),
-                                name = item.optString("name", "audio_clip.m4a"),
-                                duration = item.optString("duration", "0:10"),
-                                size = item.optString("size", "160 KB"),
-                                date = item.optString("date", "Just now"),
-                                base64 = item.optString("base64").takeIf { b -> b.isNotBlank() && b != "null" },
-                                r2Url = item.optString("r2Url").takeIf { u -> u.isNotBlank() && u != "null" }
-                            )
-                        )
+                    if (arr.length() > 0) {
+                        com.example.kinetix.cache.KinetixDeviceCache.saveCachedAudio(context, deviceId, arr)
                     }
+                    val items = parseAudioJson(arr)
                     withContext(Dispatchers.Main) {
-                        audioList.clear()
-                        audioList.addAll(items)
+                        if (audioList.isEmpty()) {
+                            audioList.addAll(items)
+                        } else if (items.isNotEmpty()) {
+                            audioList.clear()
+                            audioList.addAll(items)
+                        }
                     }
                 }
             }

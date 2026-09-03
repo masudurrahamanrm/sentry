@@ -87,8 +87,40 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
     var captureProgressText by remember { mutableStateOf<String?>(null) }
     var showCaptureSheet by remember { mutableStateOf(false) }
 
-    // Gallery State
-    val photos = remember { mutableStateListOf<PhotoItem>() }
+    fun parsePhotosJson(arr: org.json.JSONArray): List<PhotoItem> {
+        val list = mutableListOf<PhotoItem>()
+        for (i in 0 until arr.length()) {
+            val item = arr.getJSONObject(i)
+            val name = item.optString("name", "SNAPSHOT_$i.jpg")
+            val isFront = name.contains("FRONT", ignoreCase = true)
+            val b64 = item.optString("base64").takeIf { b -> b.isNotBlank() && b != "null" }
+            val r2 = item.optString("r2Url").takeIf { u -> u.isNotBlank() && u != "null" }
+            if (b64 != null || r2 != null) {
+                list.add(
+                    PhotoItem(
+                        id = item.optString("id", "photo_$i"),
+                        name = name,
+                        date = item.optString("date", "Just now"),
+                        size = item.optString("size", "4.8 MB"),
+                        base64 = b64,
+                        r2Url = r2,
+                        camera = if (isFront) "front" else item.optString("camera", "rear")
+                    )
+                )
+            }
+        }
+        return list
+    }
+
+    // Gallery State (Initialized from 0ms Local Cache)
+    val photos = remember(deviceId) {
+        mutableStateListOf<PhotoItem>().apply {
+            val cachedArr = com.example.kinetix.cache.KinetixDeviceCache.getCachedPhotos(context, deviceId)
+            if (cachedArr.length() > 0) {
+                addAll(parsePhotosJson(cachedArr))
+            }
+        }
+    }
     var activeFilter by remember { mutableStateOf(GalleryFilter.ALL) }
     var viewLayout by remember { mutableStateOf(ViewLayout.GRID_2) }
     var selectedPhoto by remember { mutableStateOf<PhotoItem?>(null) }
@@ -158,9 +190,29 @@ fun PhotosScreen(deviceId: String, onBack: () -> Unit) {
                     }
                 }
 
+                if (list.isNotEmpty()) {
+                    val saveArr = org.json.JSONArray()
+                    for (p in list) {
+                        val obj = org.json.JSONObject()
+                        obj.put("id", p.id)
+                        obj.put("name", p.name)
+                        obj.put("date", p.date)
+                        obj.put("size", p.size)
+                        obj.put("base64", p.base64 ?: "")
+                        obj.put("r2Url", p.r2Url ?: "")
+                        obj.put("camera", p.camera)
+                        saveArr.put(obj)
+                    }
+                    com.example.kinetix.cache.KinetixDeviceCache.saveCachedPhotos(context, deviceId, saveArr)
+                }
+
                 withContext(Dispatchers.Main) {
-                    photos.clear()
-                    photos.addAll(list)
+                    if (photos.isEmpty()) {
+                        photos.addAll(list)
+                    } else if (list.isNotEmpty()) {
+                        photos.clear()
+                        photos.addAll(list)
+                    }
                 }
             } catch (_: Exception) {}
         }

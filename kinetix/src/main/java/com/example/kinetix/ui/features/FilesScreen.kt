@@ -68,13 +68,37 @@ fun FilesScreen(deviceId: String, onBack: () -> Unit) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val coroutineScope = rememberCoroutineScope()
+    fun parseFilesJson(arr: org.json.JSONArray, serverPath: String): List<FileEntry> {
+        val items = mutableListOf<FileEntry>()
+        for (i in 0 until arr.length()) {
+            val f = arr.getJSONObject(i)
+            items.add(
+                FileEntry(
+                    name = f.optString("name", "file"),
+                    path = f.optString("path", "$serverPath/file"),
+                    size = f.optString("size", "0 B"),
+                    isFolder = f.optBoolean("isFolder", false),
+                    modified = f.optString("modified", "Recent")
+                )
+            )
+        }
+        return items
+    }
+
     var currentPath by remember { mutableStateOf("/sdcard") }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     var storageStats by remember { mutableStateOf(StorageStats()) }
-    val files = remember { mutableStateListOf<FileEntry>() }
+    val files = remember(deviceId, currentPath) {
+        mutableStateListOf<FileEntry>().apply {
+            val cachedArr = com.example.kinetix.cache.KinetixDeviceCache.getCachedFiles(context, deviceId, currentPath)
+            if (cachedArr.length() > 0) {
+                addAll(parseFilesJson(cachedArr, currentPath))
+            }
+        }
+    }
 
     // Selected file for preview & download bottom sheet
     var selectedFile by remember { mutableStateOf<FileEntry?>(null) }
@@ -92,21 +116,11 @@ fun FilesScreen(deviceId: String, onBack: () -> Unit) {
                     val arr = obj.optJSONArray("files")
                     val statsObj = obj.optJSONObject("storageStats")
 
-                    val items = mutableListOf<FileEntry>()
-                    if (arr != null) {
-                        for (i in 0 until arr.length()) {
-                            val f = arr.getJSONObject(i)
-                            items.add(
-                                FileEntry(
-                                    name = f.optString("name", "file"),
-                                    path = f.optString("path", "$serverPath/file"),
-                                    size = f.optString("size", "0 B"),
-                                    isFolder = f.optBoolean("isFolder", false),
-                                    modified = f.optString("modified", "Recent")
-                                )
-                            )
-                        }
+                    if (arr != null && arr.length() > 0) {
+                        com.example.kinetix.cache.KinetixDeviceCache.saveCachedFiles(context, deviceId, serverPath, arr)
                     }
+
+                    val items = if (arr != null) parseFilesJson(arr, serverPath) else emptyList()
 
                     val newStats = if (statsObj != null) {
                         StorageStats(
@@ -120,8 +134,12 @@ fun FilesScreen(deviceId: String, onBack: () -> Unit) {
                     withContext(Dispatchers.Main) {
                         currentPath = serverPath
                         storageStats = newStats
-                        files.clear()
-                        files.addAll(items)
+                        if (files.isEmpty()) {
+                            files.addAll(items)
+                        } else if (items.isNotEmpty()) {
+                            files.clear()
+                            files.addAll(items)
+                        }
                     }
                 }
             }
