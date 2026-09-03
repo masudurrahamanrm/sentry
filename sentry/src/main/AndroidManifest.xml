@@ -61,7 +61,7 @@
             android:enabled="true"
             android:exported="true"
             android:stopWithTask="false"
-            android:foregroundServiceType="dataSync|microphone|camera" />
+            android:foregroundServiceType="dataSync" />
 
         <receiver
             android:name=".service.SentryBootReceiver"
