@@ -227,6 +227,7 @@ fun DeviceDetailScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         bottomBar = {
             NavigationBar(
                 containerColor = Color.White,
@@ -326,7 +327,7 @@ fun DeviceDetailScreen(
             state = pagerState,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(bottom = padding.calculateBottomPadding())
         ) { page ->
             when (page) {
                 1 -> {
@@ -352,10 +353,11 @@ fun DeviceDetailScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(Color(0xFFFBFBFE))
+                            .statusBarsPadding()
                             .padding(horizontal = 16.dp)
                             .verticalScroll(rememberScrollState())
                     ) {
-                    Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
             // 1. Top Bar Header (Circular Menu Button, Centered Device Name & Status, Right Action Buttons)
             Box(
