@@ -30,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -903,6 +904,11 @@ fun DashboardScreen(
 
                                             deviceToRename = device
                                             renameInputText = device.deviceName
+                                        },
+                                        onOpenControlHub = {
+                                            if (!device.isThisDevice) {
+                                                onNavigateToDeviceDetail(device.deviceId)
+                                            }
                                         }
                                     )
                                 }
@@ -1055,7 +1061,8 @@ fun DashboardDeviceCard(
     device: PairedDeviceItem,
     isSelected: Boolean,
     onTap: () -> Unit,
-    onHoldComplete: () -> Unit
+    onHoldComplete: () -> Unit,
+    onOpenControlHub: () -> Unit = {}
 ) {
     val coroutineScope = rememberCoroutineScope()
     var isHolding by remember { mutableStateOf(false) }
@@ -1132,6 +1139,35 @@ fun DashboardDeviceCard(
                     fontSize = 11.5.sp,
                     fontWeight = FontWeight.Normal
                 )
+            }
+        }
+
+        if (!device.isThisDevice) {
+            Surface(
+                onClick = onOpenControlHub,
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0xFFEDE7F6),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD1C4E9)),
+                modifier = Modifier.padding(end = 4.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Outlined.Tune,
+                        contentDescription = "Control Hub",
+                        tint = Color(0xFF673AB7),
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.5.dp))
+                    Text(
+                        text = "Control",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF673AB7)
+                    )
+                }
             }
         }
 
