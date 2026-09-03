@@ -1380,74 +1380,73 @@ fun SentryModernToolCard(
     Surface(
         onClick = onClick,
         modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
         color = Color.White,
         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF0F0F0)),
-        shadowElevation = 1.dp
+        shadowElevation = 0.5.dp
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 11.dp, vertical = 9.dp)
+                .padding(horizontal = 9.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(badgeBg),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(badgeBg),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        icon,
-                        contentDescription = null,
-                        tint = badgeColor,
-                        modifier = Modifier.size(17.dp)
-                    )
-                }
-
-                if (tagText != null) {
-                    Surface(
-                        shape = RoundedCornerShape(5.dp),
-                        color = tagBg
-                    ) {
-                        Text(
-                            text = tagText,
-                            color = tagColor,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            modifier = Modifier.padding(horizontal = 4.5.dp, vertical = 1.5.dp)
-                        )
-                    }
-                } else {
-                    Icon(
-                        Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = Color(0xFFBDBDBD),
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = badgeColor,
+                    modifier = Modifier.size(15.dp)
+                )
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.width(8.dp))
 
-            Text(
-                text = title,
-                fontWeight = FontWeight.Bold,
-                fontSize = 12.5.sp,
-                color = Color(0xFF1D1B20),
-                maxLines = 1
-            )
-            Spacer(modifier = Modifier.height(1.dp))
-            Text(
-                text = subtitle,
-                color = Color(0xFF757575),
-                fontSize = 10.sp,
-                maxLines = 1
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = title,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.5.sp,
+                        color = Color(0xFF1D1B20),
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (tagText != null) {
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = tagBg
+                        ) {
+                            Text(
+                                text = tagText,
+                                color = tagColor,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+                }
+                Text(
+                    text = subtitle,
+                    color = Color(0xFF757575),
+                    fontSize = 9.5.sp,
+                    maxLines = 1
+                )
+            }
+
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = Color(0xFFD1D5DB),
+                modifier = Modifier.size(13.dp)
             )
         }
     }
