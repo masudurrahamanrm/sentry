@@ -997,46 +997,33 @@ fun DashboardDeviceCard(
 ) {
     val coroutineScope = rememberCoroutineScope()
     var isHolding by remember { mutableStateOf(false) }
-    var holdProgress by remember { mutableFloatStateOf(0f) }
 
-    Box(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(
                 if (isSelected) Color(0xFFF3EDF7) else Color.Transparent
             )
-            .border(
-                width = if (isHolding) 1.5.dp else 1.dp,
-                color = if (isHolding) Color(0xFF673AB7) else if (isSelected) Color(0xFFE8DEF8) else Color(0xFFEEEEEE),
-                shape = RoundedCornerShape(16.dp)
-            )
             .pointerInput(device.deviceId) {
                 detectTapGestures(
                     onPress = {
                         isHolding = true
-                        val targetMs = 4000L
                         val startTime = System.currentTimeMillis()
                         var completed = false
 
-                        val progressJob = coroutineScope.launch {
-                            while (isHolding) {
-                                val elapsed = System.currentTimeMillis() - startTime
-                                holdProgress = (elapsed.toFloat() / targetMs).coerceIn(0f, 1f)
-                                if (elapsed >= targetMs) {
-                                    completed = true
-                                    onHoldComplete()
-                                    break
-                                }
-                                delay(30)
+                        val timerJob = coroutineScope.launch {
+                            delay(4000L)
+                            if (isHolding) {
+                                completed = true
+                                onHoldComplete()
                             }
                         }
 
                         val released = tryAwaitRelease()
                         isHolding = false
-                        progressJob.cancel()
+                        timerJob.cancel()
                         val duration = System.currentTimeMillis() - startTime
-                        holdProgress = 0f
 
                         if (released && !completed && duration < 500) {
                             onTap()
@@ -1044,98 +1031,51 @@ fun DashboardDeviceCard(
                     }
                 )
             }
-            .padding(horizontal = 12.dp, vertical = 12.dp)
+            .padding(horizontal = 8.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (device.isThisDevice) Color(0xFFE3F2FD) else Color(0xFFE8F5E9)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val isWatch = device.deviceName.contains("Watch", ignoreCase = true)
-                    val isBuds = device.deviceName.contains("Buds", ignoreCase = true) || device.deviceName.contains("AirPods", ignoreCase = true)
+        Box(
+            modifier = Modifier.size(42.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            val isWatch = device.deviceName.contains("Watch", ignoreCase = true)
+            val isBuds = device.deviceName.contains("Buds", ignoreCase = true) || device.deviceName.contains("AirPods", ignoreCase = true)
 
-                    Icon(
-                        when {
-                            isWatch -> Icons.Default.Watch
-                            isBuds -> Icons.Default.Headphones
-                            else -> Icons.Default.Smartphone
-                        },
-                        contentDescription = null,
-                        tint = if (device.isThisDevice) Color(0xFF1976D2) else Color(0xFF2E7D32),
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(14.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = device.deviceName,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = Color(0xFF1D1B20)
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = if (device.isThisDevice) "This device • ${device.address}" else "${device.osVersion} • ${device.lastSeenText}",
-                        color = if (device.isThisDevice) Color(0xFF1976D2) else Color(0xFF49454F),
-                        fontSize = 13.sp,
-                        fontWeight = if (device.isThisDevice) FontWeight.Medium else FontWeight.Normal
-                    )
-                }
-
-                Icon(
-                    Icons.Default.ChevronRight,
-                    contentDescription = "Details",
-                    tint = Color(0xFF9E9E9E),
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            // Visual 4-second hold progress indicator
-            if (isHolding && holdProgress > 0f) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Hold for 4s to rename...",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color(0xFF673AB7)
-                        )
-                        val secondsRemaining = ((4000L * (1f - holdProgress)) / 1000.0)
-                        Text(
-                            text = String.format(java.util.Locale.US, "%.1fs", secondsRemaining),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF673AB7)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    LinearProgressIndicator(
-                        progress = { holdProgress },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp)),
-                        color = Color(0xFF673AB7),
-                        trackColor = Color(0xFFEDE7F6)
-                    )
-                }
-            }
+            Icon(
+                when {
+                    isWatch -> Icons.Default.Watch
+                    isBuds -> Icons.Default.Headphones
+                    else -> Icons.Default.Smartphone
+                },
+                contentDescription = null,
+                tint = if (device.isThisDevice) Color(0xFF1976D2) else Color(0xFF2E7D32),
+                modifier = Modifier.size(28.dp)
+            )
         }
+
+        Spacer(modifier = Modifier.width(14.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = device.deviceName,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = Color(0xFF1D1B20)
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = if (device.isThisDevice) "This device • ${device.address}" else "${device.osVersion} • ${device.lastSeenText}",
+                color = if (device.isThisDevice) Color(0xFF1976D2) else Color(0xFF49454F),
+                fontSize = 13.sp,
+                fontWeight = if (device.isThisDevice) FontWeight.Medium else FontWeight.Normal
+            )
+        }
+
+        Icon(
+            Icons.Default.ChevronRight,
+            contentDescription = "Details",
+            tint = Color(0xFF9E9E9E),
+            modifier = Modifier.size(20.dp)
+        )
     }
 }
