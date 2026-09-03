@@ -11,8 +11,8 @@ COPY packages/validation/package*.json ./packages/validation/
 COPY packages/crypto/package*.json ./packages/crypto/
 COPY backend/package*.json ./backend/
 
-# Install dependencies across all workspaces
-RUN npm ci
+# Install dependencies across all workspaces (ignore postinstall until source is copied)
+RUN npm ci --ignore-scripts
 
 # Copy source code
 COPY packages/ ./packages/
@@ -37,7 +37,7 @@ COPY --from=builder /app/packages/ ./packages/
 COPY --from=builder /app/backend/dist ./backend/dist
 
 # Install production node_modules
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --ignore-scripts
 
 EXPOSE 10000
 
