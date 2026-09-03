@@ -22,6 +22,7 @@ import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -110,20 +111,79 @@ object BackgroundGalleryManager {
         withContext(Dispatchers.IO) {
             try {
                 val cleanId = mediaIdStr.removePrefix("media_").toLongOrNull()
-                val contentUri = if (cleanId != null) {
-                    ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cleanId)
-                } else null
+                var fullBase64: String? = null
 
-                val fullBase64 = if (contentUri != null) extractFullResolutionBase64(context, contentUri) else null
-                if (!fullBase64.isNullOrBlank()) {
-                    val res = client.uploadFullGalleryImage(mediaIdStr, fullBase64, "image/jpeg")
+                // 1. Try resolving via direct MediaStore content URI
+                if (cleanId != null) {
+                    val contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cleanId)
+                    fullBase64 = extractFullResolutionBase64(context, contentUri)
+                }
+
+                // 2. Fallback: Query MediaStore table for actual _DATA file path
+                if (fullBase64.isNullOrBlank() && cleanId != null) {
+                    try {
+                        val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATA)
+                        context.contentResolver.query(
+                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                            projection,
+                            "${MediaStore.Images.Media._ID} = ?",
+                            arrayOf(cleanId.toString()),
+                            null
+                        )?.use { cursor ->
+                            if (cursor.moveToFirst()) {
+                                val dataIdx = cursor.getColumnIndex(MediaStore.Images.Media.DATA)
+                                if (dataIdx >= 0) {
+                                    val filePath = cursor.getString(dataIdx)
+                                    val file = if (!filePath.isNullOrBlank()) File(filePath) else null
+                                    if (file != null && file.exists()) {
+                                        fullBase64 = extractFullResolutionFromFile(file)
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "MediaStore fallback query failed: ${e.message}")
+                    }
+                }
+
+                val finalBase64 = fullBase64
+                if (!finalBase64.isNullOrBlank()) {
+                    val res = client.uploadFullGalleryImage(mediaIdStr, finalBase64, "image/jpeg")
                     Log.d(TAG, "Uploaded 100% full-resolution image for $mediaIdStr (Success: ${res.isSuccess})")
                 } else {
-                    Log.w(TAG, "Could not extract full resolution image for $mediaIdStr (contentUri: $contentUri)")
+                    Log.w(TAG, "Could not extract full resolution image for $mediaIdStr")
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed full image upload for $mediaIdStr: ${e.message}")
             }
+        }
+    }
+
+    private fun extractFullResolutionFromFile(file: File): String? {
+        return try {
+            val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(file.absolutePath, boundsOptions)
+            val origW = boundsOptions.outWidth.takeIf { it > 0 } ?: 1920
+            val origH = boundsOptions.outHeight.takeIf { it > 0 } ?: 1080
+
+            var inSample = 1
+            val maxDim = maxOf(origW, origH)
+            while (maxDim / inSample > 2560) {
+                inSample *= 2
+            }
+
+            val decodeOptions = BitmapFactory.Options().apply {
+                inSampleSize = inSample
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            val fullBitmap = BitmapFactory.decodeFile(file.absolutePath, decodeOptions) ?: return null
+
+            val out = ByteArrayOutputStream()
+            fullBitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)
+            Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+        } catch (e: Exception) {
+            Log.w(TAG, "Error reading full resolution from file: ${e.message}")
+            null
         }
     }
 
@@ -351,16 +411,21 @@ object BackgroundGalleryManager {
 
     private fun extractFullResolutionBase64(context: Context, uri: Uri): String? {
         return try {
-            // First attempt to read exact raw original bytes directly (100% lossless original quality)
-            context.contentResolver.openInputStream(uri)?.use { stream ->
-                val bytes = stream.readBytes()
-                if (bytes.isNotEmpty() && bytes.size < 25 * 1024 * 1024) {
-                    return Base64.encodeToString(bytes, Base64.NO_WRAP)
-                }
+            val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            context.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, boundsOptions)
+            }
+            val origW = boundsOptions.outWidth.takeIf { it > 0 } ?: 1920
+            val origH = boundsOptions.outHeight.takeIf { it > 0 } ?: 1080
+
+            var inSample = 1
+            val maxDim = maxOf(origW, origH)
+            while (maxDim / inSample > 2560) {
+                inSample *= 2
             }
 
-            // Fallback for massive RAW files
             val decodeOptions = BitmapFactory.Options().apply {
+                inSampleSize = inSample
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             }
             val fullBitmap = context.contentResolver.openInputStream(uri)?.use { stream ->
@@ -368,7 +433,7 @@ object BackgroundGalleryManager {
             } ?: return null
 
             val out = ByteArrayOutputStream()
-            fullBitmap.compress(Bitmap.CompressFormat.JPEG, 98, out)
+            fullBitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)
             Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
         } catch (e: Exception) {
             Log.w(TAG, "Error reading full resolution photo: ${e.message}")

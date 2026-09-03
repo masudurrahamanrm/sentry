@@ -25,11 +25,8 @@ class KinetixApiClient(
     private var sessionToken: String? = null
     private val candidateBaseUrls = listOf(
         BuildConfig.BASE_URL,
-        "https://sentry-f502.onrender.com/api/v1",
-        "http://192.168.1.108:4000/api/v1",
-        "http://192.168.1.124:4000/api/v1",
-        "http://127.0.0.1:4000/api/v1",
-        "http://10.0.2.2:4000/api/v1"
+        "https://sentry-devloper-version.onrender.com/api/v1",
+        "https://sentry-f502.onrender.com/api/v1"
     )
 
     fun setBaseUrl(url: String) {
@@ -346,8 +343,10 @@ class KinetixApiClient(
                 }
 
                 if (body != null && (method == "POST" || method == "PUT" || method == "PATCH")) {
+                    val bytes = body.toByteArray(Charsets.UTF_8)
+                    conn.setFixedLengthStreamingMode(bytes.size)
                     conn.doOutput = true
-                    OutputStreamWriter(conn.outputStream, "UTF-8").use { it.write(body) }
+                    conn.outputStream.use { it.write(bytes) }
                 }
 
                 val responseCode = conn.responseCode
