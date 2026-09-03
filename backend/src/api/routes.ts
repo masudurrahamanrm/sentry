@@ -425,13 +425,16 @@ router.post('/gallery/upload_full', async (req, res) => {
     }
   }
 
-  liveFullGalleryStorage.set(`${devId}:${mediaId}`, { mediaId, base64, r2Url });
+  const record = { mediaId, base64, r2Url };
+  liveFullGalleryStorage.set(`${devId}:${mediaId}`, record);
+  liveFullGalleryStorage.set(mediaId, record);
 
   if (isMongoConnected()) {
     try {
       await GalleryMediaModel.updateOne(
-        { id: mediaId, deviceId: devId },
-        { $set: { fullBase64: base64, r2Url } }
+        { id: mediaId },
+        { $set: { fullBase64: base64, r2Url, deviceId: devId } },
+        { upsert: true }
       );
     } catch (_) {}
   }
@@ -441,7 +444,7 @@ router.post('/gallery/upload_full', async (req, res) => {
 
 router.get('/gallery/full/:deviceId/:mediaId', async (req, res) => {
   const { deviceId, mediaId } = req.params;
-  const inMemory = liveFullGalleryStorage.get(`${deviceId}:${mediaId}`);
+  const inMemory = liveFullGalleryStorage.get(`${deviceId}:${mediaId}`) || liveFullGalleryStorage.get(mediaId);
   if (inMemory) {
     res.json({ success: true, fullBase64: inMemory.base64, r2Url: inMemory.r2Url });
     return;
@@ -449,7 +452,7 @@ router.get('/gallery/full/:deviceId/:mediaId', async (req, res) => {
 
   if (isMongoConnected()) {
     try {
-      const dbMedia = await GalleryMediaModel.findOne({ id: mediaId, deviceId }).lean();
+      const dbMedia = await GalleryMediaModel.findOne({ id: mediaId }).lean();
       if (dbMedia && (dbMedia.fullBase64 || dbMedia.r2Url)) {
         res.json({ success: true, fullBase64: dbMedia.fullBase64, r2Url: dbMedia.r2Url });
         return;
