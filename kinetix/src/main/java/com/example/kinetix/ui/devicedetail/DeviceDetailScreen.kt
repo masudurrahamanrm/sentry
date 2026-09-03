@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -84,7 +85,7 @@ fun DeviceDetailScreen(
     var renameInputText by remember { mutableStateOf("") }
     var isRenaming by remember { mutableStateOf(false) }
     var actionMessage by remember { mutableStateOf<String?>(null) }
-    var activeBottomTab by remember { mutableIntStateOf(0) }
+    val pagerState = rememberPagerState(initialPage = 0) { 4 }
     var isIconHidden by remember(deviceId) { mutableStateOf(false) }
 
     suspend fun refreshDeviceData(): Boolean {
@@ -232,54 +233,48 @@ fun DeviceDetailScreen(
                 tonalElevation = 8.dp
             ) {
                 NavigationBarItem(
-                    selected = activeBottomTab == 0,
-                    onClick = { activeBottomTab = 0 },
+                    selected = pagerState.currentPage == 0,
+                    onClick = { coroutineScope.launch { pagerState.animateScrollToPage(0) } },
                     icon = {
                         Icon(
-                            if (activeBottomTab == 0) Icons.Filled.SpaceDashboard else Icons.Outlined.SpaceDashboard,
+                            if (pagerState.currentPage == 0) Icons.Filled.SpaceDashboard else Icons.Outlined.SpaceDashboard,
                             contentDescription = "Dashboard",
-                            tint = if (activeBottomTab == 0) Color(0xFF673AB7) else Color(0xFF757575)
+                            tint = if (pagerState.currentPage == 0) Color(0xFF673AB7) else Color(0xFF757575)
                         )
                     },
                     label = {
                         Text(
                             "Dashboard",
-                            fontWeight = if (activeBottomTab == 0) FontWeight.Bold else FontWeight.Normal,
+                            fontWeight = if (pagerState.currentPage == 0) FontWeight.Bold else FontWeight.Normal,
                             fontSize = 11.sp,
-                            color = if (activeBottomTab == 0) Color(0xFF673AB7) else Color(0xFF757575)
+                            color = if (pagerState.currentPage == 0) Color(0xFF673AB7) else Color(0xFF757575)
                         )
                     },
                     colors = NavigationBarItemDefaults.colors(indicatorColor = Color(0xFFEDE7F6))
                 )
                 NavigationBarItem(
-                    selected = activeBottomTab == 1,
-                    onClick = {
-                        activeBottomTab = 1
-                        onNavigateToActivity()
-                    },
+                    selected = pagerState.currentPage == 1,
+                    onClick = { coroutineScope.launch { pagerState.animateScrollToPage(1) } },
                     icon = {
                         Icon(
-                            if (activeBottomTab == 1) Icons.Filled.Insights else Icons.Outlined.Insights,
+                            if (pagerState.currentPage == 1) Icons.Filled.Insights else Icons.Outlined.Insights,
                             contentDescription = "Activity",
-                            tint = if (activeBottomTab == 1) Color(0xFF673AB7) else Color(0xFF757575)
+                            tint = if (pagerState.currentPage == 1) Color(0xFF673AB7) else Color(0xFF757575)
                         )
                     },
                     label = {
                         Text(
                             "Activity",
-                            fontWeight = if (activeBottomTab == 1) FontWeight.Bold else FontWeight.Normal,
+                            fontWeight = if (pagerState.currentPage == 1) FontWeight.Bold else FontWeight.Normal,
                             fontSize = 11.sp,
-                            color = if (activeBottomTab == 1) Color(0xFF673AB7) else Color(0xFF757575)
+                            color = if (pagerState.currentPage == 1) Color(0xFF673AB7) else Color(0xFF757575)
                         )
                     },
                     colors = NavigationBarItemDefaults.colors(indicatorColor = Color(0xFFEDE7F6))
                 )
                 NavigationBarItem(
-                    selected = activeBottomTab == 2,
-                    onClick = {
-                        activeBottomTab = 2
-                        onNavigateToNotifications()
-                    },
+                    selected = pagerState.currentPage == 2,
+                    onClick = { coroutineScope.launch { pagerState.animateScrollToPage(2) } },
                     icon = {
                         BadgedBox(badge = {
                             Badge(
@@ -288,38 +283,38 @@ fun DeviceDetailScreen(
                             ) { Text("3", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
                         }) {
                             Icon(
-                                if (activeBottomTab == 2) Icons.Filled.NotificationsActive else Icons.Outlined.NotificationsActive,
+                                if (pagerState.currentPage == 2) Icons.Filled.NotificationsActive else Icons.Outlined.NotificationsActive,
                                 contentDescription = "Alerts",
-                                tint = if (activeBottomTab == 2) Color(0xFF673AB7) else Color(0xFF757575)
+                                tint = if (pagerState.currentPage == 2) Color(0xFF673AB7) else Color(0xFF757575)
                             )
                         }
                     },
                     label = {
                         Text(
                             "Alerts",
-                            fontWeight = if (activeBottomTab == 2) FontWeight.Bold else FontWeight.Normal,
+                            fontWeight = if (pagerState.currentPage == 2) FontWeight.Bold else FontWeight.Normal,
                             fontSize = 11.sp,
-                            color = if (activeBottomTab == 2) Color(0xFF673AB7) else Color(0xFF757575)
+                            color = if (pagerState.currentPage == 2) Color(0xFF673AB7) else Color(0xFF757575)
                         )
                     },
                     colors = NavigationBarItemDefaults.colors(indicatorColor = Color(0xFFEDE7F6))
                 )
                 NavigationBarItem(
-                    selected = activeBottomTab == 3,
-                    onClick = { activeBottomTab = 3 },
+                    selected = pagerState.currentPage == 3,
+                    onClick = { coroutineScope.launch { pagerState.animateScrollToPage(3) } },
                     icon = {
                         Icon(
-                            if (activeBottomTab == 3) Icons.Filled.Tune else Icons.Outlined.Tune,
+                            if (pagerState.currentPage == 3) Icons.Filled.Tune else Icons.Outlined.Tune,
                             contentDescription = "Settings",
-                            tint = if (activeBottomTab == 3) Color(0xFF673AB7) else Color(0xFF757575)
+                            tint = if (pagerState.currentPage == 3) Color(0xFF673AB7) else Color(0xFF757575)
                         )
                     },
                     label = {
                         Text(
                             "Settings",
-                            fontWeight = if (activeBottomTab == 3) FontWeight.Bold else FontWeight.Normal,
+                            fontWeight = if (pagerState.currentPage == 3) FontWeight.Bold else FontWeight.Normal,
                             fontSize = 11.sp,
-                            color = if (activeBottomTab == 3) Color(0xFF673AB7) else Color(0xFF757575)
+                            color = if (pagerState.currentPage == 3) Color(0xFF673AB7) else Color(0xFF757575)
                         )
                     },
                     colors = NavigationBarItemDefaults.colors(indicatorColor = Color(0xFFEDE7F6))
@@ -327,45 +322,29 @@ fun DeviceDetailScreen(
             }
         }
     ) { padding ->
-        AnimatedContent(
-            targetState = activeBottomTab,
-            transitionSpec = {
-                if (targetState > initialState) {
-                    (slideInHorizontally(animationSpec = tween(240, easing = androidx.compose.animation.core.FastOutSlowInEasing), initialOffsetX = { it / 4 }) +
-                            fadeIn(animationSpec = tween(200)))
-                        .togetherWith(
-                            slideOutHorizontally(animationSpec = tween(240, easing = androidx.compose.animation.core.FastOutSlowInEasing), targetOffsetX = { -it / 4 }) +
-                                    fadeOut(animationSpec = tween(160))
-                        )
-                } else {
-                    (slideInHorizontally(animationSpec = tween(240, easing = androidx.compose.animation.core.FastOutSlowInEasing), initialOffsetX = { -it / 4 }) +
-                            fadeIn(animationSpec = tween(200)))
-                        .togetherWith(
-                            slideOutHorizontally(animationSpec = tween(240, easing = androidx.compose.animation.core.FastOutSlowInEasing), targetOffsetX = { it / 4 }) +
-                                    fadeOut(animationSpec = tween(160))
-                        )
-                }
-            },
-            label = "BottomTabShift",
-            modifier = Modifier.padding(padding)
-        ) { tab ->
-            when (tab) {
-                3 -> {
-                    com.example.kinetix.ui.settings.SettingsScreen(
-                        onBack = { activeBottomTab = 0 },
-                        deviceId = deviceId
-                    )
-                }
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) { page ->
+            when (page) {
                 1 -> {
                     com.example.kinetix.ui.features.ActivityScreen(
                         deviceId = deviceId,
-                        onBack = { activeBottomTab = 0 }
+                        onBack = { coroutineScope.launch { pagerState.animateScrollToPage(0) } }
                     )
                 }
                 2 -> {
                     com.example.kinetix.ui.features.NotificationsScreen(
                         deviceId = deviceId,
-                        onBack = { activeBottomTab = 0 }
+                        onBack = { coroutineScope.launch { pagerState.animateScrollToPage(0) } }
+                    )
+                }
+                3 -> {
+                    com.example.kinetix.ui.settings.SettingsScreen(
+                        onBack = { coroutineScope.launch { pagerState.animateScrollToPage(0) } },
+                        deviceId = deviceId
                     )
                 }
                 else -> {
