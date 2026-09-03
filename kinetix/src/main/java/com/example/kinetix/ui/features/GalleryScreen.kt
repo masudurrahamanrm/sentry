@@ -207,19 +207,25 @@ fun GalleryScreen(
         val list = mutableListOf<GalleryItem>()
         for (i in 0 until arr.length()) {
             val obj = arr.getJSONObject(i)
+            val thumb = obj.optString("thumbnail").takeIf { !it.isNullOrBlank() && it != "null" && it.length > 50 }
+            val size = obj.optString("size", "3.2 MB")
+            // Filter out corrupted / placeholder 3 B items
+            if (thumb == null || (size.endsWith(" B") && (size.removeSuffix(" B").toIntOrNull() ?: 0) < 500)) {
+                continue
+            }
             list.add(
                 GalleryItem(
                     id = obj.optString("id", "media_$i"),
                     name = obj.optString("name", "IMG_$i.jpg"),
                     album = obj.optString("album", "Camera"),
                     mimeType = obj.optString("mimeType", "image/jpeg"),
-                    size = obj.optString("size", "3.2 MB"),
+                    size = size,
                     date = obj.optString("date", "Today"),
                     timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
                     width = obj.optInt("width", 1080),
                     height = obj.optInt("height", 1920),
-                    thumbnailBase64 = obj.optString("thumbnail").takeIf { !it.isNullOrBlank() },
-                    previewBase64 = obj.optString("preview").takeIf { !it.isNullOrBlank() }
+                    thumbnailBase64 = thumb,
+                    previewBase64 = obj.optString("preview").takeIf { !it.isNullOrBlank() && it != "null" }
                 )
             )
         }
@@ -245,35 +251,49 @@ fun GalleryScreen(
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
 
-    suspend fun fetchGallery() {
+    suspend fun fetchGallery(notifyUser: Boolean = false) {
         withContext(Dispatchers.IO) {
             try {
                 val client = KinetixApiClient(context)
                 val res = client.getGalleryMedia(deviceId)
                 if (res.isSuccess) {
                     val arr = res.getOrNull() ?: JSONArray()
-                    if (arr.length() > 0) {
+                    val incomingList = parseGalleryJson(arr)
+                    if (incomingList.isNotEmpty()) {
                         com.example.kinetix.cache.KinetixDeviceCache.saveCachedGallery(context, deviceId, arr)
                     }
-                    val list = parseGalleryJson(arr)
                     withContext(Dispatchers.Main) {
-                        if (mediaItems.isEmpty()) {
-                            mediaItems.addAll(list)
-                        } else if (list.isNotEmpty()) {
-                            mediaItems.clear()
-                            mediaItems.addAll(list)
+                        val map = mediaItems.associateBy { it.id }.toMutableMap()
+                        for (item in incomingList) {
+                            map[item.id] = item
+                        }
+                        val merged = map.values.sortedByDescending { it.timestamp }
+                        mediaItems.clear()
+                        mediaItems.addAll(merged)
+                        if (notifyUser) {
+                            Toast.makeText(context, "🔄 Gallery updated • ${merged.size} photos synced", Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                if (notifyUser) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Refresh error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } finally {
+                withContext(Dispatchers.Main) {
+                    isRefreshing = false
+                }
+            }
         }
     }
 
     LaunchedEffect(deviceId) {
-        fetchGallery()
+        fetchGallery(notifyUser = false)
         if (mediaItems.isEmpty()) {
             delay(1200)
-            fetchGallery()
+            fetchGallery(notifyUser = false)
         }
     }
 
@@ -564,9 +584,7 @@ fun GalleryScreen(
                     IconButton(onClick = {
                         coroutineScope.launch {
                             isRefreshing = true
-                            fetchGallery()
-                            delay(500)
-                            isRefreshing = false
+                            fetchGallery(notifyUser = true)
                         }
                     }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
@@ -580,9 +598,7 @@ fun GalleryScreen(
             onRefresh = {
                 coroutineScope.launch {
                     isRefreshing = true
-                    fetchGallery()
-                    delay(600)
-                    isRefreshing = false
+                    fetchGallery(notifyUser = true)
                 }
             },
             modifier = Modifier

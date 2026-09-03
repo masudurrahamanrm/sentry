@@ -305,20 +305,27 @@ let lastSyncedGallery: Array<any> = [];
 router.post('/gallery/sync', async (req, res) => {
   const { deviceId, media } = req.body || {};
   const devId = deviceId || 'SN-U5ZY-78QZ';
-  const mediaList = Array.isArray(media) ? media : [];
+  const rawList = Array.isArray(media) ? media : [];
+  const mediaList = rawList.filter((m: any) => m && m.id && m.thumbnail && typeof m.thumbnail === 'string' && m.thumbnail.length > 100);
 
   if (mediaList.length > 0) {
     const existing = liveGalleryStorage.get(devId) || [];
     const map = new Map<string, any>();
-    for (const item of existing) map.set(item.id, item);
-    for (const item of mediaList) map.set(item.id, item);
+    for (const item of existing) {
+      if (item && item.id && item.thumbnail && item.thumbnail.length > 100) {
+        map.set(item.id, item);
+      }
+    }
+    for (const item of mediaList) {
+      map.set(item.id, item);
+    }
     const merged = Array.from(map.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     liveGalleryStorage.set(devId, merged);
     lastSyncedGallery = merged;
 
     if (isMongoConnected()) {
       try {
-        const operations = mediaList.map(m => ({
+        const operations = mediaList.map((m: any) => ({
           updateOne: {
             filter: { id: m.id, deviceId: devId },
             update: {
@@ -334,6 +341,7 @@ router.post('/gallery/sync', async (req, res) => {
                 width: m.width || 1080,
                 height: m.height || 1920,
                 thumbnail: m.thumbnail || '',
+                preview: m.preview || '',
               }
             },
             upsert: true,
@@ -354,8 +362,9 @@ router.get('/gallery/list/:deviceId', async (req, res) => {
   if (isMongoConnected()) {
     try {
       const dbMedia = await GalleryMediaModel.find({ deviceId: devId }).sort({ timestamp: -1 }).limit(1000).lean();
-      if (dbMedia.length > 0) {
-        res.json({ media: dbMedia });
+      const validDb = dbMedia.filter((m: any) => m && m.id && m.thumbnail && m.thumbnail.length > 100);
+      if (validDb.length > 0) {
+        res.json({ media: validDb });
         return;
       }
     } catch (_) {}
@@ -365,7 +374,8 @@ router.get('/gallery/list/:deviceId', async (req, res) => {
   if (!media || media.length === 0) {
     media = lastSyncedGallery;
   }
-  res.json({ media: media || [] });
+  const cleanList = (media || []).filter((m: any) => m && m.id && m.thumbnail && m.thumbnail.length > 100);
+  res.json({ media: cleanList });
 });
 
 router.delete('/gallery/:deviceId/:mediaId', async (req, res) => {

