@@ -726,13 +726,13 @@ fun GalleryScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xFFF8FAFC))
+                    .background(Color.White)
             ) {
                 // Main Interactive Image with Pinch-to-Zoom & Pan & Rotation
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(bottom = 150.dp, top = 80.dp)
+                        .padding(bottom = 110.dp, top = 88.dp)
                         .pointerInput(Unit) {
                             detectTransformGestures { _, pan, zoom, _ ->
                                 scale = (scale * zoom).coerceIn(1f, 5f)
@@ -764,22 +764,22 @@ fun GalleryScreen(
                         )
                     } else {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.BrokenImage, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(64.dp))
+                            Icon(Icons.Default.BrokenImage, contentDescription = null, tint = Color(0xFFC7C7CC), modifier = Modifier.size(64.dp))
                         }
                     }
                 }
 
-                // Previous Photo Chevron
+                // Minimal iOS Navigation Chevrons
                 if (currentIndex > 0) {
                     Surface(
                         shape = CircleShape,
-                        color = Color.White,
-                        shadowElevation = 6.dp,
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        color = Color.White.copy(alpha = 0.92f),
+                        shadowElevation = 4.dp,
+                        border = BorderStroke(0.5.dp, Color(0xFFE5E5EA)),
                         modifier = Modifier
                             .align(Alignment.CenterStart)
-                            .padding(start = 14.dp)
-                            .size(42.dp)
+                            .padding(start = 12.dp)
+                            .size(38.dp)
                     ) {
                         IconButton(
                             onClick = {
@@ -790,22 +790,21 @@ fun GalleryScreen(
                                 selectedItemForModal = filteredItems[currentIndex - 1]
                             }
                         ) {
-                            Icon(Icons.Default.ChevronLeft, contentDescription = "Previous", tint = Color(0xFF1E293B), modifier = Modifier.size(24.dp))
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Previous", tint = Color(0xFF1C1C1E), modifier = Modifier.size(20.dp))
                         }
                     }
                 }
 
-                // Next Photo Chevron
                 if (currentIndex >= 0 && currentIndex < filteredItems.size - 1) {
                     Surface(
                         shape = CircleShape,
-                        color = Color.White,
-                        shadowElevation = 6.dp,
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        color = Color.White.copy(alpha = 0.92f),
+                        shadowElevation = 4.dp,
+                        border = BorderStroke(0.5.dp, Color(0xFFE5E5EA)),
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
-                            .padding(end = 14.dp)
-                            .size(42.dp)
+                            .padding(end = 12.dp)
+                            .size(38.dp)
                     ) {
                         IconButton(
                             onClick = {
@@ -816,278 +815,278 @@ fun GalleryScreen(
                                 selectedItemForModal = filteredItems[currentIndex + 1]
                             }
                         ) {
-                            Icon(Icons.Default.ChevronRight, contentDescription = "Next", tint = Color(0xFF1E293B), modifier = Modifier.size(24.dp))
+                            Icon(Icons.Default.ChevronRight, contentDescription = "Next", tint = Color(0xFF1C1C1E), modifier = Modifier.size(22.dp))
                         }
                     }
                 }
 
-                // Top Floating Modern Glass Capsule
+                // 1. iOS Top Navigation Header (Frosted Glass Aesthetic)
                 Surface(
-                    shape = RoundedCornerShape(28.dp),
-                    color = Color.White,
-                    shadowElevation = 6.dp,
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp)
-                        .padding(top = 40.dp)
-                        .align(Alignment.TopCenter)
+                        .align(Alignment.TopCenter),
+                    color = Color.White.copy(alpha = 0.95f),
+                    shadowElevation = 1.dp
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                            .padding(top = 38.dp, bottom = 10.dp, start = 12.dp, end = 12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Close Button
-                        Surface(
-                            shape = CircleShape,
-                            color = Color(0xFFF1F5F9),
+                        // iOS Back / Close Button
+                        IconButton(
+                            onClick = { selectedItemForModal = null },
                             modifier = Modifier.size(38.dp)
                         ) {
-                            IconButton(onClick = { selectedItemForModal = null }) {
-                                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color(0xFF0F172A), modifier = Modifier.size(20.dp))
-                            }
-                        }
-
-                        // Center: Album & Resolution Status
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "${item.album} • ${currentIndex + 1}/${filteredItems.size}",
-                                color = Color(0xFF0F172A),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = Color(0xFF007AFF),
+                                modifier = Modifier.size(24.dp)
                             )
+                        }
 
-                            if (fullBitmap != null) {
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = Color(0xFFECFDF5),
-                                    border = BorderStroke(1.dp, Color(0xFFA7F3D0))
-                                ) {
-                                    Text(
-                                        text = "✨ 100% Original",
-                                        color = Color(0xFF059669),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
-                            } else {
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = Color(0xFFF0F9FF),
-                                    border = BorderStroke(1.dp, Color(0xFFBAE6FD))
-                                ) {
-                                    Text(
-                                        text = "40% Preview",
-                                        color = Color(0xFF0284C7),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
+                        // Center Apple Date & Time Subtitle
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = item.date.ifBlank { "Photo" },
+                                fontSize = 14.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF1C1C1E)
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "${item.album} • ${currentIndex + 1} of ${filteredItems.size}",
+                                    fontSize = 11.5.sp,
+                                    color = Color(0xFF8E8E93),
+                                    fontWeight = FontWeight.Medium
+                                )
+                                if (fullBitmap != null) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color(0xFFE8F5E9)
+                                    ) {
+                                        Text(
+                                            text = "RAW",
+                                            color = Color(0xFF2E7D32),
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
 
-                        // Right Action Tools: Rotate & Info
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Surface(
-                                shape = CircleShape,
-                                color = Color(0xFFF1F5F9),
-                                modifier = Modifier.size(38.dp)
+                        // Right Top Tools: Rotate & Exif
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            IconButton(
+                                onClick = { rotationAngle = (rotationAngle + 90f) % 360f },
+                                modifier = Modifier.size(36.dp)
                             ) {
-                                IconButton(onClick = { rotationAngle = (rotationAngle + 90f) % 360f }) {
-                                    Icon(Icons.AutoMirrored.Filled.RotateRight, contentDescription = "Rotate", tint = Color(0xFF334155), modifier = Modifier.size(20.dp))
-                                }
+                                Icon(
+                                    Icons.AutoMirrored.Filled.RotateRight,
+                                    contentDescription = "Rotate",
+                                    tint = Color(0xFF007AFF),
+                                    modifier = Modifier.size(22.dp)
+                                )
                             }
 
-                            Surface(
-                                shape = CircleShape,
-                                color = Color(0xFFF1F5F9),
-                                modifier = Modifier.size(38.dp)
+                            IconButton(
+                                onClick = { showDetailsSheet = !showDetailsSheet },
+                                modifier = Modifier.size(36.dp)
                             ) {
-                                IconButton(onClick = { showDetailsSheet = !showDetailsSheet }) {
-                                    Icon(Icons.Default.Info, contentDescription = "Details", tint = Color(0xFF334155), modifier = Modifier.size(20.dp))
-                                }
+                                Icon(
+                                    Icons.Outlined.Info,
+                                    contentDescription = "Info",
+                                    tint = Color(0xFF007AFF),
+                                    modifier = Modifier.size(22.dp)
+                                )
                             }
                         }
                     }
                 }
 
-                // Bottom Modern White Pro Toolbar
+                // 2. iOS Floating Dynamic Bottom Bar (Apple Photos Style)
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter),
-                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                    color = Color.White,
-                    shadowElevation = 16.dp,
-                    border = BorderStroke(1.dp, Color(0xFFF1F5F9))
+                    color = Color.White.copy(alpha = 0.98f),
+                    shadowElevation = 12.dp,
+                    border = BorderStroke(0.5.dp, Color(0xFFE5E5EA))
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 16.dp)
+                            .padding(top = 10.dp, bottom = 22.dp, start = 16.dp, end = 16.dp)
                     ) {
-                        // Title & Resolution Row
+                        val isBgDownloading = GalleryBackgroundDownloader.isDownloading(item.id)
+
+                        // Main Action Bar Row with Equal iOS Spacing
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = item.name,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = Color(0xFF0F172A),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "${item.date} • ${item.size}",
-                                    fontSize = 12.sp,
-                                    color = Color(0xFF64748B),
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = Color(0xFFF0F9FF),
-                                border = BorderStroke(1.dp, Color(0xFFBAE6FD))
+                            // 1. Share Button (iOS Style)
+                            IconButton(
+                                onClick = { shareImage(item, displayBitmap, fullResolutionBase64) },
+                                modifier = Modifier.size(44.dp)
                             ) {
-                                Text(
-                                    text = "${item.width} x ${item.height}",
-                                    fontSize = 12.sp,
-                                    color = Color(0xFF0284C7),
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                Icon(
+                                    Icons.Outlined.Share,
+                                    contentDescription = "Share",
+                                    tint = Color(0xFF007AFF),
+                                    modifier = Modifier.size(24.dp)
                                 )
                             }
-                        }
 
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Action Buttons Row: Download, Delete, Share
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            // 1. SAVE / DOWNLOAD 100% ORIGINAL PHOTO FROM SENTRY IN BACKGROUND
-                            val isBgDownloading = GalleryBackgroundDownloader.isDownloading(item.id)
-                            Button(
-                                onClick = {
-                                    if (!fullResolutionBase64.isNullOrBlank()) {
-                                        saveOriginalPhotoFromSentry(item, fullResolutionBase64!!)
+                            // 2. Center Primary: Download Original Button (iOS Pill Action)
+                            Surface(
+                                shape = RoundedCornerShape(22.dp),
+                                color = if (isBgDownloading) Color(0xFFF2F2F7) else Color(0xFF007AFF),
+                                modifier = Modifier
+                                    .height(42.dp)
+                                    .weight(1f)
+                                    .padding(horizontal = 14.dp)
+                                    .clickable(enabled = !isBgDownloading) {
+                                        if (!fullResolutionBase64.isNullOrBlank()) {
+                                            saveOriginalPhotoFromSentry(item, fullResolutionBase64!!)
+                                        } else {
+                                            GalleryBackgroundDownloader.startDownload(
+                                                context = context,
+                                                deviceId = deviceId,
+                                                item = item,
+                                                onSuccess = { newFullBase64 ->
+                                                    fullResolutionBase64 = newFullBase64
+                                                    fullBitmap = decodeBitmap(newFullBase64)
+                                                }
+                                            )
+                                        }
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (isBgDownloading) {
+                                        CircularProgressIndicator(
+                                            color = Color(0xFF007AFF),
+                                            strokeWidth = 2.dp,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            "Downloading Original...",
+                                            color = Color(0xFF007AFF),
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
                                     } else {
-                                        GalleryBackgroundDownloader.startDownload(
-                                            context = context,
-                                            deviceId = deviceId,
-                                            item = item,
-                                            onSuccess = { newFullBase64 ->
-                                                fullResolutionBase64 = newFullBase64
-                                                fullBitmap = decodeBitmap(newFullBase64)
-                                            }
+                                        Icon(
+                                            Icons.Default.Download,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            if (fullBitmap != null) "Save to Photos" else "Download Original",
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold
                                         )
                                     }
-                                },
-                                enabled = !isBgDownloading,
-                                modifier = Modifier
-                                    .weight(1.3f)
-                                    .height(46.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                                shape = RoundedCornerShape(14.dp),
-                                contentPadding = PaddingValues(horizontal = 10.dp)
-                            ) {
-                                if (isBgDownloading) {
-                                    CircularProgressIndicator(
-                                        color = Color.White,
-                                        strokeWidth = 2.dp,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Downloading...", color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-                                } else {
-                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(17.dp), tint = Color.White)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Download Original", color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
 
-                            // 2. DELETE BUTTON
-                            Button(
+                            // 3. Delete Trash Button (iOS Style Red)
+                            IconButton(
                                 onClick = { showDeleteConfirmDialog = true },
-                                modifier = Modifier
-                                    .weight(0.9f)
-                                    .height(46.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
-                                shape = RoundedCornerShape(14.dp),
-                                contentPadding = PaddingValues(horizontal = 10.dp)
+                                modifier = Modifier.size(44.dp)
                             ) {
-                                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(17.dp), tint = Color.White)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Delete", color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
-                            }
-
-                            // 3. SHARE BUTTON
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFFF1F5F9),
-                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                                modifier = Modifier.size(46.dp)
-                            ) {
-                                IconButton(onClick = { shareImage(item, displayBitmap, fullResolutionBase64) }) {
-                                    Icon(Icons.Default.Share, contentDescription = "Share", tint = Color(0xFF334155), modifier = Modifier.size(18.dp))
-                                }
+                                Icon(
+                                    Icons.Outlined.Delete,
+                                    contentDescription = "Delete",
+                                    tint = Color(0xFFFF3B30),
+                                    modifier = Modifier.size(24.dp)
+                                )
                             }
                         }
                     }
                 }
 
-                // Delete Confirmation Dialog
+                // iOS Delete Action Sheet Dialog
                 if (showDeleteConfirmDialog) {
                     AlertDialog(
                         onDismissRequest = { showDeleteConfirmDialog = false },
+                        shape = RoundedCornerShape(20.dp),
                         containerColor = Color.White,
-                        title = { Text("Delete Photo?", fontWeight = FontWeight.Bold, color = Color(0xFF0F172A)) },
-                        text = { Text("This will remove '${item.name}' from your gallery records.", color = Color(0xFF475569)) },
+                        title = { Text("Delete Photo", fontWeight = FontWeight.Bold, color = Color(0xFF1C1C1E)) },
+                        text = { Text("This photo will be permanently deleted from your remote gallery.", color = Color(0xFF3A3A3C), fontSize = 13.5.sp) },
                         confirmButton = {
                             TextButton(
-                                onClick = { deleteImage(item) },
-                                colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFDC2626))
+                                onClick = { deleteImage(item) }
                             ) {
-                                Text("Delete", fontWeight = FontWeight.Bold)
+                                Text("Delete Photo", color = Color(0xFFFF3B30), fontWeight = FontWeight.Bold)
                             }
                         },
                         dismissButton = {
                             TextButton(onClick = { showDeleteConfirmDialog = false }) {
-                                Text("Cancel", color = Color(0xFF64748B))
+                                Text("Cancel", color = Color(0xFF007AFF), fontWeight = FontWeight.Medium)
                             }
                         }
                     )
                 }
 
-                // Detailed EXIF Info Dialog
+                // iOS Inspector / Details Sheet
                 if (showDetailsSheet) {
                     AlertDialog(
                         onDismissRequest = { showDetailsSheet = false },
+                        shape = RoundedCornerShape(22.dp),
                         containerColor = Color.White,
-                        title = { Text("Image Information", fontWeight = FontWeight.Bold, color = Color(0xFF0F172A)) },
+                        title = {
+                            Column {
+                                Text("Photo Information", fontWeight = FontWeight.Bold, fontSize = 17.sp, color = Color(0xFF1C1C1E))
+                                Text(item.name, fontSize = 12.sp, color = Color(0xFF8E8E93), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        },
                         text = {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("File Name: ${item.name}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A))
-                                Text("Album: ${item.album}", fontSize = 13.sp, color = Color(0xFF475569))
-                                Text("Resolution: ${item.width} x ${item.height} px", fontSize = 13.sp, color = Color(0xFF475569))
-                                Text("File Size: ${item.size}", fontSize = 13.sp, color = Color(0xFF475569))
-                                Text("MIME Type: ${item.mimeType}", fontSize = 13.sp, color = Color(0xFF475569))
-                                Text("Captured: ${item.date}", fontSize = 13.sp, color = Color(0xFF475569))
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFF2F2F7),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("Dimensions", fontSize = 12.5.sp, color = Color(0xFF8E8E93))
+                                            Text("${item.width} × ${item.height}", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1C1C1E))
+                                        }
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("File Size", fontSize = 12.5.sp, color = Color(0xFF8E8E93))
+                                            Text(item.size, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1C1C1E))
+                                        }
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("Album", fontSize = 12.5.sp, color = Color(0xFF8E8E93))
+                                            Text(item.album, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1C1C1E))
+                                        }
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("Format", fontSize = 12.5.sp, color = Color(0xFF8E8E93))
+                                            Text(item.mimeType.removePrefix("image/").uppercase(), fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1C1C1E))
+                                        }
+                                    }
+                                }
                             }
                         },
                         confirmButton = {
@@ -1096,12 +1095,12 @@ fun GalleryScreen(
                                 Toast.makeText(context, "Copied details to clipboard", Toast.LENGTH_SHORT).show()
                                 showDetailsSheet = false
                             }) {
-                                Text("Copy Details", color = Color(0xFF0284C7), fontWeight = FontWeight.Bold)
+                                Text("Copy Details", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold)
                             }
                         },
                         dismissButton = {
                             TextButton(onClick = { showDetailsSheet = false }) {
-                                Text("Close", color = Color(0xFF64748B))
+                                Text("Done", color = Color(0xFF007AFF), fontWeight = FontWeight.SemiBold)
                             }
                         }
                     )
