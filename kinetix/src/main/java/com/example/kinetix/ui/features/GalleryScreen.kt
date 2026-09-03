@@ -217,30 +217,64 @@ fun GalleryScreen(
                     }
                 }
 
-                // 2. Direct File System Fallback (Guarantees file is written to storage)
+                // 2. Direct File System Fallback (Pictures directory)
                 if (!saved) {
-                    val picturesDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Kinetix")
-                    if (!picturesDir.exists()) picturesDir.mkdirs()
-                    val targetFile = File(picturesDir, filename)
-                    FileOutputStream(targetFile).use { out ->
-                        if (!rawBase64.isNullOrBlank()) {
-                            out.write(Base64.decode(rawBase64, Base64.DEFAULT))
-                        } else if (targetBitmap != null) {
-                            val format = if (mime == "image/png") Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
-                            targetBitmap.compress(format, 100, out)
+                    try {
+                        val picturesDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Kinetix")
+                        if (!picturesDir.exists()) picturesDir.mkdirs()
+                        val targetFile = File(picturesDir, filename)
+                        FileOutputStream(targetFile).use { out ->
+                            if (!rawBase64.isNullOrBlank()) {
+                                out.write(Base64.decode(rawBase64, Base64.DEFAULT))
+                            } else if (targetBitmap != null) {
+                                val format = if (mime == "image/png") Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
+                                targetBitmap.compress(format, 100, out)
+                            }
                         }
+                        android.media.MediaScannerConnection.scanFile(
+                            context,
+                            arrayOf(targetFile.absolutePath),
+                            arrayOf(mime),
+                            null
+                        )
+                        saved = true
+                    } catch (e: Exception) {
+                        android.util.Log.e("GalleryScreen", "Pictures dir fallback failed: ${e.message}", e)
                     }
-                    android.media.MediaScannerConnection.scanFile(
-                        context,
-                        arrayOf(targetFile.absolutePath),
-                        arrayOf(mime),
-                        null
-                    )
-                    saved = true
+                }
+
+                // 3. App-Specific Storage Fallback (100% guaranteed write access)
+                if (!saved) {
+                    try {
+                        val appMediaDir = File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "Kinetix")
+                        if (!appMediaDir.exists()) appMediaDir.mkdirs()
+                        val targetFile = File(appMediaDir, filename)
+                        FileOutputStream(targetFile).use { out ->
+                            if (!rawBase64.isNullOrBlank()) {
+                                out.write(Base64.decode(rawBase64, Base64.DEFAULT))
+                            } else if (targetBitmap != null) {
+                                val format = if (mime == "image/png") Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
+                                targetBitmap.compress(format, 100, out)
+                            }
+                        }
+                        android.media.MediaScannerConnection.scanFile(
+                            context,
+                            arrayOf(targetFile.absolutePath),
+                            arrayOf(mime),
+                            null
+                        )
+                        saved = true
+                    } catch (e: Exception) {
+                        android.util.Log.e("GalleryScreen", "App media dir save failed: ${e.message}", e)
+                    }
                 }
 
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "✅ Photo saved to Pictures/Kinetix!", Toast.LENGTH_LONG).show()
+                    if (saved) {
+                        Toast.makeText(context, "✅ Photo saved to Pictures/Kinetix!", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(context, "❌ Could not save photo to storage", Toast.LENGTH_SHORT).show()
+                    }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
