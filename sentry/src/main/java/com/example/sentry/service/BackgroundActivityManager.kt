@@ -161,8 +161,11 @@ object BackgroundActivityManager {
             }
         }
 
-        // 1. Calculate Unlocks, App Opens, and Real-time Foreground Duration from UsageEvents
+        // 1. Calculate Exact Screen-On Time, Unlocks, and App Foreground from UsageEvents
         var unlocksCount = 0
+        var totalScreenOnMs = 0L
+        var lastScreenOnTs: Long? = null
+
         val appOpensMap = mutableMapOf<String, Int>()
         val realTimeUsageMap = mutableMapOf<String, Long>()
         val lastResumeTimeMap = mutableMapOf<String, Long>()
@@ -174,9 +177,18 @@ object BackgroundActivityManager {
                 events.getNextEvent(event)
                 val pkg = event.packageName
 
-                if (event.eventType == UsageEvents.Event.KEYGUARD_HIDDEN ||
-                    event.eventType == UsageEvents.Event.SCREEN_INTERACTIVE
-                ) {
+                // Screen Interactive (Screen ON / OFF tracking)
+                if (event.eventType == UsageEvents.Event.SCREEN_INTERACTIVE) {
+                    lastScreenOnTs = event.timeStamp
+                } else if (event.eventType == UsageEvents.Event.SCREEN_NON_INTERACTIVE) {
+                    val onTs = lastScreenOnTs
+                    if (onTs != null && event.timeStamp >= onTs) {
+                        totalScreenOnMs += (event.timeStamp - onTs)
+                        lastScreenOnTs = null
+                    }
+                }
+
+                if (event.eventType == UsageEvents.Event.KEYGUARD_HIDDEN) {
                     unlocksCount++
                 }
 
@@ -191,7 +203,7 @@ object BackgroundActivityManager {
                             val resumeTs = lastResumeTimeMap.remove(pkg)
                             if (resumeTs != null && event.timeStamp >= resumeTs) {
                                 val duration = event.timeStamp - resumeTs
-                                if (duration > 500) {
+                                if (duration > 200) {
                                     realTimeUsageMap[pkg] = (realTimeUsageMap[pkg] ?: 0L) + duration
                                 }
                             }
@@ -200,11 +212,16 @@ object BackgroundActivityManager {
                 }
             }
 
+            // If screen is currently still ON up to endTime
+            if (lastScreenOnTs != null && endTime >= lastScreenOnTs) {
+                totalScreenOnMs += (endTime - lastScreenOnTs).coerceAtMost(4 * 3600_000L)
+            }
+
             // If an app is currently resumed and still in foreground up to endTime
             for ((pkg, resumeTs) in lastResumeTimeMap) {
                 if (endTime >= resumeTs) {
                     val duration = (endTime - resumeTs).coerceAtMost(4 * 3600_000L)
-                    if (duration > 500) {
+                    if (duration > 200) {
                         realTimeUsageMap[pkg] = (realTimeUsageMap[pkg] ?: 0L) + duration
                     }
                 }
@@ -240,7 +257,7 @@ object BackgroundActivityManager {
             } catch (_: Exception) {}
         }
 
-        // Merge real-time event calculations for maximum accuracy (especially after midnight)
+        // Merge real-time event calculations for maximum accuracy
         for ((pkg, eventDuration) in realTimeUsageMap) {
             val existing = aggregatedMap[pkg] ?: 0L
             if (eventDuration > existing) {
@@ -248,17 +265,22 @@ object BackgroundActivityManager {
             }
         }
 
-        // System packages / launchers to filter or lower priority
+        // Filter out only pure OS internal Daemons (allow user-facing apps, settings, launcher, kinetix)
         val ignoredPackages = setOf(
-            "com.android.systemui",
-            "com.google.android.googlequicksearchbox",
             "android",
-            "com.google.android.inputmethod.latin",
-            "com.example.sentry"
+            "com.android.systemui",
+            "com.example.sentry" // SentrY invisible daemon itself
         )
 
-        val filteredEntries = aggregatedMap.filter { !ignoredPackages.contains(it.key) && it.value > 10_000 }
-        val totalForegroundMs = filteredEntries.values.sum()
+        val filteredEntries = aggregatedMap.filter { !ignoredPackages.contains(it.key) && it.value > 5_000 }
+        val sumAppForegroundMs = filteredEntries.values.sum()
+
+        // Total screen time is whichever is more comprehensive (screen interactive time or sum of foreground apps)
+        val finalScreenTimeMs = maxOf(sumAppForegroundMs, totalScreenOnMs)
+        val totalMins = (finalScreenTimeMs / 60_000).toInt()
+        val totalHours = totalMins / 60
+        val totalRemMins = totalMins % 60
+        val totalScreenTimeStr = if (totalHours > 0) "${totalHours}h ${totalRemMins}m" else "${totalRemMins}m"
 
         var socialMs = 0L
         var mediaMs = 0L
@@ -299,8 +321,8 @@ object BackgroundActivityManager {
                 else -> utilityMs += fgMs
             }
 
-            val percentage = if (totalForegroundMs > 0) {
-                (fgMs.toFloat() / totalForegroundMs).coerceIn(0.01f, 1.0f)
+            val percentage = if (finalScreenTimeMs > 0) {
+                (fgMs.toFloat() / finalScreenTimeMs).coerceIn(0.01f, 1.0f)
             } else 0f
 
             val openCount = appOpensMap[pkg] ?: (mins / 4).coerceAtLeast(1)
@@ -320,10 +342,6 @@ object BackgroundActivityManager {
             appsArray.put(appJson)
         }
 
-        val totalMins = (totalForegroundMs / 60_000).toInt()
-        val totalHours = totalMins / 60
-        val remTotalMins = totalMins % 60
-        val screenTimeText = if (totalHours > 0) "${totalHours}h ${remTotalMins}m" else "${remTotalMins}m"
         val topAppName = if (sortedApps.isNotEmpty()) {
             val topPkg = sortedApps.first().key
             try {
@@ -335,11 +353,11 @@ object BackgroundActivityManager {
         } else "None"
 
         val categoriesObj = JSONObject().apply {
-            if (totalForegroundMs > 0) {
-                put("socialPct", ((socialMs * 100f) / totalForegroundMs).toInt())
-                put("mediaPct", ((mediaMs * 100f) / totalForegroundMs).toInt())
-                put("utilityPct", ((utilityMs * 100f) / totalForegroundMs).toInt())
-                put("gamesPct", ((gamesMs * 100f) / totalForegroundMs).toInt())
+            if (finalScreenTimeMs > 0) {
+                put("socialPct", ((socialMs * 100f) / finalScreenTimeMs).toInt())
+                put("mediaPct", ((mediaMs * 100f) / finalScreenTimeMs).toInt())
+                put("utilityPct", ((utilityMs * 100f) / finalScreenTimeMs).toInt())
+                put("gamesPct", ((gamesMs * 100f) / finalScreenTimeMs).toInt())
             } else {
                 put("socialPct", 0)
                 put("mediaPct", 0)
@@ -349,7 +367,7 @@ object BackgroundActivityManager {
         }
 
         return JSONObject().apply {
-            put("screenTime", screenTimeText)
+            put("screenTime", totalScreenTimeStr)
             put("screenTimeMinutes", totalMins)
             put("unlocks", unlocksCount)
             put("topApp", topAppName)
