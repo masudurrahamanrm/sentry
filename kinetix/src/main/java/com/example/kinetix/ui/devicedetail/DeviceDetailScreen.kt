@@ -330,15 +330,41 @@ fun DeviceDetailScreen(
             }
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0xFFFBFBFE))
-                .padding(padding)
-                .padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState())
-        ) {
-            Spacer(modifier = Modifier.height(12.dp))
+        when (activeBottomTab) {
+            3 -> {
+                Box(modifier = Modifier.padding(padding)) {
+                    com.example.kinetix.ui.settings.SettingsScreen(
+                        onBack = { activeBottomTab = 0 },
+                        deviceId = deviceId
+                    )
+                }
+            }
+            1 -> {
+                Box(modifier = Modifier.padding(padding)) {
+                    com.example.kinetix.ui.features.ActivityScreen(
+                        deviceId = deviceId,
+                        onBack = { activeBottomTab = 0 }
+                    )
+                }
+            }
+            2 -> {
+                Box(modifier = Modifier.padding(padding)) {
+                    com.example.kinetix.ui.features.NotificationsScreen(
+                        deviceId = deviceId,
+                        onBack = { activeBottomTab = 0 }
+                    )
+                }
+            }
+            else -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFFFBFBFE))
+                        .padding(padding)
+                        .padding(horizontal = 16.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Spacer(modifier = Modifier.height(12.dp))
 
             // 1. Top Bar Header (Circular Menu Button, Centered Device Name & Status, Right Action Buttons)
             Box(
@@ -1103,8 +1129,10 @@ fun DeviceDetailScreen(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+            }
         }
     }
+}
 
     // Modal Bottom Sheet showing Device Information & Capabilities (Triggered by (i) button)
     if (showInfoModal) {
