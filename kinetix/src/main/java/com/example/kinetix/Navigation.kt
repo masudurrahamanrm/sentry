@@ -13,6 +13,10 @@ import com.example.kinetix.ui.devicedetail.DeviceDetailScreen
 import com.example.kinetix.ui.discovery.DiscoveryScreen
 import com.example.kinetix.ui.settings.SettingsScreen
 
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+
 @Composable
 fun MainNavigation() {
     val backStack = rememberNavBackStack(Dashboard)
@@ -24,11 +28,19 @@ fun MainNavigation() {
         transitionSpec = {
             val isBack = targetState.key is Dashboard || (initialState.key !is Dashboard && targetState.key is DeviceDetail)
             if (isBack) {
-                (slideInHorizontally(animationSpec = tween(280), initialOffsetX = { -it / 3 }) + fadeIn(animationSpec = tween(280)))
-                    .togetherWith(slideOutHorizontally(animationSpec = tween(280), targetOffsetX = { it }) + fadeOut(animationSpec = tween(280)))
+                (slideInHorizontally(animationSpec = tween(280, easing = FastOutSlowInEasing), initialOffsetX = { -it / 4 }) +
+                        fadeIn(animationSpec = tween(250, easing = LinearOutSlowInEasing)))
+                    .togetherWith(
+                        slideOutHorizontally(animationSpec = tween(280, easing = FastOutSlowInEasing), targetOffsetX = { it }) +
+                                fadeOut(animationSpec = tween(200, easing = FastOutLinearInEasing))
+                    )
             } else {
-                (slideInHorizontally(animationSpec = tween(320), initialOffsetX = { it }) + fadeIn(animationSpec = tween(320)))
-                    .togetherWith(slideOutHorizontally(animationSpec = tween(320), targetOffsetX = { -it / 3 }) + fadeOut(animationSpec = tween(320)))
+                (slideInHorizontally(animationSpec = tween(300, easing = FastOutSlowInEasing), initialOffsetX = { it }) +
+                        fadeIn(animationSpec = tween(250, easing = LinearOutSlowInEasing)))
+                    .togetherWith(
+                        slideOutHorizontally(animationSpec = tween(300, easing = FastOutSlowInEasing), targetOffsetX = { -it / 4 }) +
+                                fadeOut(animationSpec = tween(200, easing = FastOutLinearInEasing))
+                    )
             }
         },
         entryProvider = entryProvider {

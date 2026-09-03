@@ -2,11 +2,8 @@ package com.example.kinetix.ui.devicedetail
 
 import android.graphics.BitmapFactory
 import android.util.Base64
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -330,40 +327,55 @@ fun DeviceDetailScreen(
             }
         }
     ) { padding ->
-        when (activeBottomTab) {
-            3 -> {
-                Box(modifier = Modifier.padding(padding)) {
+        AnimatedContent(
+            targetState = activeBottomTab,
+            transitionSpec = {
+                if (targetState > initialState) {
+                    (slideInHorizontally(animationSpec = tween(240, easing = androidx.compose.animation.core.FastOutSlowInEasing), initialOffsetX = { it / 4 }) +
+                            fadeIn(animationSpec = tween(200)))
+                        .togetherWith(
+                            slideOutHorizontally(animationSpec = tween(240, easing = androidx.compose.animation.core.FastOutSlowInEasing), targetOffsetX = { -it / 4 }) +
+                                    fadeOut(animationSpec = tween(160))
+                        )
+                } else {
+                    (slideInHorizontally(animationSpec = tween(240, easing = androidx.compose.animation.core.FastOutSlowInEasing), initialOffsetX = { -it / 4 }) +
+                            fadeIn(animationSpec = tween(200)))
+                        .togetherWith(
+                            slideOutHorizontally(animationSpec = tween(240, easing = androidx.compose.animation.core.FastOutSlowInEasing), targetOffsetX = { it / 4 }) +
+                                    fadeOut(animationSpec = tween(160))
+                        )
+                }
+            },
+            label = "BottomTabShift",
+            modifier = Modifier.padding(padding)
+        ) { tab ->
+            when (tab) {
+                3 -> {
                     com.example.kinetix.ui.settings.SettingsScreen(
                         onBack = { activeBottomTab = 0 },
                         deviceId = deviceId
                     )
                 }
-            }
-            1 -> {
-                Box(modifier = Modifier.padding(padding)) {
+                1 -> {
                     com.example.kinetix.ui.features.ActivityScreen(
                         deviceId = deviceId,
                         onBack = { activeBottomTab = 0 }
                     )
                 }
-            }
-            2 -> {
-                Box(modifier = Modifier.padding(padding)) {
+                2 -> {
                     com.example.kinetix.ui.features.NotificationsScreen(
                         deviceId = deviceId,
                         onBack = { activeBottomTab = 0 }
                     )
                 }
-            }
-            else -> {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color(0xFFFBFBFE))
-                        .padding(padding)
-                        .padding(horizontal = 16.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
+                else -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color(0xFFFBFBFE))
+                            .padding(horizontal = 16.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
                     Spacer(modifier = Modifier.height(12.dp))
 
             // 1. Top Bar Header (Circular Menu Button, Centered Device Name & Status, Right Action Buttons)
@@ -1016,10 +1028,11 @@ fun DeviceDetailScreen(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+                    }
+                }
             }
         }
     }
-}
 
     // Modal Bottom Sheet showing Device Information & Capabilities (Triggered by (i) button)
     if (showInfoModal) {
