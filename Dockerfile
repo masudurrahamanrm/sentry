@@ -17,7 +17,7 @@ RUN npm ci
 # Copy source code
 COPY packages/ ./packages/
 COPY backend/ ./backend/
-COPY tsconfig.json ./
+COPY tsconfig*.json ./
 
 # Build all packages & backend
 RUN npm run build
