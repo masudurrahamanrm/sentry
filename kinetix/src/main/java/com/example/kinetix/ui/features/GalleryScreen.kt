@@ -78,6 +78,121 @@ data class GalleryItem(
     val previewBase64: String? = null
 )
 
+object GalleryBackgroundDownloader {
+    private val activeDownloads = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Job>()
+    val downloadingMediaIds = mutableStateMapOf<String, Boolean>()
+
+    fun startDownload(
+        context: Context,
+        deviceId: String,
+        item: GalleryItem,
+        onSuccess: ((String) -> Unit)? = null
+    ) {
+        if (activeDownloads.containsKey(item.id)) {
+            Toast.makeText(context, "📥 Download already running in background...", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        Toast.makeText(context, "📥 Downloading ${item.name} in background...", Toast.LENGTH_SHORT).show()
+        downloadingMediaIds[item.id] = true
+
+        val job = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val client = KinetixApiClient(context)
+                client.requestFullGalleryImage(deviceId, item.id)
+
+                var attempts = 0
+                var fetchedBase64: String? = null
+                while (attempts < 45 && fetchedBase64.isNullOrBlank()) {
+                    delay(1000)
+                    attempts++
+                    val pollRes = client.getFullGalleryImage(deviceId, item.id)
+                    val polled = pollRes.getOrNull()?.optString("fullBase64")
+                    if (!polled.isNullOrBlank() && polled != "null") {
+                        fetchedBase64 = polled
+                        break
+                    }
+                }
+
+                if (!fetchedBase64.isNullOrBlank()) {
+                    val cleanName = item.name.replace("[^a-zA-Z0-9._-]".toRegex(), "_").let {
+                        if (!it.contains(".")) "$it.jpg" else it
+                    }
+                    val filename = "Kinetix_Original_${cleanName}"
+                    val mime = if (cleanName.endsWith(".png", true)) "image/png" else "image/jpeg"
+                    val rawBytes = Base64.decode(fetchedBase64, Base64.DEFAULT)
+                    var saved = false
+
+                    // 1. Android MediaStore
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        try {
+                            val contentValues = ContentValues().apply {
+                                put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+                                put(MediaStore.Images.Media.MIME_TYPE, mime)
+                                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Kinetix")
+                                put(MediaStore.Images.Media.IS_PENDING, 1)
+                            }
+                            val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                            if (uri != null) {
+                                context.contentResolver.openOutputStream(uri)?.use { out ->
+                                    out.write(rawBytes)
+                                }
+                                contentValues.clear()
+                                contentValues.put(MediaStore.Images.Media.IS_PENDING, 0)
+                                context.contentResolver.update(uri, contentValues, null, null)
+                                saved = true
+                            }
+                        } catch (_: Exception) {}
+                    }
+
+                    // 2. Direct File I/O Fallback
+                    if (!saved) {
+                        try {
+                            val picturesDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Kinetix")
+                            if (!picturesDir.exists()) picturesDir.mkdirs()
+                            val targetFile = File(picturesDir, filename)
+                            FileOutputStream(targetFile).use { out ->
+                                out.write(rawBytes)
+                            }
+                            android.media.MediaScannerConnection.scanFile(
+                                context,
+                                arrayOf(targetFile.absolutePath),
+                                arrayOf(mime),
+                                null
+                            )
+                            saved = true
+                        } catch (_: Exception) {}
+                    }
+
+                    withContext(Dispatchers.Main) {
+                        if (saved) {
+                            val sizeMb = String.format(java.util.Locale.US, "%.2f MB", rawBytes.size / (1024f * 1024f))
+                            Toast.makeText(context, "✅ Download Complete: ${item.name} ($sizeMb) saved to Gallery!", Toast.LENGTH_LONG).show()
+                            onSuccess?.invoke(fetchedBase64)
+                        } else {
+                            Toast.makeText(context, "❌ Could not save ${item.name}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "⚠️ SentrY took too long to send ${item.name}. Please check connection.", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Download error: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            } finally {
+                activeDownloads.remove(item.id)
+                downloadingMediaIds.remove(item.id)
+            }
+        }
+        activeDownloads[item.id] = job
+    }
+
+    fun isDownloading(mediaId: String): Boolean = downloadingMediaIds.containsKey(mediaId)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GalleryScreen(
@@ -789,48 +904,25 @@ fun GalleryScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            // 1. SAVE / DOWNLOAD 100% ORIGINAL PHOTO FROM SENTRY
+                            // 1. SAVE / DOWNLOAD 100% ORIGINAL PHOTO FROM SENTRY IN BACKGROUND
+                            val isBgDownloading = GalleryBackgroundDownloader.isDownloading(item.id)
                             Button(
                                 onClick = {
                                     if (!fullResolutionBase64.isNullOrBlank()) {
                                         saveOriginalPhotoFromSentry(item, fullResolutionBase64!!)
                                     } else {
-                                        coroutineScope.launch {
-                                            isDownloadingOriginal = true
-                                            try {
-                                                Toast.makeText(context, "📡 Requesting 100% original photo from SentrY...", Toast.LENGTH_SHORT).show()
-                                                val client = KinetixApiClient(context)
-                                                client.requestFullGalleryImage(deviceId, item.id)
-
-                                                var attempts = 0
-                                                var fetchedBase64: String? = null
-                                                while (attempts < 25 && fetchedBase64.isNullOrBlank()) {
-                                                    delay(800)
-                                                    attempts++
-                                                    val pollRes = client.getFullGalleryImage(deviceId, item.id)
-                                                    val polled = pollRes.getOrNull()?.optString("fullBase64")
-                                                    if (!polled.isNullOrBlank() && polled != "null") {
-                                                        fetchedBase64 = polled
-                                                        break
-                                                    }
-                                                }
-
-                                                if (!fetchedBase64.isNullOrBlank()) {
-                                                    fullResolutionBase64 = fetchedBase64
-                                                    fullBitmap = decodeBitmap(fetchedBase64)
-                                                    saveOriginalPhotoFromSentry(item, fetchedBase64)
-                                                } else {
-                                                    Toast.makeText(context, "⚠️ SentrY device did not respond. Please ensure SentrY service is running.", Toast.LENGTH_LONG).show()
-                                                }
-                                            } catch (e: Exception) {
-                                                Toast.makeText(context, "Download error: ${e.message}", Toast.LENGTH_SHORT).show()
-                                            } finally {
-                                                isDownloadingOriginal = false
+                                        GalleryBackgroundDownloader.startDownload(
+                                            context = context,
+                                            deviceId = deviceId,
+                                            item = item,
+                                            onSuccess = { newFullBase64 ->
+                                                fullResolutionBase64 = newFullBase64
+                                                fullBitmap = decodeBitmap(newFullBase64)
                                             }
-                                        }
+                                        )
                                     }
                                 },
-                                enabled = !isDownloadingOriginal,
+                                enabled = !isBgDownloading,
                                 modifier = Modifier
                                     .weight(1.3f)
                                     .height(44.dp),
@@ -838,14 +930,14 @@ fun GalleryScreen(
                                 shape = RoundedCornerShape(12.dp),
                                 contentPadding = PaddingValues(horizontal = 10.dp)
                             ) {
-                                if (isDownloadingOriginal) {
+                                if (isBgDownloading) {
                                     CircularProgressIndicator(
                                         color = Color.White,
                                         strokeWidth = 2.dp,
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Downloading from SentrY...", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text("Downloading in Background...", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 } else {
                                     Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
                                     Spacer(modifier = Modifier.width(6.dp))
@@ -981,6 +1073,24 @@ fun GalleryGridCard(
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.outline,
                         modifier = Modifier.size(32.dp)
+                    )
+                }
+            }
+
+            // Background Downloading Badge
+            if (GalleryBackgroundDownloader.isDownloading(item.id)) {
+                Surface(
+                    shape = CircleShape,
+                    color = Color.Black.copy(alpha = 0.65f),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(5.dp)
+                        .size(24.dp)
+                ) {
+                    CircularProgressIndicator(
+                        color = Color(0xFF38BDF8),
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.padding(4.dp)
                     )
                 }
             }
