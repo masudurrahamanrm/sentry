@@ -805,57 +805,6 @@ fun GalleryScreen(
                     }
                 }
 
-                // Minimal iOS Navigation Chevrons
-                if (currentIndex > 0) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color.White.copy(alpha = 0.92f),
-                        shadowElevation = 4.dp,
-                        border = BorderStroke(0.5.dp, Color(0xFFE5E5EA)),
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .padding(start = 12.dp)
-                            .size(38.dp)
-                    ) {
-                        IconButton(
-                            onClick = {
-                                scale = 1f
-                                offsetX = 0f
-                                offsetY = 0f
-                                rotationAngle = 0f
-                                selectedItemForModal = filteredItems[currentIndex - 1]
-                            }
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Previous", tint = Color(0xFF1C1C1E), modifier = Modifier.size(20.dp))
-                        }
-                    }
-                }
-
-                if (currentIndex >= 0 && currentIndex < filteredItems.size - 1) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color.White.copy(alpha = 0.92f),
-                        shadowElevation = 4.dp,
-                        border = BorderStroke(0.5.dp, Color(0xFFE5E5EA)),
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .padding(end = 12.dp)
-                            .size(38.dp)
-                    ) {
-                        IconButton(
-                            onClick = {
-                                scale = 1f
-                                offsetX = 0f
-                                offsetY = 0f
-                                rotationAngle = 0f
-                                selectedItemForModal = filteredItems[currentIndex + 1]
-                            }
-                        ) {
-                            Icon(Icons.Default.ChevronRight, contentDescription = "Next", tint = Color(0xFF1C1C1E), modifier = Modifier.size(22.dp))
-                        }
-                    }
-                }
-
                 // 1. iOS Top Navigation Header (Frosted Glass Aesthetic, Flush with Status Bar)
                 Surface(
                     modifier = Modifier
