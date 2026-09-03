@@ -205,6 +205,94 @@ object KinetixDeviceCache {
             null
         }
     }
+
+    // App Global Settings & Preferences
+    fun getServerUrl(context: Context): String {
+        return getPrefs(context).getString("setting_server_url", "https://sentry-devloper-version.onrender.com/api/v1") ?: "https://sentry-devloper-version.onrender.com/api/v1"
+    }
+
+    fun saveServerUrl(context: Context, url: String) {
+        getPrefs(context).edit().putString("setting_server_url", url.trim()).apply()
+    }
+
+    fun getTelemetrySyncInterval(context: Context): Int {
+        return getPrefs(context).getInt("setting_telemetry_interval", 3)
+    }
+
+    fun saveTelemetrySyncInterval(context: Context, seconds: Int) {
+        getPrefs(context).edit().putInt("setting_telemetry_interval", seconds).apply()
+    }
+
+    fun isZeroLagCachingEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean("setting_zero_lag", true)
+    }
+
+    fun saveZeroLagCachingEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean("setting_zero_lag", enabled).apply()
+    }
+
+    fun isHapticEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean("setting_haptic", true)
+    }
+
+    fun saveHapticEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean("setting_haptic", enabled).apply()
+    }
+
+    fun isBackgroundAlertsEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean("setting_bg_alerts", true)
+    }
+
+    fun saveBackgroundAlertsEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean("setting_bg_alerts", enabled).apply()
+    }
+
+    fun isLowDataModeEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean("setting_low_data", false)
+    }
+
+    fun saveLowDataModeEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean("setting_low_data", enabled).apply()
+    }
+
+    fun isAppLockEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean("setting_app_lock", false)
+    }
+
+    fun saveAppLockEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean("setting_app_lock", enabled).apply()
+    }
+
+    fun getEstimatedCacheSizeBytes(context: Context): Long {
+        var size: Long = 0
+        try {
+            val all = getPrefs(context).all
+            for ((k, v) in all) {
+                if (k.startsWith("setting_") || k.startsWith("name_")) continue
+                size += k.toByteArray().size
+                if (v is String) size += v.toByteArray().size
+            }
+            context.cacheDir?.walkTopDown()?.forEach { file ->
+                if (file.isFile) size += file.length()
+            }
+        } catch (_: Exception) {}
+        return size
+    }
+
+    fun clearAllDataCache(context: Context) {
+        try {
+            val prefs = getPrefs(context)
+            val editor = prefs.edit()
+            val all = prefs.all
+            for ((k, _) in all) {
+                if (!k.startsWith("setting_") && !k.startsWith("name_")) {
+                    editor.remove(k)
+                }
+            }
+            editor.apply()
+            context.cacheDir?.deleteRecursively()
+        } catch (_: Exception) {}
+    }
 }
 
 data class CachedTelemetry(

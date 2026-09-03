@@ -23,11 +23,17 @@ class KinetixApiClient(
     private var baseUrl: String = BuildConfig.BASE_URL
 ) {
     private var sessionToken: String? = null
-    private val candidateBaseUrls = listOf(
-        BuildConfig.BASE_URL,
-        "https://sentry-devloper-version.onrender.com/api/v1",
-        "https://sentry-f502.onrender.com/api/v1"
-    )
+    private val candidateBaseUrls: List<String>
+        get() {
+            val custom = com.example.kinetix.cache.KinetixDeviceCache.getServerUrl(context)
+            val list = mutableListOf<String>()
+            if (custom.isNotBlank()) list.add(custom)
+            if (baseUrl.isNotBlank() && !list.contains(baseUrl)) list.add(baseUrl)
+            if (!list.contains(BuildConfig.BASE_URL)) list.add(BuildConfig.BASE_URL)
+            if (!list.contains("https://sentry-devloper-version.onrender.com/api/v1")) list.add("https://sentry-devloper-version.onrender.com/api/v1")
+            if (!list.contains("https://sentry-f502.onrender.com/api/v1")) list.add("https://sentry-f502.onrender.com/api/v1")
+            return list
+        }
 
     fun setBaseUrl(url: String) {
         this.baseUrl = url
