@@ -934,62 +934,61 @@ fun GalleryScreen(
                             }
 
                             // 2. Center Primary: Download Original Button (iOS Pill Action)
-                            Surface(
-                                shape = RoundedCornerShape(22.dp),
-                                color = if (isBgDownloading) Color(0xFFF2F2F7) else Color(0xFF007AFF),
-                                modifier = Modifier
-                                    .height(42.dp)
-                                    .weight(1f)
-                                    .padding(horizontal = 14.dp)
-                                    .clickable(enabled = !isBgDownloading) {
-                                        if (!fullResolutionBase64.isNullOrBlank()) {
-                                            saveOriginalPhotoFromSentry(item, fullResolutionBase64!!)
-                                        } else {
-                                            GalleryBackgroundDownloader.startDownload(
-                                                context = context,
-                                                deviceId = deviceId,
-                                                item = item,
-                                                onSuccess = { newFullBase64 ->
-                                                    fullResolutionBase64 = newFullBase64
-                                                    fullBitmap = decodeBitmap(newFullBase64)
-                                                }
-                                            )
-                                        }
-                                    }
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxSize(),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    if (isBgDownloading) {
-                                        CircularProgressIndicator(
-                                            color = Color(0xFF007AFF),
-                                            strokeWidth = 2.dp,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            "Downloading Original...",
-                                            color = Color(0xFF007AFF),
-                                            fontSize = 12.5.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
+                            Button(
+                                onClick = {
+                                    if (!fullResolutionBase64.isNullOrBlank()) {
+                                        saveOriginalPhotoFromSentry(item, fullResolutionBase64!!)
                                     } else {
-                                        Icon(
-                                            Icons.Default.Download,
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(17.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            if (fullBitmap != null) "Save to Photos" else "Download Original",
-                                            color = Color.White,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold
+                                        GalleryBackgroundDownloader.startDownload(
+                                            context = context,
+                                            deviceId = deviceId,
+                                            item = item,
+                                            onSuccess = { newFullBase64 ->
+                                                fullResolutionBase64 = newFullBase64
+                                                fullBitmap = decodeBitmap(newFullBase64)
+                                            }
                                         )
                                     }
+                                },
+                                enabled = !isBgDownloading,
+                                shape = RoundedCornerShape(22.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF007AFF),
+                                    disabledContainerColor = Color(0xFFF2F2F7)
+                                ),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                                modifier = Modifier
+                                    .height(44.dp)
+                                    .weight(1f)
+                                    .padding(horizontal = 8.dp)
+                            ) {
+                                if (isBgDownloading) {
+                                    CircularProgressIndicator(
+                                        color = Color(0xFF007AFF),
+                                        strokeWidth = 2.dp,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        "Downloading...",
+                                        color = Color(0xFF007AFF),
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Default.Download,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        if (fullBitmap != null) "Save to Photos" else "Download Original",
+                                        color = Color.White,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
                                 }
                             }
 
