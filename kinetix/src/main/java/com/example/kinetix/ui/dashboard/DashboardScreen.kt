@@ -1093,11 +1093,11 @@ fun DashboardDeviceCard(
                     }
                 )
             }
-            .padding(horizontal = 8.dp, vertical = 12.dp),
+            .padding(horizontal = 8.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            modifier = Modifier.size(42.dp),
+            modifier = Modifier.size(34.dp),
             contentAlignment = Alignment.Center
         ) {
             val isWatch = device.deviceName.contains("Watch", ignoreCase = true)
@@ -1111,25 +1111,25 @@ fun DashboardDeviceCard(
                 },
                 contentDescription = null,
                 tint = if (device.isThisDevice) Color(0xFF1976D2) else Color(0xFF2E7D32),
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(22.dp)
             )
         }
 
-        Spacer(modifier = Modifier.width(14.dp))
+        Spacer(modifier = Modifier.width(12.dp))
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = if (device.isThisDevice) "This device" else device.deviceName,
                 fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
+                fontSize = 14.sp,
                 color = Color(0xFF1D1B20)
             )
             if (!device.isThisDevice) {
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(1.dp))
                 Text(
                     text = "${device.osVersion} • ${device.lastSeenText}",
                     color = Color(0xFF49454F),
-                    fontSize = 13.sp,
+                    fontSize = 11.5.sp,
                     fontWeight = FontWeight.Normal
                 )
             }
@@ -1139,7 +1139,7 @@ fun DashboardDeviceCard(
             Icons.Default.ChevronRight,
             contentDescription = "Details",
             tint = Color(0xFF9E9E9E),
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(17.dp)
         )
     }
 }

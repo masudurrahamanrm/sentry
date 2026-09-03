@@ -729,10 +729,10 @@ fun DeviceDetailScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(7.dp))
 
             // Row 2: File Explorer & Live Location
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SentryModernToolCard(
                     modifier = Modifier.weight(1f),
                     title = "File Explorer",
@@ -756,10 +756,10 @@ fun DeviceDetailScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(7.dp))
 
             // Row 3: Battery Stats & Mic/Audio
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SentryModernToolCard(
                     modifier = Modifier.weight(1f),
                     title = "Battery Stats",
@@ -780,10 +780,10 @@ fun DeviceDetailScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(7.dp))
 
             // Row 4: Call History & Cloud Gallery
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SentryModernToolCard(
                     modifier = Modifier.weight(1f),
                     title = "Call History",
@@ -1380,7 +1380,7 @@ fun SentryModernToolCard(
     Surface(
         onClick = onClick,
         modifier = modifier,
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(14.dp),
         color = Color.White,
         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF0F0F0)),
         shadowElevation = 1.dp
@@ -1388,7 +1388,7 @@ fun SentryModernToolCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(13.dp)
+                .padding(horizontal = 11.dp, vertical = 9.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1397,8 +1397,8 @@ fun SentryModernToolCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(8.dp))
                         .background(badgeBg),
                     contentAlignment = Alignment.Center
                 ) {
@@ -1406,21 +1406,21 @@ fun SentryModernToolCard(
                         icon,
                         contentDescription = null,
                         tint = badgeColor,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                 }
 
                 if (tagText != null) {
                     Surface(
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(5.dp),
                         color = tagBg
                     ) {
                         Text(
                             text = tagText,
                             color = tagColor,
-                            fontSize = 9.5.sp,
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 4.5.dp, vertical = 1.5.dp)
                         )
                     }
                 } else {
@@ -1428,25 +1428,25 @@ fun SentryModernToolCard(
                         Icons.Default.ChevronRight,
                         contentDescription = null,
                         tint = Color(0xFFBDBDBD),
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(14.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             Text(
                 text = title,
                 fontWeight = FontWeight.Bold,
-                fontSize = 13.5.sp,
+                fontSize = 12.5.sp,
                 color = Color(0xFF1D1B20),
                 maxLines = 1
             )
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(1.dp))
             Text(
                 text = subtitle,
                 color = Color(0xFF757575),
-                fontSize = 11.sp,
+                fontSize = 10.sp,
                 maxLines = 1
             )
         }
