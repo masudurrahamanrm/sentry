@@ -76,6 +76,10 @@ fun PermissionsScreen(
         )
     }
 
+    var usageAccessAllowed by remember {
+        mutableStateOf(com.example.sentry.service.BackgroundActivityManager.hasUsageStatsPermission(context))
+    }
+
     var filesAllowed by remember { mutableStateOf(true) }
 
     fun syncCapabilitiesToBackend() {
@@ -181,6 +185,18 @@ fun PermissionsScreen(
                         checked = notificationReadAllowed,
                         onCheckedChange = {
                             val intent = android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(intent)
+                        }
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                    PermissionToggleRow(
+                        title = "App Usage & Screen Time",
+                        description = "Permits reading genuine app activity, unlocks, and foreground usage time",
+                        icon = Icons.Default.QueryStats,
+                        checked = usageAccessAllowed,
+                        onCheckedChange = {
+                            val intent = android.content.Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS)
                             intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                             context.startActivity(intent)
                         }

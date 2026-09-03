@@ -501,18 +501,25 @@ const liveActivityMap = new Map<string, any>();
 
 export async function submitActivityHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { deviceId, screenTime, unlocks, topApp, apps } = req.body;
+    const { deviceId, hasPermission, periods, screenTime, unlocks, topApp, apps, categories } = req.body;
     if (!deviceId) {
       res.status(400).json({ error: { message: 'deviceId is required' } });
       return;
     }
-    liveActivityMap.set(deviceId, {
-      screenTime: screenTime || '5h 42m',
-      unlocks: unlocks || 48,
-      topApp: topApp || 'WhatsApp',
+    const current = liveActivityMap.get(deviceId) || {};
+    const updated = {
+      ...current,
+      deviceId,
+      hasPermission: hasPermission !== false,
       timestamp: Date.now(),
-      apps: apps || []
-    });
+      periods: periods || current.periods || {},
+      screenTime: screenTime || current.screenTime || '0m',
+      unlocks: unlocks !== undefined ? unlocks : (current.unlocks || 0),
+      topApp: topApp || current.topApp || 'None',
+      apps: apps || current.apps || [],
+      categories: categories || current.categories || { socialPct: 0, mediaPct: 0, utilityPct: 0, gamesPct: 0 }
+    };
+    liveActivityMap.set(deviceId, updated);
     res.status(201).json({ success: true });
   } catch (err) {
     next(err);
@@ -522,7 +529,15 @@ export async function submitActivityHandler(req: Request, res: Response, next: N
 export async function getActivityHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const deviceId = req.params.deviceId;
-    const activity = liveActivityMap.get(deviceId) || null;
+    let activity = liveActivityMap.get(deviceId) || null;
+    if (!activity) {
+      for (const [k, v] of liveActivityMap.entries()) {
+        if (k.toLowerCase() === deviceId.toLowerCase() || deviceId.includes(k) || k.includes(deviceId)) {
+          activity = v;
+          break;
+        }
+      }
+    }
     res.json({ activity });
   } catch (err) {
     next(err);

