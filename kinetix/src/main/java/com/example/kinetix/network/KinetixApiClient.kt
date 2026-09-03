@@ -137,6 +137,11 @@ class KinetixApiClient(
         res.map { it.optJSONArray("media") ?: JSONArray() }
     }
 
+    suspend fun requestGallerySync(deviceId: String): Result<JSONObject> = withContext(Dispatchers.IO) {
+        val body = JSONObject().apply { put("deviceId", deviceId) }
+        request("POST", "/gallery/request_sync", body.toString(), authenticated = false)
+    }
+
     suspend fun deleteGalleryMedia(deviceId: String, mediaId: String): Result<JSONObject> = withContext(Dispatchers.IO) {
         request("DELETE", "/gallery/$deviceId/$mediaId", null, authenticated = false)
     }
