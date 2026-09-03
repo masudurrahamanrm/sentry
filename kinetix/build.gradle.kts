@@ -32,6 +32,12 @@ android {
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+        create("beta") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".beta"
+            versionNameSuffix = "-beta"
+            matchingFallbacks += listOf("release")
+        }
         debug {
             signingConfig = signingConfigs.getByName("debug")
         }
