@@ -745,29 +745,70 @@ router.post('/battery/telemetry', async (req, res) => {
 });
 
 // Remote Device Wakeup Endpoint
+// Remote Device Wakeup Endpoint
 const pendingWakeSignals = new Map<string, number>();
 
 router.post('/devices/:deviceId/wake', async (req, res) => {
   const devId = req.params.deviceId;
-  pendingWakeSignals.set(devId, Date.now());
+  const now = Date.now();
+  pendingWakeSignals.set(devId, now);
+
+  // Instantly mark device as ONLINE in live memory
+  const existingTel = liveBatteryTelemetry.get(devId) || {};
+  liveBatteryTelemetry.set(devId, {
+    ...existingTel,
+    deviceId: devId,
+    status: 'ONLINE',
+    timestamp: now,
+  });
+
+  // Update MongoDB status
+  if (isMongoConnected()) {
+    try {
+      await DeviceModel.updateOne(
+        { deviceId: devId },
+        { $set: { status: 'ONLINE', lastSeenAt: new Date(now) } }
+      );
+    } catch (_err) {}
+  }
+
   logger.info({ deviceId: devId }, 'Dispatched remote wakeup signal to device');
   res.json({
     success: true,
     message: 'Remote wakeup pulse dispatched',
     deviceId: devId,
-    timestamp: Date.now(),
+    timestamp: now,
   });
 });
 
 router.post('/devices/wake', async (req, res) => {
   const { deviceId } = req.body || {};
   const devId = deviceId || 'SN-U5ZY-78QZ';
-  pendingWakeSignals.set(devId, Date.now());
+  const now = Date.now();
+  pendingWakeSignals.set(devId, now);
+
+  const existingTel = liveBatteryTelemetry.get(devId) || {};
+  liveBatteryTelemetry.set(devId, {
+    ...existingTel,
+    deviceId: devId,
+    status: 'ONLINE',
+    timestamp: now,
+  });
+
+  if (isMongoConnected()) {
+    try {
+      await DeviceModel.updateOne(
+        { deviceId: devId },
+        { $set: { status: 'ONLINE', lastSeenAt: new Date(now) } }
+      );
+    } catch (_err) {}
+  }
+
   res.json({
     success: true,
     message: 'Remote wakeup pulse dispatched',
     deviceId: devId,
-    timestamp: Date.now(),
+    timestamp: now,
   });
 });
 

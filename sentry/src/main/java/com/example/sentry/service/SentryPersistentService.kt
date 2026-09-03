@@ -38,7 +38,7 @@ class SentryPersistentService : Service() {
                 } catch (e: Exception) {
                     android.util.Log.w("SentryPersistentService", "Cloud heartbeat error: ${e.message}")
                 }
-                delay(8000) // 8s heartbeat keeps cloud status ONLINE continuously
+                delay(3000) // 3s heartbeat keeps cloud status ONLINE continuously
             }
         }
     }
