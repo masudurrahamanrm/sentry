@@ -361,43 +361,35 @@ fun DeviceDetailScreen(
                     }
                 }
 
-                // Center: Device Name & Status Column (Clean Centered Display)
+                // Center: Device Name with Status Indicator Dot & Centered Last Seen Pill
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
                         .align(Alignment.Center)
                         .padding(horizontal = 8.dp, vertical = 2.dp)
                 ) {
-                    Text(
-                        text = deviceName,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 18.sp,
-                        color = Color(0xFF1D1B20),
-                        maxLines = 1,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                        modifier = Modifier.padding(top = 2.dp)
+                        horizontalArrangement = Arrangement.Center
                     ) {
+                        Text(
+                            text = deviceName,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 18.sp,
+                            color = Color(0xFF1D1B20),
+                            maxLines = 1,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                         Box(
                             modifier = Modifier
-                                .size(7.dp)
+                                .size(8.dp)
                                 .clip(CircleShape)
                                 .background(if (isOnline) Color(0xFF4CAF50) else Color(0xFFE53935))
                         )
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text(
-                            text = if (isOnline) "Connected • Online" else "Disconnected • Offline",
-                            fontSize = 12.sp,
-                            color = if (isOnline) Color(0xFF2E7D32) else Color(0xFFC62828),
-                            fontWeight = FontWeight.Bold
-                        )
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
                     // Centered Last Seen Pill with Remote Wakeup & Reconnect Trigger
                     Surface(
