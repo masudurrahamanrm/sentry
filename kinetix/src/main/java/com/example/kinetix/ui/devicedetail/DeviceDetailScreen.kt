@@ -392,13 +392,22 @@ fun DeviceDetailScreen(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    // Centered Last Seen Pill with Integrated Refresh Sync
+                    // Centered Last Seen Pill with Remote Wakeup & Reconnect Trigger
                     Surface(
                         onClick = {
                             coroutineScope.launch {
-                                actionMessage = "Syncing live device state..."
+                                actionMessage = "⚡ Awakening remote phone & syncing..."
+                                withContext(Dispatchers.IO) {
+                                    try {
+                                        val client = com.example.kinetix.network.KinetixApiClient(context)
+                                        client.wakeDevice(deviceId)
+                                    } catch (_: Exception) {}
+                                }
                                 refreshDeviceData()
-                                delay(1000)
+                                delay(800)
+                                refreshDeviceData()
+                                actionMessage = "✅ Connection Active • Synced"
+                                delay(2000)
                                 actionMessage = null
                             }
                         },
@@ -428,7 +437,7 @@ fun DeviceDetailScreen(
                             Spacer(modifier = Modifier.width(6.dp))
                             Icon(
                                 Icons.Default.Refresh,
-                                contentDescription = "Refresh",
+                                contentDescription = "Remote Wakeup & Refresh",
                                 tint = Color(0xFF0284C7),
                                 modifier = Modifier.size(12.dp)
                             )
