@@ -10,7 +10,7 @@ android {
     defaultConfig {
         applicationId = "com.example.kinetix"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 2
         versionName = "1.1"
     }
