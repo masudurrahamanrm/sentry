@@ -18,7 +18,7 @@ class SentryPersistentService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
 
     private var cloudHeartbeatJob: Job? = null
-    private val serviceScope = CoroutineScope(Dispatchers.IO)
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private fun startCloudHeartbeatLoop() {
         if (cloudHeartbeatJob?.isActive == true) return

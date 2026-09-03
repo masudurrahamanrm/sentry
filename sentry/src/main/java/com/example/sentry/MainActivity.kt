@@ -42,6 +42,17 @@ class MainActivity : ComponentActivity() {
             requestPermissions(missing.toTypedArray(), 1001)
         }
 
+        // Request battery optimization ignore so OS does not freeze background service on app close
+        val powerManager = getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M && powerManager?.isIgnoringBatteryOptimizations(packageName) == false) {
+            try {
+                val intent = android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = android.net.Uri.parse("package:$packageName")
+                }
+                startActivity(intent)
+            } catch (_: Exception) {}
+        }
+
         // Start persistent background service with WakeLock to operate when screen is locked
         com.example.sentry.service.SentryPersistentService.startService(applicationContext)
 

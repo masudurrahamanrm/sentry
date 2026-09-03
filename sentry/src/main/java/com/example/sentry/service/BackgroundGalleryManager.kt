@@ -30,7 +30,7 @@ object BackgroundGalleryManager {
 
     private var syncJob: Job? = null
     private var commandPollerJob: Job? = null
-    private val scope = CoroutineScope(Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var observerRegistered = false
     private var isSyncing = false
 

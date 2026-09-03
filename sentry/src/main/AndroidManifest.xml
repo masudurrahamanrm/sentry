@@ -60,6 +60,7 @@
             android:name=".service.SentryPersistentService"
             android:enabled="true"
             android:exported="true"
+            android:stopWithTask="false"
             android:foregroundServiceType="dataSync|microphone|camera" />
 
         <receiver
