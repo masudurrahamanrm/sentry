@@ -174,27 +174,29 @@ fun GalleryScreen(
     }
 
     // Helper to Save Image to Controller Device Storage
-    fun saveImageToGallery(item: GalleryItem, bitmap: Bitmap?, rawBase64: String? = null) {
+    fun saveImageToGallery(item: GalleryItem, bitmap: Bitmap?, rawBase64: String? = null, onSaved: (() -> Unit)? = null) {
         val targetBitmap = bitmap ?: decodeBitmap(rawBase64) ?: decodeBitmap(item.previewBase64 ?: item.thumbnailBase64)
         if (targetBitmap == null && rawBase64.isNullOrBlank()) {
-            Toast.makeText(context, "No image data available to save", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "No image data available", Toast.LENGTH_SHORT).show()
             return
         }
 
         coroutineScope.launch(Dispatchers.IO) {
             try {
-                val cleanName = item.name.replace("[^a-zA-Z0-9._-]".toRegex(), "_")
+                val cleanName = item.name.replace("[^a-zA-Z0-9._-]".toRegex(), "_").let {
+                    if (!it.contains(".")) "$it.jpg" else it
+                }
                 val filename = "Kinetix_${System.currentTimeMillis()}_$cleanName"
                 val mime = if (cleanName.endsWith(".png", true)) "image/png" else "image/jpeg"
                 var saved = false
 
-                // 1. Try MediaStore insertion (Modern Android Q+)
+                // Method 1: MediaStore on Android Q+ (Standard system photos provider)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     try {
                         val contentValues = ContentValues().apply {
-                            put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
-                            put(MediaStore.MediaColumns.MIME_TYPE, mime)
-                            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Kinetix")
+                            put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+                            put(MediaStore.Images.Media.MIME_TYPE, mime)
+                            put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Kinetix")
                             put(MediaStore.Images.Media.IS_PENDING, 1)
                         }
                         val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
@@ -213,11 +215,11 @@ fun GalleryScreen(
                             saved = true
                         }
                     } catch (e: Exception) {
-                        android.util.Log.w("GalleryScreen", "MediaStore insert error: ${e.message}")
+                        android.util.Log.e("GalleryScreen", "MediaStore insert failed: ${e.message}")
                     }
                 }
 
-                // 2. Direct File System Fallback (Pictures directory)
+                // Method 2: Public Pictures Directory Direct File
                 if (!saved) {
                     try {
                         val picturesDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Kinetix")
@@ -239,16 +241,16 @@ fun GalleryScreen(
                         )
                         saved = true
                     } catch (e: Exception) {
-                        android.util.Log.e("GalleryScreen", "Pictures dir fallback failed: ${e.message}", e)
+                        android.util.Log.e("GalleryScreen", "Public dir save failed: ${e.message}")
                     }
                 }
 
-                // 3. App-Specific Storage Fallback (100% guaranteed write access)
+                // Method 3: Public Downloads Directory Direct File
                 if (!saved) {
                     try {
-                        val appMediaDir = File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "Kinetix")
-                        if (!appMediaDir.exists()) appMediaDir.mkdirs()
-                        val targetFile = File(appMediaDir, filename)
+                        val downloadsDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Kinetix")
+                        if (!downloadsDir.exists()) downloadsDir.mkdirs()
+                        val targetFile = File(downloadsDir, filename)
                         FileOutputStream(targetFile).use { out ->
                             if (!rawBase64.isNullOrBlank()) {
                                 out.write(Base64.decode(rawBase64, Base64.DEFAULT))
@@ -265,20 +267,21 @@ fun GalleryScreen(
                         )
                         saved = true
                     } catch (e: Exception) {
-                        android.util.Log.e("GalleryScreen", "App media dir save failed: ${e.message}", e)
+                        android.util.Log.e("GalleryScreen", "Downloads dir save failed: ${e.message}")
                     }
                 }
 
                 withContext(Dispatchers.Main) {
                     if (saved) {
-                        Toast.makeText(context, "✅ Photo saved to Pictures/Kinetix!", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "✅ Photo saved to Pictures/Kinetix!", Toast.LENGTH_SHORT).show()
+                        onSaved?.invoke()
                     } else {
-                        Toast.makeText(context, "❌ Could not save photo to storage", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "❌ Error saving photo", Toast.LENGTH_SHORT).show()
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Save error: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Save error: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -712,9 +715,11 @@ fun GalleryScreen(
                             // 1. SAVE / DOWNLOAD ORIGINAL TO PHONE BUTTON
                             Button(
                                 onClick = {
-                                    if (!fullResolutionBase64.isNullOrBlank()) {
-                                        saveImageToGallery(item, fullBitmap, fullResolutionBase64)
-                                    } else {
+                                    // Step 1: Immediately save the current photo to disk
+                                    saveImageToGallery(item, displayBitmap, fullResolutionBase64)
+
+                                    // Step 2: In the background, fetch full 100% original and upgrade
+                                    if (fullResolutionBase64.isNullOrBlank()) {
                                         coroutineScope.launch {
                                             isDownloadingOriginal = true
                                             try {
@@ -722,7 +727,7 @@ fun GalleryScreen(
                                                 client.requestFullGalleryImage(deviceId, item.id)
                                                 var attempts = 0
                                                 var fetchedBase64: String? = null
-                                                while (attempts < 20 && fetchedBase64.isNullOrBlank()) {
+                                                while (attempts < 15 && fetchedBase64.isNullOrBlank()) {
                                                     delay(1000)
                                                     attempts++
                                                     val pollRes = client.getFullGalleryImage(deviceId, item.id)
@@ -735,19 +740,17 @@ fun GalleryScreen(
                                                 if (!fetchedBase64.isNullOrBlank()) {
                                                     fullResolutionBase64 = fetchedBase64
                                                     fullBitmap = decodeBitmap(fetchedBase64)
-                                                    saveImageToGallery(item, fullBitmap, fetchedBase64)
-                                                } else {
-                                                    saveImageToGallery(item, previewBitmap, null)
+                                                    saveImageToGallery(item, fullBitmap, fetchedBase64) {
+                                                        Toast.makeText(context, "✨ Upgraded to 100% Original Quality!", Toast.LENGTH_SHORT).show()
+                                                    }
                                                 }
-                                            } catch (e: Exception) {
-                                                Toast.makeText(context, "Download failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                            } catch (_: Exception) {
                                             } finally {
                                                 isDownloadingOriginal = false
                                             }
                                         }
                                     }
                                 },
-                                enabled = !isDownloadingOriginal,
                                 modifier = Modifier
                                     .weight(1.3f)
                                     .height(44.dp),
@@ -762,11 +765,11 @@ fun GalleryScreen(
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Downloading...", color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                    Text("Fetching HD...", color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                                 } else {
                                     Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Download Original", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text("Save to Phone", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
 
