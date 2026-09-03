@@ -175,47 +175,76 @@ fun GalleryScreen(
 
     // Helper to Save Image to Controller Device Storage
     fun saveImageToGallery(item: GalleryItem, bitmap: Bitmap?, rawBase64: String? = null) {
-        if (bitmap == null && rawBase64.isNullOrBlank()) {
-            Toast.makeText(context, "No image data to save", Toast.LENGTH_SHORT).show()
+        val targetBitmap = bitmap ?: decodeBitmap(rawBase64) ?: decodeBitmap(item.previewBase64 ?: item.thumbnailBase64)
+        if (targetBitmap == null && rawBase64.isNullOrBlank()) {
+            Toast.makeText(context, "No image data available to save", Toast.LENGTH_SHORT).show()
             return
         }
+
         coroutineScope.launch(Dispatchers.IO) {
             try {
-                val filename = "Kinetix_${System.currentTimeMillis()}_${item.name}"
-                val fos: OutputStream?
-                val mime = if (item.name.endsWith(".png", true)) "image/png" else "image/jpeg"
+                val cleanName = item.name.replace("[^a-zA-Z0-9._-]".toRegex(), "_")
+                val filename = "Kinetix_${System.currentTimeMillis()}_$cleanName"
+                val mime = if (cleanName.endsWith(".png", true)) "image/png" else "image/jpeg"
+                var saved = false
+
+                // 1. Try MediaStore insertion (Modern Android Q+)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    val contentValues = ContentValues().apply {
-                        put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
-                        put(MediaStore.MediaColumns.MIME_TYPE, mime)
-                        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Kinetix")
+                    try {
+                        val contentValues = ContentValues().apply {
+                            put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+                            put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Kinetix")
+                            put(MediaStore.Images.Media.IS_PENDING, 1)
+                        }
+                        val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                        if (uri != null) {
+                            context.contentResolver.openOutputStream(uri)?.use { out ->
+                                if (!rawBase64.isNullOrBlank()) {
+                                    out.write(Base64.decode(rawBase64, Base64.DEFAULT))
+                                } else if (targetBitmap != null) {
+                                    val format = if (mime == "image/png") Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
+                                    targetBitmap.compress(format, 100, out)
+                                }
+                            }
+                            contentValues.clear()
+                            contentValues.put(MediaStore.Images.Media.IS_PENDING, 0)
+                            context.contentResolver.update(uri, contentValues, null, null)
+                            saved = true
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("GalleryScreen", "MediaStore insert error: ${e.message}")
                     }
-                    val imageUri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-                    fos = imageUri?.let { context.contentResolver.openOutputStream(it) }
-                } else {
-                    val imagesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).toString() + "/Kinetix"
-                    val file = File(imagesDir)
-                    if (!file.exists()) file.mkdirs()
-                    val imageFile = File(imagesDir, filename)
-                    fos = FileOutputStream(imageFile)
                 }
 
-                fos?.use { out ->
-                    if (!rawBase64.isNullOrBlank()) {
-                        val rawBytes = Base64.decode(rawBase64, Base64.DEFAULT)
-                        out.write(rawBytes)
-                    } else if (bitmap != null) {
-                        val format = if (item.name.endsWith(".png", true)) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
-                        bitmap.compress(format, 100, out)
+                // 2. Direct File System Fallback (Guarantees file is written to storage)
+                if (!saved) {
+                    val picturesDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Kinetix")
+                    if (!picturesDir.exists()) picturesDir.mkdirs()
+                    val targetFile = File(picturesDir, filename)
+                    FileOutputStream(targetFile).use { out ->
+                        if (!rawBase64.isNullOrBlank()) {
+                            out.write(Base64.decode(rawBase64, Base64.DEFAULT))
+                        } else if (targetBitmap != null) {
+                            val format = if (mime == "image/png") Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
+                            targetBitmap.compress(format, 100, out)
+                        }
                     }
+                    android.media.MediaScannerConnection.scanFile(
+                        context,
+                        arrayOf(targetFile.absolutePath),
+                        arrayOf(mime),
+                        null
+                    )
+                    saved = true
                 }
 
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "✅ Downloaded Original Photo (Pictures/Kinetix)", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "✅ Photo saved to Pictures/Kinetix!", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Failed to save: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Save error: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }
