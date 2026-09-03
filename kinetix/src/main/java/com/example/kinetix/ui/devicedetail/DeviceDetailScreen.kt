@@ -418,7 +418,7 @@ fun DeviceDetailScreen(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    // Last Seen Pill
+                    // Last Seen Pill (Icon + Time Only)
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = Color.White,
@@ -430,7 +430,7 @@ fun DeviceDetailScreen(
                         ) {
                             Icon(Icons.Outlined.AccessTime, contentDescription = null, tint = Color(0xFF757575), modifier = Modifier.size(11.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Last seen: $lastSeenText", fontSize = 10.5.sp, color = Color(0xFF757575), fontWeight = FontWeight.Medium)
+                            Text(text = lastSeenText, fontSize = 10.5.sp, color = Color(0xFF757575), fontWeight = FontWeight.Medium)
                         }
                     }
                 }
