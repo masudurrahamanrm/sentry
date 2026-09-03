@@ -240,10 +240,8 @@ fun DashboardScreen(
                 val newList = mutableListOf<PairedDeviceItem>()
 
                 // 1. Current device (This Phone running Kinetix) with REAL GPS
-                val thisModel = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
-                val defaultModelName = if (thisModel.isNotBlank()) thisModel else "realme 15 Pro 5G"
                 val cachedThisDeviceName = com.example.kinetix.cache.KinetixDeviceCache.getDeviceName(context, "THIS_DEVICE", "")
-                val thisDeviceName = if (cachedThisDeviceName.isNotBlank()) cachedThisDeviceName else defaultModelName
+                val thisDeviceName = if (cachedThisDeviceName.isNotBlank()) cachedThisDeviceName else "This device"
                 newList.add(
                     PairedDeviceItem(
                         deviceId = "THIS_DEVICE",
@@ -1121,18 +1119,20 @@ fun DashboardDeviceCard(
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = device.deviceName,
+                text = if (device.isThisDevice) "This device" else device.deviceName,
                 fontWeight = FontWeight.Bold,
                 fontSize = 15.sp,
                 color = Color(0xFF1D1B20)
             )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = if (device.isThisDevice) "This device • ${device.address}" else "${device.osVersion} • ${device.lastSeenText}",
-                color = if (device.isThisDevice) Color(0xFF1976D2) else Color(0xFF49454F),
-                fontSize = 13.sp,
-                fontWeight = if (device.isThisDevice) FontWeight.Medium else FontWeight.Normal
-            )
+            if (!device.isThisDevice) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "${device.osVersion} • ${device.lastSeenText}",
+                    color = Color(0xFF49454F),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Normal
+                )
+            }
         }
 
         Icon(
