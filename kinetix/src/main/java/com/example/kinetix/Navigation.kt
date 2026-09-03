@@ -1,5 +1,7 @@
 package com.example.kinetix
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -19,6 +21,16 @@ fun MainNavigation() {
         modifier = Modifier.fillMaxSize(),
         backStack = backStack,
         onBack = { backStack.removeLastOrNull() },
+        transitionSpec = {
+            val isBack = targetState.key is Dashboard || (initialState.key !is Dashboard && targetState.key is DeviceDetail)
+            if (isBack) {
+                (slideInHorizontally(animationSpec = tween(280), initialOffsetX = { -it / 3 }) + fadeIn(animationSpec = tween(280)))
+                    .togetherWith(slideOutHorizontally(animationSpec = tween(280), targetOffsetX = { it }) + fadeOut(animationSpec = tween(280)))
+            } else {
+                (slideInHorizontally(animationSpec = tween(320), initialOffsetX = { it }) + fadeIn(animationSpec = tween(320)))
+                    .togetherWith(slideOutHorizontally(animationSpec = tween(320), targetOffsetX = { -it / 3 }) + fadeOut(animationSpec = tween(320)))
+            }
+        },
         entryProvider = entryProvider {
             entry<Dashboard> {
                 DashboardScreen(
