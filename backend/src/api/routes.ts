@@ -383,15 +383,15 @@ router.get('/gallery/list/:deviceId', async (req, res) => {
           }
         : { deviceId: devId };
       const total = await GalleryMediaModel.countDocuments(filter);
-      const dbMedia = await GalleryMediaModel.find(filter)
-        .sort({ timestamp: -1 })
-        .skip(offset)
-        .limit(limit)
-        .lean();
+      if (total > 0) {
+        const dbMedia = await GalleryMediaModel.find(filter)
+          .sort({ timestamp: -1 })
+          .skip(offset)
+          .limit(limit)
+          .lean();
 
-      const validDb = dbMedia.filter((m: any) => m && m.id && m.thumbnail && m.thumbnail.length > 100);
-      const effectiveTotal = Math.max(total, stats.totalDevicePhotos);
-      if (validDb.length > 0 || offset > 0) {
+        const validDb = dbMedia.filter((m: any) => m && m.id && m.thumbnail && m.thumbnail.length > 100);
+        const effectiveTotal = Math.max(total, stats.totalDevicePhotos);
         res.json({
           media: validDb,
           total: effectiveTotal,

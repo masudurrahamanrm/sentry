@@ -244,15 +244,20 @@ fun GalleryScreen(
         return list
     }
 
-    // Media Items (Initialized from 0ms Local Cache - Strictly 20 items initial)
-    val mediaItems = remember(deviceId) {
+    // All Synced Media Items from Cloud & Local Cache
+    val allAvailablePhotos = remember(deviceId) {
         mutableStateListOf<GalleryItem>().apply {
             val cachedArr = com.example.kinetix.cache.KinetixDeviceCache.getCachedGallery(context, deviceId)
             if (cachedArr.length() > 0) {
-                addAll(parseGalleryJson(cachedArr).take(20))
+                addAll(parseGalleryJson(cachedArr))
             }
         }
     }
+    var visibleCount by remember { mutableIntStateOf(20) }
+    val mediaItems = remember(visibleCount, allAvailablePhotos.toList()) {
+        allAvailablePhotos.take(visibleCount)
+    }
+
     var totalDevicePhotos by remember(deviceId) {
         mutableIntStateOf(com.example.kinetix.cache.KinetixDeviceCache.getCachedGalleryTotalPhotos(context, deviceId))
     }
@@ -274,11 +279,10 @@ fun GalleryScreen(
             try {
                 val client = KinetixApiClient(context)
                 if (notifyUser) {
-                    // Send instant sync command to SentrY
                     client.requestGallerySync(deviceId)
                 }
 
-                val res = client.getGalleryMediaFull(deviceId, limit = 20, offset = 0)
+                val res = client.getGalleryMediaFull(deviceId, limit = 500, offset = 0)
                 if (res.isSuccess) {
                     val response = res.getOrNull()
                     val arr = response?.media ?: JSONArray()
@@ -292,16 +296,22 @@ fun GalleryScreen(
                     }
                     withContext(Dispatchers.Main) {
                         if (totalFromDev > 0) totalDevicePhotos = totalFromDev
-                        hasMore = incomingList.size >= 20
-                        mediaItems.clear()
-                        mediaItems.addAll(incomingList)
+                        val existingIds = allAvailablePhotos.map { it.id }.toSet()
+                        val newItems = incomingList.filter { !existingIds.contains(it.id) }
+                        if (newItems.isNotEmpty()) {
+                            allAvailablePhotos.addAll(newItems)
+                        } else if (allAvailablePhotos.isEmpty()) {
+                            allAvailablePhotos.addAll(incomingList)
+                        }
+                        val effectiveTotal = if (totalFromDev > 0) totalFromDev else totalDevicePhotos
+                        hasMore = if (effectiveTotal > 0) mediaItems.size < effectiveTotal else allAvailablePhotos.size > mediaItems.size
                     }
                 }
 
                 // If user manually refreshed, re-check after 1.5s to capture SentrY's live upload
                 if (notifyUser) {
                     delay(1500)
-                    val secondRes = client.getGalleryMediaFull(deviceId, limit = 20, offset = 0)
+                    val secondRes = client.getGalleryMediaFull(deviceId, limit = 500, offset = 0)
                     if (secondRes.isSuccess) {
                         val secondResponse = secondRes.getOrNull()
                         val secondArr = secondResponse?.media ?: JSONArray()
@@ -315,10 +325,14 @@ fun GalleryScreen(
                         }
                         withContext(Dispatchers.Main) {
                             if (secondTotalFromDev > 0) totalDevicePhotos = secondTotalFromDev
-                            hasMore = secondList.size >= 20
-                            mediaItems.clear()
-                            mediaItems.addAll(secondList)
-                            Toast.makeText(context, "🔄 Gallery updated • ${secondList.size} latest photos synced", Toast.LENGTH_SHORT).show()
+                            val existingIds = allAvailablePhotos.map { it.id }.toSet()
+                            val newItems = secondList.filter { !existingIds.contains(it.id) }
+                            if (newItems.isNotEmpty()) {
+                                allAvailablePhotos.addAll(newItems)
+                            }
+                            val effectiveTotal = if (secondTotalFromDev > 0) secondTotalFromDev else totalDevicePhotos
+                            hasMore = if (effectiveTotal > 0) mediaItems.size < effectiveTotal else allAvailablePhotos.size > mediaItems.size
+                            Toast.makeText(context, "🔄 Gallery updated • ${allAvailablePhotos.size} photos available", Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
@@ -341,54 +355,57 @@ fun GalleryScreen(
         isLoadingMore = true
         withContext(Dispatchers.IO) {
             try {
-                val client = KinetixApiClient(context)
-                val currentOffset = mediaItems.size
+                // 1. If we already have more synced items buffered locally in allAvailablePhotos, show next 20 immediately
+                if (allAvailablePhotos.size > visibleCount) {
+                    withContext(Dispatchers.Main) {
+                        visibleCount = (visibleCount + 20).coerceAtMost(allAvailablePhotos.size)
+                        val effectiveTotal = if (totalDevicePhotos > 0) totalDevicePhotos else allAvailablePhotos.size
+                        hasMore = visibleCount < effectiveTotal || allAvailablePhotos.size > visibleCount
+                        isLoadingMore = false
+                    }
+                    return@withContext
+                }
 
-                // 1. Proactively dispatch sync request to SentrY to upload next batch of older photos
+                // 2. Otherwise request SentrY to stream more photos from the device
+                val client = KinetixApiClient(context)
                 client.requestGallerySync(deviceId)
 
-                // 2. Fetch current page from backend
-                var res = client.getGalleryMediaFull(deviceId, limit = 20, offset = currentOffset)
+                // Fetch latest full list from backend
+                var res = client.getGalleryMediaFull(deviceId, limit = 500, offset = 0)
                 var response = res.getOrNull()
                 var arr = response?.media ?: JSONArray()
                 var totalFromDev = response?.totalDevicePhotos ?: totalDevicePhotos
+                var incoming = parseGalleryJson(arr)
 
-                // 3. If backend didn't have next batch yet but device has more photos, wait for SentrY upload
                 var attempts = 0
-                while (arr.length() == 0 && (totalFromDev > currentOffset || totalDevicePhotos > currentOffset) && attempts < 3) {
+                while (incoming.size <= allAvailablePhotos.size && (totalFromDev > allAvailablePhotos.size || totalDevicePhotos > allAvailablePhotos.size) && attempts < 2) {
                     delay(1200)
                     attempts++
-                    res = client.getGalleryMediaFull(deviceId, limit = 20, offset = currentOffset)
+                    res = client.getGalleryMediaFull(deviceId, limit = 500, offset = 0)
                     response = res.getOrNull()
                     arr = response?.media ?: JSONArray()
                     totalFromDev = response?.totalDevicePhotos ?: totalDevicePhotos
+                    incoming = parseGalleryJson(arr)
                 }
 
-                val nextBatch = parseGalleryJson(arr)
-                if (totalFromDev > 0) {
-                    com.example.kinetix.cache.KinetixDeviceCache.saveCachedGalleryTotalPhotos(context, deviceId, totalFromDev)
-                }
                 withContext(Dispatchers.Main) {
                     if (totalFromDev > 0) totalDevicePhotos = totalFromDev
-                    if (nextBatch.isNotEmpty()) {
-                        val existingIds = mediaItems.map { it.id }.toSet()
-                        val uniqueNext = nextBatch.filter { !existingIds.contains(it.id) }
-                        if (uniqueNext.isNotEmpty()) {
-                            mediaItems.addAll(uniqueNext)
-                        }
+                    val existingIds = allAvailablePhotos.map { it.id }.toSet()
+                    val newItems = incoming.filter { !existingIds.contains(it.id) }
+                    if (newItems.isNotEmpty()) {
+                        allAvailablePhotos.addAll(newItems)
+                        visibleCount = (visibleCount + 20).coerceAtMost(allAvailablePhotos.size)
                     }
                     val effectiveTotal = if (totalFromDev > 0) totalFromDev else totalDevicePhotos
                     hasMore = if (effectiveTotal > 0) {
-                        mediaItems.size < effectiveTotal
+                        visibleCount < effectiveTotal
                     } else {
-                        nextBatch.size >= 20
+                        newItems.isNotEmpty()
                     }
                 }
             } catch (_: Exception) {
                 withContext(Dispatchers.Main) {
-                    if (totalDevicePhotos > mediaItems.size) {
-                        hasMore = true
-                    }
+                    hasMore = totalDevicePhotos > visibleCount
                 }
             } finally {
                 withContext(Dispatchers.Main) {
@@ -652,7 +669,7 @@ fun GalleryScreen(
                     client.deleteGalleryMedia(deviceId, item.id)
                 } catch (_: Exception) {}
             }
-            mediaItems.removeIf { it.id == item.id }
+            allAvailablePhotos.removeIf { it.id == item.id }
             selectedItemForModal = null
             showDeleteConfirmDialog = false
             Toast.makeText(context, "🗑️ Photo removed from gallery", Toast.LENGTH_SHORT).show()

@@ -381,7 +381,18 @@ class KinetixApiClient(
                 val responseText = BufferedReader(InputStreamReader(stream, "UTF-8")).use { it.readText() }
 
                 if (responseCode in 200..299) {
-                    return Result.success(if (responseText.isNotBlank()) JSONObject(responseText) else JSONObject())
+                    val trimmed = responseText.trim()
+                    val jsonObj = if (trimmed.startsWith("{")) {
+                        JSONObject(trimmed)
+                    } else if (trimmed.startsWith("[")) {
+                        JSONObject().apply {
+                            put("media", JSONArray(trimmed))
+                            put("items", JSONArray(trimmed))
+                        }
+                    } else {
+                        JSONObject()
+                    }
+                    return Result.success(jsonObj)
                 }
             } catch (_: Exception) {
                 // Try next candidate URL
