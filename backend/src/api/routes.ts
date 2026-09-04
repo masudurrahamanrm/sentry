@@ -364,13 +364,14 @@ router.get('/gallery/list/:deviceId', async (req, res) => {
   if (isMongoConnected()) {
     try {
       const cleanDev = devId ? devId.replace(/[^a-zA-Z0-9]/g, '') : '';
-      const filter = {
-        $or: [
-          { deviceId: devId },
-          { deviceId: { $regex: new RegExp(cleanDev, 'i') } },
-          {}
-        ]
-      };
+      const filter = cleanDev
+        ? {
+            $or: [
+              { deviceId: devId },
+              { deviceId: { $regex: new RegExp(cleanDev, 'i') } }
+            ]
+          }
+        : { deviceId: devId };
       const total = await GalleryMediaModel.countDocuments(filter);
       const dbMedia = await GalleryMediaModel.find(filter)
         .sort({ timestamp: -1 })

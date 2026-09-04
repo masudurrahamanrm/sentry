@@ -244,12 +244,12 @@ fun GalleryScreen(
         return list
     }
 
-    // Media Items (Initialized from 0ms Local Cache)
+    // Media Items (Initialized from 0ms Local Cache - Strictly 20 items initial)
     val mediaItems = remember(deviceId) {
         mutableStateListOf<GalleryItem>().apply {
             val cachedArr = com.example.kinetix.cache.KinetixDeviceCache.getCachedGallery(context, deviceId)
             if (cachedArr.length() > 0) {
-                addAll(parseGalleryJson(cachedArr))
+                addAll(parseGalleryJson(cachedArr).take(20))
             }
         }
     }
@@ -366,20 +366,6 @@ fun GalleryScreen(
         if (mediaItems.isEmpty()) {
             delay(1200)
             fetchGallery(notifyUser = false)
-        }
-    }
-
-    val shouldLoadMore by remember {
-        derivedStateOf {
-            val total = mediaItems.size
-            val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            lastVisible >= total - 4 && total > 0
-        }
-    }
-
-    LaunchedEffect(shouldLoadMore, hasMore, isLoadingMore, selectedAlbum) {
-        if (shouldLoadMore && hasMore && !isLoadingMore && selectedAlbum == "All") {
-            loadMorePhotos()
         }
     }
 
@@ -647,6 +633,24 @@ fun GalleryScreen(
         val list = mediaItems.toList()
         if (selectedAlbum == "All") list
         else list.filter { it.album.equals(selectedAlbum, ignoreCase = true) }
+    }
+
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val total = filteredItems.size
+            val visible = gridState.layoutInfo.visibleItemsInfo
+            if (visible.isEmpty() || total == 0) false
+            else {
+                val lastVisibleIndex = visible.last().index
+                lastVisibleIndex >= total - 3
+            }
+        }
+    }
+
+    LaunchedEffect(shouldLoadMore, hasMore, isLoadingMore) {
+        if (shouldLoadMore && hasMore && !isLoadingMore) {
+            loadMorePhotos()
+        }
     }
 
     Scaffold(
