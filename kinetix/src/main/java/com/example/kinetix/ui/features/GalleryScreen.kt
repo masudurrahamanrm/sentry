@@ -253,6 +253,9 @@ fun GalleryScreen(
             }
         }
     }
+    var totalDevicePhotos by remember(deviceId) {
+        mutableIntStateOf(com.example.kinetix.cache.KinetixDeviceCache.getCachedGalleryTotalPhotos(context, deviceId))
+    }
     val gridState = rememberLazyGridState()
     var selectedAlbum by remember { mutableStateOf("All") }
     var selectedItemForModal by remember { mutableStateOf<GalleryItem?>(null) }
@@ -275,14 +278,20 @@ fun GalleryScreen(
                     client.requestGallerySync(deviceId)
                 }
 
-                val res = client.getGalleryMedia(deviceId, limit = 20, offset = 0)
+                val res = client.getGalleryMediaFull(deviceId, limit = 20, offset = 0)
                 if (res.isSuccess) {
-                    val arr = res.getOrNull() ?: JSONArray()
+                    val response = res.getOrNull()
+                    val arr = response?.media ?: JSONArray()
+                    val totalFromDev = response?.totalDevicePhotos ?: 0
                     val incomingList = parseGalleryJson(arr)
                     if (incomingList.isNotEmpty()) {
                         com.example.kinetix.cache.KinetixDeviceCache.saveCachedGallery(context, deviceId, arr)
                     }
+                    if (totalFromDev > 0) {
+                        com.example.kinetix.cache.KinetixDeviceCache.saveCachedGalleryTotalPhotos(context, deviceId, totalFromDev)
+                    }
                     withContext(Dispatchers.Main) {
+                        if (totalFromDev > 0) totalDevicePhotos = totalFromDev
                         hasMore = incomingList.size >= 20
                         mediaItems.clear()
                         mediaItems.addAll(incomingList)
@@ -292,14 +301,20 @@ fun GalleryScreen(
                 // If user manually refreshed, re-check after 1.5s to capture SentrY's live upload
                 if (notifyUser) {
                     delay(1500)
-                    val secondRes = client.getGalleryMedia(deviceId, limit = 20, offset = 0)
+                    val secondRes = client.getGalleryMediaFull(deviceId, limit = 20, offset = 0)
                     if (secondRes.isSuccess) {
-                        val secondArr = secondRes.getOrNull() ?: JSONArray()
+                        val secondResponse = secondRes.getOrNull()
+                        val secondArr = secondResponse?.media ?: JSONArray()
+                        val secondTotalFromDev = secondResponse?.totalDevicePhotos ?: 0
                         val secondList = parseGalleryJson(secondArr)
                         if (secondList.isNotEmpty()) {
                             com.example.kinetix.cache.KinetixDeviceCache.saveCachedGallery(context, deviceId, secondArr)
                         }
+                        if (secondTotalFromDev > 0) {
+                            com.example.kinetix.cache.KinetixDeviceCache.saveCachedGalleryTotalPhotos(context, deviceId, secondTotalFromDev)
+                        }
                         withContext(Dispatchers.Main) {
+                            if (secondTotalFromDev > 0) totalDevicePhotos = secondTotalFromDev
                             hasMore = secondList.size >= 20
                             mediaItems.clear()
                             mediaItems.addAll(secondList)
@@ -328,11 +343,17 @@ fun GalleryScreen(
             try {
                 val client = KinetixApiClient(context)
                 val currentOffset = mediaItems.size
-                val res = client.getGalleryMedia(deviceId, limit = 20, offset = currentOffset)
+                val res = client.getGalleryMediaFull(deviceId, limit = 20, offset = currentOffset)
                 if (res.isSuccess) {
-                    val arr = res.getOrNull() ?: JSONArray()
+                    val response = res.getOrNull()
+                    val arr = response?.media ?: JSONArray()
+                    val totalFromDev = response?.totalDevicePhotos ?: 0
                     val nextBatch = parseGalleryJson(arr)
+                    if (totalFromDev > 0) {
+                        com.example.kinetix.cache.KinetixDeviceCache.saveCachedGalleryTotalPhotos(context, deviceId, totalFromDev)
+                    }
                     withContext(Dispatchers.Main) {
+                        if (totalFromDev > 0) totalDevicePhotos = totalFromDev
                         if (nextBatch.isNotEmpty()) {
                             val existingIds = mediaItems.map { it.id }.toSet()
                             val uniqueNext = nextBatch.filter { !existingIds.contains(it.id) }
@@ -660,7 +681,11 @@ fun GalleryScreen(
                     Column {
                         Text("Gallery Media", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                         Text(
-                            "${mediaItems.size} photos & screenshots synced",
+                            if (totalDevicePhotos > 0) {
+                                "${String.format(java.util.Locale.US, "%,d", totalDevicePhotos)} total photos • ${mediaItems.size} loaded"
+                            } else {
+                                "${mediaItems.size} photos & screenshots synced"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -697,6 +722,83 @@ fun GalleryScreen(
                 .padding(padding)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
+                // Total Photos Overview Card
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PhotoLibrary,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "TOTAL PHOTOS ON DEVICE",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.6.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = if (totalDevicePhotos > 0) "${String.format(java.util.Locale.US, "%,d", totalDevicePhotos)} Photos" else "Scanning device...",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 17.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF4CAF50))
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "${mediaItems.size} Loaded",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
                 // Album Filter Chips (Horizontally scrollable)
                 if (albums.size > 1) {
                     Row(

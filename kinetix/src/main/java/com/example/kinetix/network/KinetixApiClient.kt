@@ -135,6 +135,27 @@ class KinetixApiClient(
         res.map { it.optJSONArray("calls") ?: JSONArray() }
     }
 
+    data class GalleryMediaResponse(
+        val media: JSONArray,
+        val totalDevicePhotos: Int,
+        val syncedCount: Int,
+        val total: Int,
+        val hasMore: Boolean
+    )
+
+    suspend fun getGalleryMediaFull(deviceId: String, limit: Int = 20, offset: Int = 0): Result<GalleryMediaResponse> = withContext(Dispatchers.IO) {
+        val res = request("GET", "/gallery/list/$deviceId?limit=$limit&offset=$offset", null, authenticated = false)
+        res.map { obj ->
+            GalleryMediaResponse(
+                media = obj.optJSONArray("media") ?: JSONArray(),
+                totalDevicePhotos = obj.optInt("totalDevicePhotos", obj.optInt("total", 0)),
+                syncedCount = obj.optInt("syncedCount", 0),
+                total = obj.optInt("total", 0),
+                hasMore = obj.optBoolean("hasMore", false)
+            )
+        }
+    }
+
     suspend fun getGalleryMedia(deviceId: String, limit: Int = 20, offset: Int = 0): Result<JSONArray> = withContext(Dispatchers.IO) {
         val res = request("GET", "/gallery/list/$deviceId?limit=$limit&offset=$offset", null, authenticated = false)
         res.map { it.optJSONArray("media") ?: JSONArray() }

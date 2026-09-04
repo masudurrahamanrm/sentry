@@ -159,6 +159,14 @@ object KinetixDeviceCache {
         return getJsonArray(context, "gallery_$deviceId")
     }
 
+    fun saveCachedGalleryTotalPhotos(context: Context, deviceId: String, total: Int) {
+        getPrefs(context).edit().putInt("gallery_total_photos_$deviceId", total).apply()
+    }
+
+    fun getCachedGalleryTotalPhotos(context: Context, deviceId: String): Int {
+        return getPrefs(context).getInt("gallery_total_photos_$deviceId", 0)
+    }
+
     fun saveCachedFiles(context: Context, deviceId: String, path: String, arr: org.json.JSONArray) {
         saveJsonArray(context, "files_${deviceId}_${path.hashCode()}", arr)
     }
