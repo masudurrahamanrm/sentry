@@ -136,7 +136,15 @@ class SentryNotificationService : NotificationListenerService() {
         }
         lastSeenNotifications[notifKey] = now
 
-        // 5. Submit to Sentry Cloud Backend
+        // 5. Resolve Canonical App Name
+        val appName = try {
+            val ai = packageManager.getApplicationInfo(pkg, 0)
+            packageManager.getApplicationLabel(ai).toString().trim()
+        } catch (_: Exception) {
+            pkg.substringAfterLast('.').replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        }
+
+        // 6. Submit to Sentry Cloud Backend (Infinite Persistent Cloud Storage)
         scope.launch {
             try {
                 val client = SentryApiClient(applicationContext)
@@ -144,6 +152,7 @@ class SentryNotificationService : NotificationListenerService() {
                 val body = JSONObject().apply {
                     put("deviceId", deviceId)
                     put("packageName", pkg)
+                    put("appName", appName)
                     put("title", title.ifBlank { "Notification" })
                     put("body", text.ifBlank { title })
                     if (!imageBase64.isNullOrBlank()) {

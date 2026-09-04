@@ -46,6 +46,13 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import java.text.SimpleDateFormat
 import java.util.*
 
+data class NotificationAppStyle(
+    val friendlyApp: String,
+    val color: Color,
+    val bg: Color,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
+)
+
 data class ModernNotification(
     val id: String,
     val app: String,
@@ -60,6 +67,206 @@ data class ModernNotification(
     val iconBg: Color,
     val icon: androidx.compose.ui.graphics.vector.ImageVector
 )
+
+@Composable
+fun NotificationCardItem(
+    notif: ModernNotification,
+    onCopy: () -> Unit,
+    onImageClick: (ImageBitmap) -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onCopy),
+        shape = RoundedCornerShape(20.dp),
+        color = Color.White,
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF0F0F0)),
+        shadowElevation = 1.5.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(15.dp)
+        ) {
+            // Top Header Row: App Icon + App Name + Live Timestamps
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(notif.iconBg),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            notif.icon,
+                            contentDescription = null,
+                            tint = notif.iconColor,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = notif.app,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 15.sp,
+                            color = notif.iconColor
+                        )
+                        Text(
+                            text = notif.packageName,
+                            fontSize = 11.sp,
+                            color = Color(0xFF757575),
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                // Time Stamp Pill
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFF0F7FF),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE1EBF5))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Outlined.AccessTime,
+                                contentDescription = null,
+                                modifier = Modifier.size(11.dp),
+                                tint = Color(0xFF1976D2)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = notif.timeFormatted,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF1976D2)
+                            )
+                        }
+                        Text(
+                            text = notif.exactTimeFormatted,
+                            fontSize = 10.sp,
+                            color = Color(0xFF757575),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Notification Sender / Title
+            Text(
+                text = notif.title,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = Color(0xFF1D1B20)
+            )
+
+            // Notification Body / GPS status footer
+            if (notif.body.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                if (notif.body.contains("GPS", ignoreCase = true) || notif.body.contains("°")) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            Icons.Outlined.LocationOn,
+                            contentDescription = null,
+                            tint = Color(0xFF7C4DFF),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = notif.body.substringBefore("•").trim(),
+                            fontSize = 11.5.sp,
+                            color = Color(0xFF616161),
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("|", fontSize = 11.sp, color = Color(0xFFBDBDBD))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(modifier = Modifier.size(5.dp).clip(CircleShape).background(Color(0xFF4CAF50)))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Active",
+                            fontSize = 11.sp,
+                            color = Color(0xFF616161),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                } else {
+                    Text(
+                        text = notif.body,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFF616161),
+                        lineHeight = 19.sp,
+                        fontSize = 12.5.sp
+                    )
+                }
+            }
+
+            // Attached Photo / Media Preview
+            if (!notif.imageBase64.isNullOrBlank()) {
+                val bitmap = remember(notif.imageBase64) {
+                    try {
+                        val bytes = Base64.decode(notif.imageBase64, Base64.DEFAULT)
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+
+                if (bitmap != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(190.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFFF5F5F5))
+                            .clickable { onImageClick(bitmap) }
+                    ) {
+                        Image(
+                            bitmap = bitmap,
+                            contentDescription = "Notification Attached Image",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color.Black.copy(alpha = 0.65f),
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.ZoomIn, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Attached Photo", color = Color.White, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,28 +297,61 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
         return sdf.format(Date(timestamp)).lowercase(Locale.getDefault())
     }
 
+    fun getDateGroupHeader(timestamp: Long): String {
+        if (timestamp <= 0) return "Today"
+        val notifCal = Calendar.getInstance().apply { timeInMillis = timestamp }
+        val todayCal = Calendar.getInstance()
+        val yesterdayCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
+
+        val isToday = notifCal.get(Calendar.YEAR) == todayCal.get(Calendar.YEAR) &&
+                notifCal.get(Calendar.DAY_OF_YEAR) == todayCal.get(Calendar.DAY_OF_YEAR)
+        if (isToday) return "Today"
+
+        val isYesterday = notifCal.get(Calendar.YEAR) == yesterdayCal.get(Calendar.YEAR) &&
+                notifCal.get(Calendar.DAY_OF_YEAR) == yesterdayCal.get(Calendar.DAY_OF_YEAR)
+        if (isYesterday) return "Yesterday"
+
+        val sdf = SimpleDateFormat("EEEE, d MMMM yyyy", Locale.getDefault())
+        return sdf.format(Date(timestamp))
+    }
+
     fun parseNotificationsJson(arr: org.json.JSONArray): List<ModernNotification> {
         val list = mutableListOf<ModernNotification>()
         for (i in 0 until arr.length()) {
             val item = arr.getJSONObject(i)
             val pkg = item.optString("packageName", "com.example.sentry")
+            val rawAppName = item.optString("appName", "")
             val ts = item.optLong("timestamp", System.currentTimeMillis())
             val img = item.optString("image", "").ifBlank { null }
 
-            val (friendlyApp, appColor, appBg, appIcon) = when {
-                pkg.contains("whatsapp", ignoreCase = true) -> Quad("WhatsApp", Color(0xFF25D366), Color(0xFFE8F5E9), Icons.AutoMirrored.Filled.Chat)
-                pkg.contains("telegram", ignoreCase = true) -> Quad("Telegram", Color(0xFF0088CC), Color(0xFFE1F5FE), Icons.Default.Send)
-                pkg.contains("instagram", ignoreCase = true) -> Quad("Instagram", Color(0xFFE1306C), Color(0xFFFCE4EC), Icons.Default.CameraAlt)
-                pkg.contains("facebook", ignoreCase = true) || pkg.contains("katana", ignoreCase = true) -> Quad("Facebook", Color(0xFF1877F2), Color(0xFFE3F2FD), Icons.Default.ThumbUp)
-                pkg.contains("twitter", ignoreCase = true) || pkg.contains("x.android", ignoreCase = true) -> Quad("X / Twitter", Color(0xFF1DA1F2), Color(0xFFE1F5FE), Icons.Default.Tag)
-                pkg.contains("messaging", ignoreCase = true) || pkg.contains("mms", ignoreCase = true) -> Quad("Messages (SMS)", Color(0xFF1976D2), Color(0xFFE3F2FD), Icons.Default.Message)
-                pkg.contains("gm", ignoreCase = true) || pkg.contains("mail", ignoreCase = true) -> Quad("Gmail", Color(0xFFEA4335), Color(0xFFFFEBEE), Icons.Default.Mail)
-                pkg.contains("dialer", ignoreCase = true) || pkg.contains("phone", ignoreCase = true) -> Quad("Phone Call", Color(0xFF34A853), Color(0xFFE8F5E9), Icons.Default.Call)
-                pkg.contains("youtube", ignoreCase = true) -> Quad("YouTube", Color(0xFFFF0000), Color(0xFFFFEBEE), Icons.Default.PlayArrow)
-                pkg.contains("zomato", ignoreCase = true) -> Quad("Zomato", Color(0xFFE23744), Color(0xFFFFEBEE), Icons.Default.Fastfood)
-                pkg.contains("sentry", ignoreCase = true) -> Quad("Sentry Agent", Color(0xFF673AB7), Color(0xFFEDE7F6), Icons.Default.Security)
-                pkg.contains("android", ignoreCase = true) || pkg.contains("system", ignoreCase = true) -> Quad("Android System", Color(0xFF607D8B), Color(0xFFECEFF1), Icons.Default.PhoneAndroid)
-                else -> Quad(
+            val style = when {
+                rawAppName.isNotBlank() && !rawAppName.contains(".") -> {
+                    val color = when {
+                        pkg.contains("whatsapp", ignoreCase = true) -> Color(0xFF25D366)
+                        pkg.contains("telegram", ignoreCase = true) -> Color(0xFF0088CC)
+                        pkg.contains("instagram", ignoreCase = true) -> Color(0xFFE1306C)
+                        pkg.contains("facebook", ignoreCase = true) -> Color(0xFF1877F2)
+                        pkg.contains("youtube", ignoreCase = true) -> Color(0xFFFF0000)
+                        pkg.contains("mail", ignoreCase = true) || pkg.contains("gm", ignoreCase = true) -> Color(0xFFEA4335)
+                        pkg.contains("android", ignoreCase = true) || pkg.contains("system", ignoreCase = true) -> Color(0xFF607D8B)
+                        else -> Color(0xFF1976D2)
+                    }
+                    NotificationAppStyle(rawAppName, color, color.copy(alpha = 0.12f), Icons.Default.Notifications)
+                }
+                pkg.contains("whatsapp", ignoreCase = true) -> NotificationAppStyle("WhatsApp", Color(0xFF25D366), Color(0xFFE8F5E9), Icons.AutoMirrored.Filled.Chat)
+                pkg.contains("telegram", ignoreCase = true) -> NotificationAppStyle("Telegram", Color(0xFF0088CC), Color(0xFFE1F5FE), Icons.Default.Send)
+                pkg.contains("instagram", ignoreCase = true) -> NotificationAppStyle("Instagram", Color(0xFFE1306C), Color(0xFFFCE4EC), Icons.Default.CameraAlt)
+                pkg.contains("facebook", ignoreCase = true) || pkg.contains("katana", ignoreCase = true) -> NotificationAppStyle("Facebook", Color(0xFF1877F2), Color(0xFFE3F2FD), Icons.Default.ThumbUp)
+                pkg.contains("twitter", ignoreCase = true) || pkg.contains("x.android", ignoreCase = true) -> NotificationAppStyle("X / Twitter", Color(0xFF1DA1F2), Color(0xFFE1F5FE), Icons.Default.Tag)
+                pkg.contains("messaging", ignoreCase = true) || pkg.contains("mms", ignoreCase = true) -> NotificationAppStyle("Messages (SMS)", Color(0xFF1976D2), Color(0xFFE3F2FD), Icons.Default.Message)
+                pkg.contains("gm", ignoreCase = true) || pkg.contains("mail", ignoreCase = true) -> NotificationAppStyle("Gmail", Color(0xFFEA4335), Color(0xFFFFEBEE), Icons.Default.Mail)
+                pkg.contains("dialer", ignoreCase = true) || pkg.contains("phone", ignoreCase = true) -> NotificationAppStyle("Phone Call", Color(0xFF34A853), Color(0xFFE8F5E9), Icons.Default.Call)
+                pkg.contains("youtube", ignoreCase = true) -> NotificationAppStyle("YouTube", Color(0xFFFF0000), Color(0xFFFFEBEE), Icons.Default.PlayArrow)
+                pkg.contains("zomato", ignoreCase = true) -> NotificationAppStyle("Zomato", Color(0xFFE23744), Color(0xFFFFEBEE), Icons.Default.Fastfood)
+                pkg.contains("sentry", ignoreCase = true) -> NotificationAppStyle("Sentry Agent", Color(0xFF673AB7), Color(0xFFEDE7F6), Icons.Default.Security)
+                pkg.contains("odad", ignoreCase = true) -> NotificationAppStyle("Google Play Protect", Color(0xFF34A853), Color(0xFFE8F5E9), Icons.Default.Security)
+                pkg.contains("android", ignoreCase = true) || pkg.contains("system", ignoreCase = true) -> NotificationAppStyle("Android System", Color(0xFF607D8B), Color(0xFFECEFF1), Icons.Default.PhoneAndroid)
+                else -> NotificationAppStyle(
                     pkg.substringAfterLast('.').replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
                     Color(0xFF3F51B5),
                     Color(0xFFEDE7F6),
@@ -122,7 +362,7 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
             list.add(
                 ModernNotification(
                     id = "${item.optString("id", "notif_$i")}_$i",
-                    app = friendlyApp,
+                    app = style.friendlyApp,
                     packageName = pkg,
                     title = item.optString("title", "Sentry Alert"),
                     body = item.optString("body", ""),
@@ -130,9 +370,9 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                     timeFormatted = formatNotificationTime(ts),
                     exactTimeFormatted = formatExactTime(ts),
                     timestamp = ts,
-                    iconColor = appColor,
-                    iconBg = appBg,
-                    icon = appIcon
+                    iconColor = style.color,
+                    iconBg = style.bg,
+                    icon = style.icon
                 )
             )
         }
@@ -191,6 +431,10 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
         } else {
             notifications.filter { it.app == selectedFilter }
         }
+    }
+
+    val groupedByDate = remember(filteredList) {
+        filteredList.groupBy { getDateGroupHeader(it.timestamp) }
     }
 
     // Pulsing live stream dot animation
@@ -393,14 +637,74 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(top = 6.dp, bottom = 28.dp)
                 ) {
-                    items(filteredList, key = { it.id }) { notif ->
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
+                    groupedByDate.forEach { (dateHeader, notifsForDate) ->
+                        item(key = "header_$dateHeader") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 12.dp, bottom = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = when (dateHeader) {
+                                        "Today" -> Color(0xFFE8F0FE)
+                                        "Yesterday" -> Color(0xFFF3EDF7)
+                                        else -> Color(0xFFF1F3F4)
+                                    }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Default.CalendarToday,
+                                            contentDescription = null,
+                                            tint = when (dateHeader) {
+                                                "Today" -> Color(0xFF1976D2)
+                                                "Yesterday" -> Color(0xFF673AB7)
+                                                else -> Color(0xFF44474E)
+                                            },
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = dateHeader,
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = when (dateHeader) {
+                                                "Today" -> Color(0xFF1976D2)
+                                                "Yesterday" -> Color(0xFF673AB7)
+                                                else -> Color(0xFF1D1B20)
+                                            }
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = Color.White.copy(alpha = 0.9f)
+                                        ) {
+                                            Text(
+                                                text = "${notifsForDate.size}",
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF44474E),
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFFE8E8E8))
+                            }
+                        }
+
+                        items(notifsForDate, key = { it.id }) { notif ->
+                            NotificationCardItem(
+                                notif = notif,
+                                onCopy = {
                                     val fullContent = "${notif.app} - ${notif.title}\n${notif.body}\nTime: ${notif.exactTimeFormatted}"
                                     clipboardManager.setText(AnnotatedString(fullContent))
                                     copiedMessage = "Copied to clipboard"
@@ -409,239 +713,53 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
                                         copiedMessage = null
                                     }
                                 },
-                            shape = RoundedCornerShape(20.dp),
-                            color = Color.White,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF0F0F0)),
-                            shadowElevation = 1.5.dp
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(15.dp)
-                            ) {
-                                // Top Header Row: App Icon + App Name + Live Timestamps
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.weight(1f, fill = false)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(40.dp)
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .background(notif.iconBg),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                notif.icon,
-                                                contentDescription = null,
-                                                tint = notif.iconColor,
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Column {
-                                            Text(
-                                                text = notif.app,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                fontSize = 15.sp,
-                                                color = notif.iconColor
-                                            )
-                                            Text(
-                                                text = notif.packageName,
-                                                fontSize = 11.sp,
-                                                color = Color(0xFF757575),
-                                                maxLines = 1
-                                            )
-                                        }
-                                    }
-
-                                    // Time Stamp Pill (Just now / 15s ago + 12:56 am - NO SECONDS)
-                                    Surface(
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = Color(0xFFF0F7FF),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE1EBF5))
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                            horizontalAlignment = Alignment.End
-                                        ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(
-                                                    Icons.Outlined.AccessTime,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(11.dp),
-                                                    tint = Color(0xFF1976D2)
-                                                )
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text(
-                                                    text = notif.timeFormatted,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFF1976D2)
-                                                )
-                                            }
-                                            Text(
-                                                text = notif.exactTimeFormatted,
-                                                fontSize = 10.sp,
-                                                color = Color(0xFF757575),
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                // Notification Sender / Title
-                                Text(
-                                    text = notif.title,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = Color(0xFF1D1B20)
-                                )
-
-                                // Notification Body / GPS status footer
-                                if (notif.body.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    if (notif.body.contains("GPS", ignoreCase = true) || notif.body.contains("°")) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Icon(
-                                                Icons.Outlined.LocationOn,
-                                                contentDescription = null,
-                                                tint = Color(0xFF7C4DFF),
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = notif.body.substringBefore("•").trim(),
-                                                fontSize = 11.5.sp,
-                                                color = Color(0xFF616161),
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text("|", fontSize = 11.sp, color = Color(0xFFBDBDBD))
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Box(modifier = Modifier.size(5.dp).clip(CircleShape).background(Color(0xFF4CAF50)))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = "Active",
-                                                fontSize = 11.sp,
-                                                color = Color(0xFF616161),
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                        }
-                                    } else {
-                                        Text(
-                                            text = notif.body,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = Color(0xFF616161),
-                                            lineHeight = 19.sp,
-                                            fontSize = 12.5.sp
-                                        )
-                                    }
-                                }
-
-                                // Attached Photo / Media Preview (WhatsApp Photo, MMS, Picture attachments)
-                                if (!notif.imageBase64.isNullOrBlank()) {
-                                    val bitmap = remember(notif.imageBase64) {
-                                        try {
-                                            val bytes = Base64.decode(notif.imageBase64, Base64.DEFAULT)
-                                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
-                                        } catch (_: Exception) {
-                                            null
-                                        }
-                                    }
-
-                                    if (bitmap != null) {
-                                        Spacer(modifier = Modifier.height(10.dp))
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(190.dp)
-                                                .clip(RoundedCornerShape(14.dp))
-                                                .background(Color(0xFFF5F5F5))
-                                                .clickable { previewImageBitmap = bitmap }
-                                        ) {
-                                            Image(
-                                                bitmap = bitmap,
-                                                contentDescription = "Notification Attached Image",
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentScale = ContentScale.Crop
-                                            )
-                                            // Tap to view badge
-                                            Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = Color.Black.copy(alpha = 0.65f),
-                                                modifier = Modifier
-                                                    .align(Alignment.BottomEnd)
-                                                    .padding(8.dp)
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Icon(Icons.Default.ZoomIn, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Text("Attached Photo", color = Color.White, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                                onImageClick = { bmp: ImageBitmap -> previewImageBitmap = bmp }
+                            )
                         }
                     }
                 }
             }
         }
-    }
-    }
+        }
 
-    // Fullscreen Attached Photo Preview Dialog
-    if (previewImageBitmap != null) {
-        Dialog(
-            onDismissRequest = { previewImageBitmap = null },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.95f))
-                    .clickable { previewImageBitmap = null },
-                contentAlignment = Alignment.Center
+        // Fullscreen Attached Photo Preview Dialog
+        if (previewImageBitmap != null) {
+            Dialog(
+                onDismissRequest = { previewImageBitmap = null },
+                properties = DialogProperties(usePlatformDefaultWidth = false)
             ) {
-                Image(
-                    bitmap = previewImageBitmap!!,
-                    contentDescription = "Fullscreen Attached Photo",
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.95f)
-                        .fillMaxHeight(0.80f)
-                        .clip(RoundedCornerShape(16.dp)),
-                    contentScale = ContentScale.Fit
-                )
-
-                // Close Button Top-Right
-                IconButton(
-                    onClick = { previewImageBitmap = null },
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(24.dp)
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.95f))
+                        .clickable { previewImageBitmap = null },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color.White.copy(alpha = 0.2f),
-                        modifier = Modifier.size(40.dp)
+                    Image(
+                        bitmap = previewImageBitmap!!,
+                        contentDescription = "Fullscreen Attached Photo",
+                        modifier = Modifier
+                            .fillMaxWidth(0.95f)
+                            .fillMaxHeight(0.80f)
+                            .clip(RoundedCornerShape(16.dp)),
+                        contentScale = ContentScale.Fit
+                    )
+
+                    // Close Button Top-Right
+                    IconButton(
+                        onClick = { previewImageBitmap = null },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(24.dp)
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.White.copy(alpha = 0.2f),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                            }
                         }
                     }
                 }
@@ -650,4 +768,6 @@ fun NotificationsScreen(deviceId: String, onBack: () -> Unit) {
     }
 }
 
-data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+
+
+

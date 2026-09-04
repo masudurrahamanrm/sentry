@@ -297,12 +297,12 @@ export async function updateDeviceCapabilitiesHandler(req: Request, res: Respons
   }
 }
 
-// In-memory live notifications buffer
+// In-memory live notifications buffer (resilient high-capacity buffer)
 const liveNotificationsMap = new Map<string, Array<any>>();
 
 export async function submitNotificationHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { deviceId, packageName, title, body, timestamp, image } = req.body;
+    const { deviceId, packageName, appName, title, body, timestamp, image } = req.body;
     if (!deviceId) {
       res.status(400).json({ error: { message: 'deviceId is required' } });
       return;
@@ -311,8 +311,11 @@ export async function submitNotificationHandler(req: Request, res: Response, nex
     const newTitle = title || 'Notification';
     const newBody = body || '';
     const newPkg = packageName || 'System';
-    const notifTimestamp = timestamp || Date.now();
+    const newAppName = appName || '';
+    const notifTimestamp = timestamp ? Number(timestamp) : Date.now();
     const notifId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    const notifDate = new Date(notifTimestamp);
+    const dateStr = notifDate.toISOString().split('T')[0]; // e.g. "2026-09-04"
 
     // Deduplicate: check if exact notification received within 2 seconds
     const isDuplicate = list.some(item => 
@@ -340,28 +343,32 @@ export async function submitNotificationHandler(req: Request, res: Response, nex
         id: notifId,
         deviceId,
         packageName: newPkg,
+        appName: newAppName,
         title: newTitle,
         body: newBody,
         image: image || null,
         r2ImageUrl,
+        dateStr,
         timestamp: notifTimestamp,
       };
 
       list.unshift(notifItem);
-      if (list.length > 100) list.pop(); // Keep latest 100 in memory
+      if (list.length > 5000) list.pop(); // High capacity in-memory buffer
       liveNotificationsMap.set(deviceId, list);
 
-      // Persist to MongoDB Cloud Database
+      // Persist to MongoDB Cloud Database (NO LIMIT)
       if (isMongoConnected()) {
         try {
           await NotificationModel.create({
             id: notifId,
             deviceId,
             packageName: newPkg,
+            appName: newAppName,
             title: newTitle,
             body: newBody,
             image: image || undefined,
             r2ImageUrl,
+            dateStr,
             timestamp: notifTimestamp,
           });
         } catch (err) {
@@ -380,10 +387,10 @@ export async function getNotificationsHandler(req: Request, res: Response, next:
   try {
     const deviceId = req.params.deviceId;
 
-    // Check MongoDB Cloud Database first
+    // Check MongoDB Cloud Database first (fetch full history with no 100 limit)
     if (isMongoConnected()) {
       try {
-        const dbNotifs = await NotificationModel.find({ deviceId }).sort({ timestamp: -1 }).limit(100).lean();
+        const dbNotifs = await NotificationModel.find({ deviceId }).sort({ timestamp: -1 }).limit(5000).lean();
         if (dbNotifs && dbNotifs.length > 0) {
           res.json({ notifications: dbNotifs });
           return;

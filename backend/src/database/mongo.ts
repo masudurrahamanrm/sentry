@@ -365,10 +365,12 @@ export interface INotification extends Document {
   id: string;
   deviceId: string;
   packageName: string;
+  appName?: string;
   title: string;
   body: string;
   image?: string;
   r2ImageUrl?: string;
+  dateStr?: string;
   timestamp: number;
   createdAt: Date;
 }
@@ -378,10 +380,12 @@ const NotificationSchema = new Schema<INotification>(
     id: { type: String, required: true, unique: true },
     deviceId: { type: String, required: true, index: true },
     packageName: { type: String, required: true },
+    appName: { type: String, default: '' },
     title: { type: String, default: '' },
     body: { type: String, default: '' },
     image: { type: String },
     r2ImageUrl: { type: String },
+    dateStr: { type: String, index: true },
     timestamp: { type: Number, required: true, index: true },
   },
   { timestamps: true }
