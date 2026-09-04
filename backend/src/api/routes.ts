@@ -328,7 +328,7 @@ router.post('/gallery/sync', async (req, res) => {
     for (const item of mediaList) {
       map.set(item.id, item);
     }
-    const merged = Array.from(map.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 300);
+    const merged = Array.from(map.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 10000);
     liveGalleryStorage.set(devId, merged);
     lastSyncedGallery = merged;
 
@@ -390,14 +390,15 @@ router.get('/gallery/list/:deviceId', async (req, res) => {
         .lean();
 
       const validDb = dbMedia.filter((m: any) => m && m.id && m.thumbnail && m.thumbnail.length > 100);
+      const effectiveTotal = Math.max(total, stats.totalDevicePhotos);
       if (validDb.length > 0 || offset > 0) {
         res.json({
           media: validDb,
-          total,
-          totalDevicePhotos: stats.totalDevicePhotos > 0 ? stats.totalDevicePhotos : total,
+          total: effectiveTotal,
+          totalDevicePhotos: stats.totalDevicePhotos > 0 ? stats.totalDevicePhotos : effectiveTotal,
           syncedCount: stats.syncedCount > 0 ? stats.syncedCount : total,
           remainingCount: stats.remainingCount,
-          hasMore: offset + validDb.length < total,
+          hasMore: offset + validDb.length < effectiveTotal,
           offset,
           limit
         });
@@ -420,13 +421,14 @@ router.get('/gallery/list/:deviceId', async (req, res) => {
   }
   const cleanList = (media || []).filter((m: any) => m && m.id && m.thumbnail && m.thumbnail.length > 100);
   const pagedList = cleanList.slice(offset, offset + limit);
+  const effectiveTotal = Math.max(cleanList.length, stats.totalDevicePhotos);
   res.json({
     media: pagedList,
-    total: cleanList.length,
-    totalDevicePhotos: stats.totalDevicePhotos > 0 ? stats.totalDevicePhotos : cleanList.length,
+    total: effectiveTotal,
+    totalDevicePhotos: stats.totalDevicePhotos > 0 ? stats.totalDevicePhotos : effectiveTotal,
     syncedCount: stats.syncedCount > 0 ? stats.syncedCount : cleanList.length,
     remainingCount: stats.remainingCount,
-    hasMore: offset + pagedList.length < cleanList.length,
+    hasMore: offset + pagedList.length < effectiveTotal,
     offset,
     limit
   });

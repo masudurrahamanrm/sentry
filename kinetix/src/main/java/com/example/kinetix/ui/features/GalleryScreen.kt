@@ -343,36 +343,52 @@ fun GalleryScreen(
             try {
                 val client = KinetixApiClient(context)
                 val currentOffset = mediaItems.size
-                val res = client.getGalleryMediaFull(deviceId, limit = 20, offset = currentOffset)
-                if (res.isSuccess) {
-                    val response = res.getOrNull()
-                    val arr = response?.media ?: JSONArray()
-                    val totalFromDev = response?.totalDevicePhotos ?: 0
-                    val nextBatch = parseGalleryJson(arr)
-                    if (totalFromDev > 0) {
-                        com.example.kinetix.cache.KinetixDeviceCache.saveCachedGalleryTotalPhotos(context, deviceId, totalFromDev)
-                    }
-                    withContext(Dispatchers.Main) {
-                        if (totalFromDev > 0) totalDevicePhotos = totalFromDev
-                        if (nextBatch.isNotEmpty()) {
-                            val existingIds = mediaItems.map { it.id }.toSet()
-                            val uniqueNext = nextBatch.filter { !existingIds.contains(it.id) }
-                            if (uniqueNext.isNotEmpty()) {
-                                mediaItems.addAll(uniqueNext)
-                            }
-                            hasMore = nextBatch.size >= 20
-                        } else {
-                            hasMore = false
+
+                // 1. Proactively dispatch sync request to SentrY to upload next batch of older photos
+                client.requestGallerySync(deviceId)
+
+                // 2. Fetch current page from backend
+                var res = client.getGalleryMediaFull(deviceId, limit = 20, offset = currentOffset)
+                var response = res.getOrNull()
+                var arr = response?.media ?: JSONArray()
+                var totalFromDev = response?.totalDevicePhotos ?: totalDevicePhotos
+
+                // 3. If backend didn't have next batch yet but device has more photos, wait for SentrY upload
+                var attempts = 0
+                while (arr.length() == 0 && (totalFromDev > currentOffset || totalDevicePhotos > currentOffset) && attempts < 3) {
+                    delay(1200)
+                    attempts++
+                    res = client.getGalleryMediaFull(deviceId, limit = 20, offset = currentOffset)
+                    response = res.getOrNull()
+                    arr = response?.media ?: JSONArray()
+                    totalFromDev = response?.totalDevicePhotos ?: totalDevicePhotos
+                }
+
+                val nextBatch = parseGalleryJson(arr)
+                if (totalFromDev > 0) {
+                    com.example.kinetix.cache.KinetixDeviceCache.saveCachedGalleryTotalPhotos(context, deviceId, totalFromDev)
+                }
+                withContext(Dispatchers.Main) {
+                    if (totalFromDev > 0) totalDevicePhotos = totalFromDev
+                    if (nextBatch.isNotEmpty()) {
+                        val existingIds = mediaItems.map { it.id }.toSet()
+                        val uniqueNext = nextBatch.filter { !existingIds.contains(it.id) }
+                        if (uniqueNext.isNotEmpty()) {
+                            mediaItems.addAll(uniqueNext)
                         }
                     }
-                } else {
-                    withContext(Dispatchers.Main) {
-                        hasMore = false
+                    val effectiveTotal = if (totalFromDev > 0) totalFromDev else totalDevicePhotos
+                    hasMore = if (effectiveTotal > 0) {
+                        mediaItems.size < effectiveTotal
+                    } else {
+                        nextBatch.size >= 20
                     }
                 }
             } catch (_: Exception) {
                 withContext(Dispatchers.Main) {
-                    hasMore = false
+                    if (totalDevicePhotos > mediaItems.size) {
+                        hasMore = true
+                    }
                 }
             } finally {
                 withContext(Dispatchers.Main) {
@@ -663,7 +679,7 @@ fun GalleryScreen(
             if (visible.isEmpty() || total == 0) false
             else {
                 val lastVisibleIndex = visible.last().index
-                lastVisibleIndex >= total - 3
+                lastVisibleIndex >= total - 6
             }
         }
     }
