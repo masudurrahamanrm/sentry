@@ -276,21 +276,22 @@ fun DashboardScreen(
                             val osVer = if (item.has("osVersion")) item.getString("osVersion") else item.optString("os_version", "Android 14")
                             val status = if (item.has("status")) item.getString("status") else "ONLINE"
 
-                            if (devId.startsWith("SN")) {
+                            if (devId.isNotBlank() && !devId.startsWith("KX", ignoreCase = true) && !devId.equals("THIS_DEVICE", ignoreCase = true)) {
                                 val loc = locationsMap[devId]
                                 val lat = if (loc != null && loc.has("latitude")) loc.getDouble("latitude") else (currentDeviceLat + 0.0018)
                                 val lon = if (loc != null && loc.has("longitude")) loc.getDouble("longitude") else (currentDeviceLon + 0.0022)
                                 val addr = loc?.optString("address", currentDeviceAddress) ?: currentDeviceAddress
                                 val acc = loc?.optDouble("accuracy", 3.0) ?: 3.0
 
+                                val isOnline = status.equals("ONLINE", ignoreCase = true)
                                 newList.add(
                                     PairedDeviceItem(
                                         deviceId = devId,
                                         deviceName = name,
                                         platform = platform,
                                         osVersion = osVer,
-                                        isOnline = status.equals("ONLINE", ignoreCase = true),
-                                        lastSeenText = "Online now",
+                                        isOnline = isOnline,
+                                        lastSeenText = if (isOnline) "Online now" else "Offline",
                                         isThisDevice = false,
                                         latitude = lat,
                                         longitude = lon,
