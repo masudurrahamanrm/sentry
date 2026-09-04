@@ -426,10 +426,13 @@ object BackgroundActivityManager {
             }
         }
 
+        val sumOpens = (0 until appsArray.length()).sumOf { appsArray.optJSONObject(it)?.optInt("openCount", 1) ?: 1 }
+
         return JSONObject().apply {
             put("screenTime", totalScreenTimeStr)
             put("screenTimeMinutes", totalMins)
             put("unlocks", unlocksCount)
+            put("totalOpens", sumOpens)
             put("topApp", topAppName)
             put("apps", appsArray)
             put("categories", categoriesObj)

@@ -1,5 +1,6 @@
 package com.example.kinetix.ui.features
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.HourglassEmpty
+import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -56,6 +58,7 @@ data class AppUsageStat(
     val durationMinutes: Int,
     val percentage: Float,
     val openCount: Int,
+    val notifCount: Int,
     val iconColor: Color,
     val icon: ImageVector,
     val iconBase64: String? = null,
@@ -67,6 +70,7 @@ data class DayActivityData(
     val dateLabel: String,       // "Fri, 4 Sept"
     val screenTimeText: String,  // "2 hrs, 26 mins"
     val screenTimeMinutes: Int,
+    val totalOpens: Int,
     val unlocks: Int,
     val isToday: Boolean,
     val isFuture: Boolean,
@@ -87,6 +91,7 @@ fun ActivityScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val prefs = remember { context.getSharedPreferences("kinetix_app_timers", Context.MODE_PRIVATE) }
 
     var isLoading by remember { mutableStateOf(false) }
     var hasPermissionOnRemote by remember { mutableStateOf(true) }
@@ -98,6 +103,13 @@ fun ActivityScreen(
     // 7-day data
     var weeklyDays by remember { mutableStateOf<List<DayActivityData>>(emptyList()) }
     var selectedDayIndex by remember { mutableIntStateOf(5) } // Defaults to Friday / current day
+
+    // Active Timer Dialog State
+    var timerDialogApp by remember { mutableStateOf<AppUsageStat?>(null) }
+    var activeTimersMap by remember { mutableStateOf(loadActiveTimers(prefs)) }
+
+    // App Detail Sheet State
+    var detailSheetApp by remember { mutableStateOf<AppUsageStat?>(null) }
 
     fun decodeAppIcon(base64Str: String?): Bitmap? {
         if (base64Str.isNullOrBlank()) return null
@@ -167,6 +179,7 @@ fun ActivityScreen(
             } else obj.optDouble("percentage", 0.0).toFloat().coerceIn(0.01f, 1.0f)
 
             val opens = obj.optInt("openCount", 1)
+            val notifs = (opens * 1.5).toInt().coerceAtLeast(1)
             val iconBase64 = obj.optString("iconBase64").takeIf { !it.isNullOrBlank() && it != "null" }
             val iconBitmap = decodeAppIcon(iconBase64)
 
@@ -193,6 +206,7 @@ fun ActivityScreen(
                     durationMinutes = durMins,
                     percentage = pct,
                     openCount = opens,
+                    notifCount = notifs,
                     iconColor = color,
                     icon = icon,
                     iconBase64 = iconBase64,
@@ -245,6 +259,7 @@ fun ActivityScreen(
                                 }
 
                                 val apps = parseAppsFromJson(dObj.optJSONArray("apps"), durMins)
+                                val totalOpens = dObj.optInt("totalOpens", apps.sumOf { it.openCount })
 
                                 parsedDays.add(
                                     DayActivityData(
@@ -252,6 +267,7 @@ fun ActivityScreen(
                                         dateLabel = dateLabel,
                                         screenTimeText = durText,
                                         screenTimeMinutes = durMins,
+                                        totalOpens = totalOpens,
                                         unlocks = unlocks,
                                         isToday = isToday,
                                         isFuture = isFuture,
@@ -286,6 +302,7 @@ fun ActivityScreen(
                                         dateLabel = dateLabel,
                                         screenTimeText = if (isToday) durText else "0 mins",
                                         screenTimeMinutes = if (isToday) todayMins else 0,
+                                        totalOpens = if (isToday) todayApps.sumOf { it.openCount } else 0,
                                         unlocks = if (isToday) actObj.optInt("unlocks", 0) else 0,
                                         isToday = isToday,
                                         isFuture = isFuture,
@@ -310,6 +327,16 @@ fun ActivityScreen(
     }
 
     val currentDay = weeklyDays.getOrNull(selectedDayIndex)
+
+    // Sort apps according to selected metric
+    val sortedDayApps = remember(currentDay, selectedMetric) {
+        val apps = currentDay?.apps ?: emptyList()
+        when (selectedMetric) {
+            MetricType.SCREEN_TIME -> apps.sortedByDescending { it.durationMinutes }
+            MetricType.TIMES_OPENED -> apps.sortedByDescending { it.openCount }
+            MetricType.NOTIFICATIONS -> apps.sortedByDescending { it.notifCount }
+        }
+    }
 
     Scaffold(
         containerColor = Color.White,
@@ -487,7 +514,7 @@ fun ActivityScreen(
                         val heroText = when (selectedMetric) {
                             MetricType.SCREEN_TIME -> currentDay?.screenTimeText ?: "0 mins"
                             MetricType.NOTIFICATIONS -> "${currentDay?.unlocks ?: 0} notifications"
-                            MetricType.TIMES_OPENED -> "${currentDay?.apps?.sumOf { it.openCount } ?: 0} opens"
+                            MetricType.TIMES_OPENED -> "${currentDay?.totalOpens ?: 0} times opened"
                         }
 
                         val heroSub = if (currentDay?.isToday == true) "Today" else currentDay?.dateLabel ?: "Today"
@@ -514,6 +541,7 @@ fun ActivityScreen(
                     WeeklyHistogramChart(
                         days = weeklyDays,
                         selectedIndex = selectedDayIndex,
+                        metric = selectedMetric,
                         onSelectDay = { index ->
                             if (index in weeklyDays.indices && !weeklyDays[index].isFuture) {
                                 selectedDayIndex = index
@@ -624,8 +652,7 @@ fun ActivityScreen(
                 }
 
                 // 6. App Usage Breakdown List
-                val dayApps = currentDay?.apps ?: emptyList()
-                if (dayApps.isEmpty()) {
+                if (sortedDayApps.isEmpty()) {
                     item {
                         Box(
                             modifier = Modifier
@@ -641,33 +668,176 @@ fun ActivityScreen(
                         }
                     }
                 } else {
-                    items(dayApps, key = { it.packageName }) { app ->
-                        AppDigitalWellbeingRow(app = app, metric = selectedMetric)
+                    items(sortedDayApps, key = { it.packageName }) { app ->
+                        val timerMinutes = activeTimersMap[app.packageName]
+                        AppDigitalWellbeingRow(
+                            app = app,
+                            metric = selectedMetric,
+                            timerMinutes = timerMinutes,
+                            onTimerClick = { timerDialogApp = app },
+                            onRowClick = { detailSheetApp = app }
+                        )
                     }
                 }
             }
         }
     }
+
+    // App Timer Setup Dialog
+    if (timerDialogApp != null) {
+        val app = timerDialogApp!!
+        val currentTimer = activeTimersMap[app.packageName] ?: 0
+
+        AppTimerDialog(
+            app = app,
+            initialMinutes = currentTimer,
+            onDismiss = { timerDialogApp = null },
+            onSetTimer = { minutes ->
+                if (minutes > 0) {
+                    prefs.edit().putInt(app.packageName, minutes).apply()
+                } else {
+                    prefs.edit().remove(app.packageName).apply()
+                }
+                activeTimersMap = loadActiveTimers(prefs)
+                timerDialogApp = null
+            },
+            onDeleteTimer = {
+                prefs.edit().remove(app.packageName).apply()
+                activeTimersMap = loadActiveTimers(prefs)
+                timerDialogApp = null
+            }
+        )
+    }
+
+    // App Detail Bottom Sheet
+    if (detailSheetApp != null) {
+        val app = detailSheetApp!!
+        val timerMinutes = activeTimersMap[app.packageName]
+
+        ModalBottomSheet(
+            onDismissRequest = { detailSheetApp = null },
+            containerColor = Color.White
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (app.iconBitmap != null) {
+                        Image(
+                            bitmap = app.iconBitmap.asImageBitmap(),
+                            contentDescription = app.name,
+                            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp))
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(app.iconColor.copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(app.icon, contentDescription = null, tint = app.iconColor, modifier = Modifier.size(26.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text(app.name, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(0xFF1D1B20))
+                        Text(app.packageName, fontSize = 12.sp, color = Color(0xFF74777F))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFFF3F4F9),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceAround
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Screen Time", fontSize = 11.5.sp, color = Color(0xFF74777F))
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(app.durationText, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF1D1B20))
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Times Opened", fontSize = 11.5.sp, color = Color(0xFF74777F))
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("${app.openCount} opens", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF1D1B20))
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Category", fontSize = 11.5.sp, color = Color(0xFF74777F))
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(app.category, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF1D1B20))
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Button(
+                    onClick = {
+                        detailSheetApp = null
+                        timerDialogApp = app
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0B57D0)),
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                ) {
+                    Icon(Icons.Outlined.Timer, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(if (timerMinutes != null && timerMinutes > 0) "Edit App Timer (${timerMinutes}m)" else "Set App Timer")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+    }
+}
+
+private fun loadActiveTimers(prefs: android.content.SharedPreferences): Map<String, Int> {
+    val map = mutableMapOf<String, Int>()
+    for ((k, v) in prefs.all) {
+        if (v is Int && v > 0) {
+            map[k] = v
+        }
+    }
+    return map
 }
 
 @Composable
 fun WeeklyHistogramChart(
     days: List<DayActivityData>,
     selectedIndex: Int,
+    metric: MetricType,
     onSelectDay: (Int) -> Unit
 ) {
-    val maxMinutes = days.maxOfOrNull { it.screenTimeMinutes }?.coerceAtLeast(180) ?: 180
-    // Dynamic scale levels: 0h, max/3, 2*max/3, max
-    val scaleLevel1 = (maxMinutes * 0.33f / 60).toInt().coerceAtLeast(2)
-    val scaleLevel2 = (maxMinutes * 0.66f / 60).toInt().coerceAtLeast(scaleLevel1 + 2)
-    val scaleLevel3 = (maxMinutes * 1.0f / 60).toInt().coerceAtLeast(scaleLevel2 + 2)
+    val maxValue = when (metric) {
+        MetricType.SCREEN_TIME -> days.maxOfOrNull { it.screenTimeMinutes }?.coerceAtLeast(180) ?: 180
+        MetricType.TIMES_OPENED -> days.maxOfOrNull { it.totalOpens }?.coerceAtLeast(40) ?: 40
+        MetricType.NOTIFICATIONS -> days.maxOfOrNull { it.unlocks }?.coerceAtLeast(30) ?: 30
+    }
 
-    val gridLabels = listOf(
-        "${scaleLevel3}h",
-        "${scaleLevel2}h",
-        "${scaleLevel1}h",
-        "0h"
-    )
+    val gridLabels = when (metric) {
+        MetricType.SCREEN_TIME -> {
+            val scale1 = (maxValue * 0.33f / 60).toInt().coerceAtLeast(2)
+            val scale2 = (maxValue * 0.66f / 60).toInt().coerceAtLeast(scale1 + 2)
+            val scale3 = (maxValue * 1.0f / 60).toInt().coerceAtLeast(scale2 + 2)
+            listOf("${scale3}h", "${scale2}h", "${scale1}h", "0h")
+        }
+        else -> {
+            val scale1 = (maxValue * 0.33f).toInt().coerceAtLeast(10)
+            val scale2 = (maxValue * 0.66f).toInt().coerceAtLeast(scale1 + 10)
+            val scale3 = (maxValue * 1.0f).toInt().coerceAtLeast(scale2 + 10)
+            listOf("$scale3", "$scale2", "$scale1", "0")
+        }
+    }
+
+    val maxScaleNumber = when (metric) {
+        MetricType.SCREEN_TIME -> (gridLabels.first().removeSuffix("h").toIntOrNull() ?: 3) * 60
+        else -> gridLabels.first().toIntOrNull() ?: 30
+    }
 
     Column(
         modifier = Modifier
@@ -709,14 +879,19 @@ fun WeeklyHistogramChart(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.Bottom
                 ) {
-                    val dayNames = arrayOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
                     for (i in 0..6) {
                         val dayData = days.getOrNull(i)
                         val isSelected = (i == selectedIndex)
                         val isFuture = dayData?.isFuture == true
-                        val minutes = dayData?.screenTimeMinutes ?: 0
-                        val heightFraction = if (maxMinutes > 0 && !isFuture) {
-                            (minutes.toFloat() / (scaleLevel3 * 60f)).coerceIn(0.04f, 1.0f)
+
+                        val metricValue = when (metric) {
+                            MetricType.SCREEN_TIME -> dayData?.screenTimeMinutes ?: 0
+                            MetricType.TIMES_OPENED -> dayData?.totalOpens ?: 0
+                            MetricType.NOTIFICATIONS -> dayData?.unlocks ?: 0
+                        }
+
+                        val heightFraction = if (maxScaleNumber > 0 && !isFuture) {
+                            (metricValue.toFloat() / maxScaleNumber.toFloat()).coerceIn(0.04f, 1.0f)
                         } else 0f
 
                         val barColor = when {
@@ -779,7 +954,7 @@ fun WeeklyHistogramChart(
             // Right side grid labels (0h, 6h, 12h, 18h)
             Column(
                 modifier = Modifier
-                    .width(32.dp)
+                    .width(36.dp)
                     .fillMaxHeight()
                     .padding(bottom = 24.dp),
                 verticalArrangement = Arrangement.SpaceBetween,
@@ -800,11 +975,15 @@ fun WeeklyHistogramChart(
 @Composable
 fun AppDigitalWellbeingRow(
     app: AppUsageStat,
-    metric: MetricType
+    metric: MetricType,
+    timerMinutes: Int?,
+    onTimerClick: () -> Unit,
+    onRowClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(onClick = onRowClick)
             .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -836,7 +1015,7 @@ fun AppDigitalWellbeingRow(
 
         Spacer(modifier = Modifier.width(16.dp))
 
-        // App Name and Category
+        // App Name and Timer Status
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = app.name,
@@ -846,6 +1025,14 @@ fun AppDigitalWellbeingRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            if (timerMinutes != null && timerMinutes > 0) {
+                Text(
+                    text = "${timerMinutes}m daily timer",
+                    fontSize = 11.5.sp,
+                    color = Color(0xFF0B57D0),
+                    fontWeight = FontWeight.Medium
+                )
+            }
         }
 
         Spacer(modifier = Modifier.width(12.dp))
@@ -854,7 +1041,7 @@ fun AppDigitalWellbeingRow(
         val valueText = when (metric) {
             MetricType.SCREEN_TIME -> app.durationText
             MetricType.TIMES_OPENED -> "${app.openCount} opens"
-            MetricType.NOTIFICATIONS -> "${(app.openCount * 1.5).toInt()} notifs"
+            MetricType.NOTIFICATIONS -> "${app.notifCount} notifs"
         }
 
         Text(
@@ -867,13 +1054,112 @@ fun AppDigitalWellbeingRow(
         Spacer(modifier = Modifier.width(14.dp))
 
         // Digital Wellbeing Hourglass Timer Icon
-        Icon(
-            Icons.Outlined.HourglassEmpty,
-            contentDescription = "Set Timer",
-            tint = Color(0xFF74777F),
-            modifier = Modifier
-                .size(20.dp)
-                .clickable { /* timer action */ }
-        )
+        IconButton(
+            onClick = onTimerClick,
+            modifier = Modifier.size(32.dp)
+        ) {
+            Icon(
+                Icons.Outlined.HourglassEmpty,
+                contentDescription = "Set Timer",
+                tint = if (timerMinutes != null && timerMinutes > 0) Color(0xFF0B57D0) else Color(0xFF74777F),
+                modifier = Modifier.size(20.dp)
+            )
+        }
     }
+}
+
+@Composable
+fun AppTimerDialog(
+    app: AppUsageStat,
+    initialMinutes: Int,
+    onDismiss: () -> Unit,
+    onSetTimer: (Int) -> Unit,
+    onDeleteTimer: () -> Unit
+) {
+    var hours by remember { mutableIntStateOf(initialMinutes / 60) }
+    var minutes by remember { mutableIntStateOf(initialMinutes % 60) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Set timer for ${app.name}",
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "App will pause when daily timer ends.",
+                    fontSize = 12.5.sp,
+                    color = Color(0xFF74777F)
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Hours Picker
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Hours", fontSize = 12.sp, color = Color(0xFF74777F))
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { if (hours > 0) hours-- }, modifier = Modifier.size(32.dp)) {
+                                Text("-", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Text("$hours hr", fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(horizontal = 8.dp))
+                            IconButton(onClick = { if (hours < 12) hours++ }, modifier = Modifier.size(32.dp)) {
+                                Text("+", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(20.dp))
+
+                    // Minutes Picker (5m intervals)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Minutes", fontSize = 12.sp, color = Color(0xFF74777F))
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { if (minutes >= 5) minutes -= 5 }, modifier = Modifier.size(32.dp)) {
+                                Text("-", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Text("$minutes min", fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(horizontal = 8.dp))
+                            IconButton(onClick = { if (minutes <= 50) minutes += 5 }, modifier = Modifier.size(32.dp)) {
+                                Text("+", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSetTimer(hours * 60 + minutes) },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0B57D0))
+            ) {
+                Text("Set timer")
+            }
+        },
+        dismissButton = {
+            Row {
+                if (initialMinutes > 0) {
+                    TextButton(onClick = onDeleteTimer) {
+                        Text("Delete timer", color = Color(0xFFBA1A1A))
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel", color = Color(0xFF44474E))
+                }
+            }
+        },
+        containerColor = Color.White
+    )
 }
