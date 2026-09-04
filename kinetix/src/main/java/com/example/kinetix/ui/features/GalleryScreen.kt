@@ -23,8 +23,10 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -251,9 +253,12 @@ fun GalleryScreen(
             }
         }
     }
+    val gridState = rememberLazyGridState()
     var selectedAlbum by remember { mutableStateOf("All") }
     var selectedItemForModal by remember { mutableStateOf<GalleryItem?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
+    var isLoadingMore by remember { mutableStateOf(false) }
+    var hasMore by remember { mutableStateOf(true) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showDetailsSheet by remember { mutableStateOf(false) }
     var rotationAngle by remember { mutableFloatStateOf(0f) }
@@ -270,7 +275,7 @@ fun GalleryScreen(
                     client.requestGallerySync(deviceId)
                 }
 
-                val res = client.getGalleryMedia(deviceId)
+                val res = client.getGalleryMedia(deviceId, limit = 20, offset = 0)
                 if (res.isSuccess) {
                     val arr = res.getOrNull() ?: JSONArray()
                     val incomingList = parseGalleryJson(arr)
@@ -278,25 +283,16 @@ fun GalleryScreen(
                         com.example.kinetix.cache.KinetixDeviceCache.saveCachedGallery(context, deviceId, arr)
                     }
                     withContext(Dispatchers.Main) {
-                        val map = linkedMapOf<String, GalleryItem>()
-                        for (item in mediaItems) {
-                            map[item.id] = item
-                        }
-                        for (item in incomingList) {
-                            map[item.id] = item
-                        }
-                        val merged = map.values.sortedByDescending { it.timestamp }.take(300)
-                        if (mediaItems.toList() != merged) {
-                            mediaItems.clear()
-                            mediaItems.addAll(merged)
-                        }
+                        hasMore = incomingList.size >= 20
+                        mediaItems.clear()
+                        mediaItems.addAll(incomingList)
                     }
                 }
 
                 // If user manually refreshed, re-check after 1.5s to capture SentrY's live upload
                 if (notifyUser) {
                     delay(1500)
-                    val secondRes = client.getGalleryMedia(deviceId)
+                    val secondRes = client.getGalleryMedia(deviceId, limit = 20, offset = 0)
                     if (secondRes.isSuccess) {
                         val secondArr = secondRes.getOrNull() ?: JSONArray()
                         val secondList = parseGalleryJson(secondArr)
@@ -304,19 +300,10 @@ fun GalleryScreen(
                             com.example.kinetix.cache.KinetixDeviceCache.saveCachedGallery(context, deviceId, secondArr)
                         }
                         withContext(Dispatchers.Main) {
-                            val map = linkedMapOf<String, GalleryItem>()
-                            for (item in mediaItems) {
-                                map[item.id] = item
-                            }
-                            for (item in secondList) {
-                                map[item.id] = item
-                            }
-                            val merged = map.values.sortedByDescending { it.timestamp }.take(300)
-                            if (mediaItems.toList() != merged) {
-                                mediaItems.clear()
-                                mediaItems.addAll(merged)
-                            }
-                            Toast.makeText(context, "🔄 Gallery updated • ${merged.size} photos synced", Toast.LENGTH_SHORT).show()
+                            hasMore = secondList.size >= 20
+                            mediaItems.clear()
+                            mediaItems.addAll(secondList)
+                            Toast.makeText(context, "🔄 Gallery updated • ${secondList.size} latest photos synced", Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
@@ -334,11 +321,65 @@ fun GalleryScreen(
         }
     }
 
+    suspend fun loadMorePhotos() {
+        if (isLoadingMore || !hasMore) return
+        isLoadingMore = true
+        withContext(Dispatchers.IO) {
+            try {
+                val client = KinetixApiClient(context)
+                val currentOffset = mediaItems.size
+                val res = client.getGalleryMedia(deviceId, limit = 20, offset = currentOffset)
+                if (res.isSuccess) {
+                    val arr = res.getOrNull() ?: JSONArray()
+                    val nextBatch = parseGalleryJson(arr)
+                    withContext(Dispatchers.Main) {
+                        if (nextBatch.isNotEmpty()) {
+                            val existingIds = mediaItems.map { it.id }.toSet()
+                            val uniqueNext = nextBatch.filter { !existingIds.contains(it.id) }
+                            if (uniqueNext.isNotEmpty()) {
+                                mediaItems.addAll(uniqueNext)
+                            }
+                            hasMore = nextBatch.size >= 20
+                        } else {
+                            hasMore = false
+                        }
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        hasMore = false
+                    }
+                }
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) {
+                    hasMore = false
+                }
+            } finally {
+                withContext(Dispatchers.Main) {
+                    isLoadingMore = false
+                }
+            }
+        }
+    }
+
     LaunchedEffect(deviceId) {
         fetchGallery(notifyUser = false)
         if (mediaItems.isEmpty()) {
             delay(1200)
             fetchGallery(notifyUser = false)
+        }
+    }
+
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val total = mediaItems.size
+            val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            lastVisible >= total - 4 && total > 0
+        }
+    }
+
+    LaunchedEffect(shouldLoadMore, hasMore, isLoadingMore, selectedAlbum) {
+        if (shouldLoadMore && hasMore && !isLoadingMore && selectedAlbum == "All") {
+            loadMorePhotos()
         }
     }
 
@@ -703,6 +744,7 @@ fun GalleryScreen(
                     }
                 } else {
                     LazyVerticalGrid(
+                        state = gridState,
                         columns = GridCells.Fixed(3),
                         contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 24.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -729,6 +771,31 @@ fun GalleryScreen(
                                     selectedItemForModal = item
                                 }
                             )
+                        }
+
+                        if (isLoadingMore) {
+                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 16.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = "Loading more photos...",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
                         }
                     }
                 }

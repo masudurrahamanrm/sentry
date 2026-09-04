@@ -135,8 +135,8 @@ class KinetixApiClient(
         res.map { it.optJSONArray("calls") ?: JSONArray() }
     }
 
-    suspend fun getGalleryMedia(deviceId: String): Result<JSONArray> = withContext(Dispatchers.IO) {
-        val res = request("GET", "/gallery/list/$deviceId", null, authenticated = false)
+    suspend fun getGalleryMedia(deviceId: String, limit: Int = 20, offset: Int = 0): Result<JSONArray> = withContext(Dispatchers.IO) {
+        val res = request("GET", "/gallery/list/$deviceId?limit=$limit&offset=$offset", null, authenticated = false)
         res.map { it.optJSONArray("media") ?: JSONArray() }
     }
 

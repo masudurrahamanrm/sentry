@@ -317,8 +317,8 @@ object BackgroundGalleryManager {
                     newItemsToUpload.add(obj)
                     newlySyncedIds.add(mediaIdStr)
 
-                    // Upload in batches of 15 to keep payload sizes nimble and fast
-                    if (newItemsToUpload.size >= 15) {
+                    // Upload in batches of 20 to keep initial load rapid and memory efficient
+                    if (newItemsToUpload.size >= 20) {
                         val batchArray = JSONArray()
                         for (item in newItemsToUpload) batchArray.put(item)
                         val body = JSONObject().apply {

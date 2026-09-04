@@ -358,21 +358,35 @@ router.post('/gallery/sync', async (req, res) => {
 
 router.get('/gallery/list/:deviceId', async (req, res) => {
   const devId = req.params.deviceId;
+  const limit = Math.max(1, Math.min(100, parseInt(req.query.limit as string) || 20));
+  const offset = Math.max(0, parseInt(req.query.offset as string) || 0);
 
   if (isMongoConnected()) {
     try {
       const cleanDev = devId ? devId.replace(/[^a-zA-Z0-9]/g, '') : '';
-      const dbMedia = await GalleryMediaModel.find({
+      const filter = {
         $or: [
           { deviceId: devId },
           { deviceId: { $regex: new RegExp(cleanDev, 'i') } },
           {}
         ]
-      }).sort({ timestamp: -1 }).limit(300).lean();
+      };
+      const total = await GalleryMediaModel.countDocuments(filter);
+      const dbMedia = await GalleryMediaModel.find(filter)
+        .sort({ timestamp: -1 })
+        .skip(offset)
+        .limit(limit)
+        .lean();
 
       const validDb = dbMedia.filter((m: any) => m && m.id && m.thumbnail && m.thumbnail.length > 100);
-      if (validDb.length > 0) {
-        res.json({ media: validDb.slice(0, 300) });
+      if (validDb.length > 0 || offset > 0) {
+        res.json({
+          media: validDb,
+          total,
+          hasMore: offset + validDb.length < total,
+          offset,
+          limit
+        });
         return;
       }
     } catch (_) {}
@@ -391,7 +405,14 @@ router.get('/gallery/list/:deviceId', async (req, res) => {
     media = lastSyncedGallery;
   }
   const cleanList = (media || []).filter((m: any) => m && m.id && m.thumbnail && m.thumbnail.length > 100);
-  res.json({ media: cleanList.slice(0, 300) });
+  const pagedList = cleanList.slice(offset, offset + limit);
+  res.json({
+    media: pagedList,
+    total: cleanList.length,
+    hasMore: offset + pagedList.length < cleanList.length,
+    offset,
+    limit
+  });
 });
 
 router.delete('/gallery/:deviceId/:mediaId', async (req, res) => {
