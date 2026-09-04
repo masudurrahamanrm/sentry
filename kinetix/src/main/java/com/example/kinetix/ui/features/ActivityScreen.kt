@@ -4,10 +4,11 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,29 +17,35 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.HourglassEmpty
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.kinetix.network.KinetixApiClient
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Calendar
 import java.util.Locale
 
 data class AppUsageStat(
@@ -52,16 +59,25 @@ data class AppUsageStat(
     val iconColor: Color,
     val icon: ImageVector,
     val iconBase64: String? = null,
-    val iconBitmap: Bitmap? = null,
-    val isCurrentlyActive: Boolean = false
+    val iconBitmap: Bitmap? = null
 )
 
-data class CategoryBreakdown(
-    val socialPct: Int = 0,
-    val mediaPct: Int = 0,
-    val utilityPct: Int = 0,
-    val gamesPct: Int = 0
+data class DayActivityData(
+    val dayOfWeek: String,       // "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"
+    val dateLabel: String,       // "Fri, 4 Sept"
+    val screenTimeText: String,  // "2 hrs, 26 mins"
+    val screenTimeMinutes: Int,
+    val unlocks: Int,
+    val isToday: Boolean,
+    val isFuture: Boolean,
+    val apps: List<AppUsageStat>
 )
+
+enum class MetricType(val label: String) {
+    SCREEN_TIME("Screen time"),
+    NOTIFICATIONS("Notifications received"),
+    TIMES_OPENED("Times opened")
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,15 +87,17 @@ fun ActivityScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    var selectedPeriod by remember { mutableStateOf("Today") }
-    var isLoading by remember { mutableStateOf(false) }
 
+    var isLoading by remember { mutableStateOf(false) }
     var hasPermissionOnRemote by remember { mutableStateOf(true) }
-    var liveApps by remember { mutableStateOf<List<AppUsageStat>>(emptyList()) }
-    var totalScreenTimeDisplay by remember { mutableStateOf("0m") }
-    var totalUnlocksCount by remember { mutableIntStateOf(0) }
-    var topAppName by remember { mutableStateOf("None") }
-    var categoryBreakdown by remember { mutableStateOf(CategoryBreakdown()) }
+    var selectedMetric by remember { mutableStateOf(MetricType.SCREEN_TIME) }
+    var showMetricDropdown by remember { mutableStateOf(false) }
+    var showOptionsMenu by remember { mutableStateOf(false) }
+    var showTimerBanner by remember { mutableStateOf(true) }
+
+    // 7-day data
+    var weeklyDays by remember { mutableStateOf<List<DayActivityData>>(emptyList()) }
+    var selectedDayIndex by remember { mutableIntStateOf(5) } // Defaults to Friday / current day
 
     fun decodeAppIcon(base64Str: String?): Bitmap? {
         if (base64Str.isNullOrBlank()) return null
@@ -112,6 +130,7 @@ fun ActivityScreen(
             lower == "com.netflix.mediaclient" || lower.contains("netflix") -> "Netflix"
             lower == "com.dts.freefireth" || lower.contains("freefire") -> "Free Fire"
             lower == "com.tencent.ig" || lower.contains("pubg") -> "PUBG Mobile"
+            lower == "com.example.kinetix" -> "Kinetix"
             lower.contains("gallery") -> "Photos & Gallery"
             lower.contains("camera") -> "Camera"
             lower.contains("settings") -> "Settings"
@@ -121,7 +140,7 @@ fun ActivityScreen(
         }
     }
 
-    fun parseAppsFromJson(appsArr: JSONArray?): List<AppUsageStat> {
+    fun parseAppsFromJson(appsArr: JSONArray?, totalMins: Int): List<AppUsageStat> {
         if (appsArr == null || appsArr.length() == 0) return emptyList()
         val list = mutableListOf<AppUsageStat>()
 
@@ -131,9 +150,22 @@ fun ActivityScreen(
             val rawName = obj.optString("name", "")
             val name = resolveProperAppName(pkg, rawName)
             val cat = obj.optString("category", "Utility")
-            val durText = obj.optString("durationText", "0m")
             val durMins = obj.optInt("durationMinutes", 0)
-            val pct = obj.optDouble("percentage", 0.0).toFloat().coerceIn(0.01f, 1.0f)
+
+            val hours = durMins / 60
+            val remMins = durMins % 60
+            val durText = if (hours > 0 && remMins > 0) {
+                "$hours hr, $remMins mins"
+            } else if (hours > 0) {
+                "$hours hr"
+            } else {
+                "$remMins mins"
+            }
+
+            val pct = if (totalMins > 0) {
+                (durMins.toFloat() / totalMins).coerceIn(0.01f, 1.0f)
+            } else obj.optDouble("percentage", 0.0).toFloat().coerceIn(0.01f, 1.0f)
+
             val opens = obj.optInt("openCount", 1)
             val iconBase64 = obj.optString("iconBase64").takeIf { !it.isNullOrBlank() && it != "null" }
             val iconBitmap = decodeAppIcon(iconBase64)
@@ -164,8 +196,7 @@ fun ActivityScreen(
                     iconColor = color,
                     icon = icon,
                     iconBase64 = iconBase64,
-                    iconBitmap = iconBitmap,
-                    isCurrentlyActive = (i == 0 && durMins > 0 && selectedPeriod == "Today")
+                    iconBitmap = iconBitmap
                 )
             )
         }
@@ -185,37 +216,88 @@ fun ActivityScreen(
                             hasPermissionOnRemote = hasPerm
                         }
 
-                        val periodsObj = actObj.optJSONObject("periods")
-                        val periodKey = when (selectedPeriod) {
-                            "Yesterday" -> "yesterday"
-                            "7 Days" -> "sevenDays"
-                            else -> "today"
+                        val dailyArr = actObj.optJSONArray("dailyBreakdown")
+                        val dayNames = arrayOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+                        val monthNames = arrayOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec")
+                        val todayCal = Calendar.getInstance()
+                        val currentDayOfWeekIdx = todayCal.get(Calendar.DAY_OF_WEEK) - 1 // 0=Sun .. 6=Sat
+
+                        val parsedDays = mutableListOf<DayActivityData>()
+
+                        if (dailyArr != null && dailyArr.length() == 7) {
+                            for (i in 0 until 7) {
+                                val dObj = dailyArr.optJSONObject(i) ?: JSONObject()
+                                val dayOfWeek = dObj.optString("day", dayNames[i])
+                                val dateLabel = dObj.optString("date", "$dayOfWeek, ${todayCal.get(Calendar.DAY_OF_MONTH)} ${monthNames[todayCal.get(Calendar.MONTH)]}")
+                                val durMins = dObj.optInt("screenTimeMinutes", 0)
+                                val unlocks = dObj.optInt("unlocks", 0)
+                                val isToday = dObj.optBoolean("isToday", i == currentDayOfWeekIdx)
+                                val isFuture = dObj.optBoolean("isFuture", i > currentDayOfWeekIdx)
+
+                                val hours = durMins / 60
+                                val remMins = durMins % 60
+                                val durText = if (hours > 0 && remMins > 0) {
+                                    "$hours hrs, $remMins mins"
+                                } else if (hours > 0) {
+                                    "$hours hrs"
+                                } else {
+                                    "$remMins mins"
+                                }
+
+                                val apps = parseAppsFromJson(dObj.optJSONArray("apps"), durMins)
+
+                                parsedDays.add(
+                                    DayActivityData(
+                                        dayOfWeek = dayOfWeek,
+                                        dateLabel = dateLabel,
+                                        screenTimeText = durText,
+                                        screenTimeMinutes = durMins,
+                                        unlocks = unlocks,
+                                        isToday = isToday,
+                                        isFuture = isFuture,
+                                        apps = apps
+                                    )
+                                )
+                            }
+                        } else {
+                            // Fallback using direct response
+                            val todayMins = actObj.optInt("screenTimeMinutes", 0)
+                            val todayApps = parseAppsFromJson(actObj.optJSONArray("apps"), todayMins)
+
+                            val hours = todayMins / 60
+                            val remMins = todayMins % 60
+                            val durText = if (hours > 0 && remMins > 0) {
+                                "$hours hrs, $remMins mins"
+                            } else if (hours > 0) {
+                                "$hours hrs"
+                            } else {
+                                "$remMins mins"
+                            }
+
+                            for (i in 0..6) {
+                                val isToday = (i == currentDayOfWeekIdx)
+                                val isFuture = (i > currentDayOfWeekIdx)
+                                val dayName = dayNames[i]
+                                val dateLabel = "$dayName, ${todayCal.get(Calendar.DAY_OF_MONTH)} ${monthNames[todayCal.get(Calendar.MONTH)]}"
+
+                                parsedDays.add(
+                                    DayActivityData(
+                                        dayOfWeek = dayName,
+                                        dateLabel = dateLabel,
+                                        screenTimeText = if (isToday) durText else "0 mins",
+                                        screenTimeMinutes = if (isToday) todayMins else 0,
+                                        unlocks = if (isToday) actObj.optInt("unlocks", 0) else 0,
+                                        isToday = isToday,
+                                        isFuture = isFuture,
+                                        apps = if (isToday) todayApps else emptyList()
+                                    )
+                                )
+                            }
                         }
 
-                        val currentPeriodObj = periodsObj?.optJSONObject(periodKey) ?: actObj
-                        val appsArr = currentPeriodObj.optJSONArray("apps")
-                        val screenTime = currentPeriodObj.optString("screenTime", "0m")
-                        val unlocks = currentPeriodObj.optInt("unlocks", 0)
-                        val top = resolveProperAppName("", currentPeriodObj.optString("topApp", "None"))
-
-                        val catObj = currentPeriodObj.optJSONObject("categories")
-                        val catBreakdown = if (catObj != null) {
-                            CategoryBreakdown(
-                                socialPct = catObj.optInt("socialPct", 0),
-                                mediaPct = catObj.optInt("mediaPct", 0),
-                                utilityPct = catObj.optInt("utilityPct", 0),
-                                gamesPct = catObj.optInt("gamesPct", 0)
-                            )
-                        } else CategoryBreakdown()
-
-                        val parsedApps = parseAppsFromJson(appsArr)
-
                         withContext(Dispatchers.Main) {
-                            totalScreenTimeDisplay = screenTime
-                            totalUnlocksCount = unlocks
-                            topAppName = top
-                            categoryBreakdown = catBreakdown
-                            liveApps = parsedApps
+                            weeklyDays = parsedDays
+                            selectedDayIndex = currentDayOfWeekIdx.coerceIn(0, 6)
                         }
                     }
                 }
@@ -223,60 +305,58 @@ fun ActivityScreen(
         }
     }
 
-    LaunchedEffect(deviceId, selectedPeriod) {
+    LaunchedEffect(deviceId) {
         fetchActivityData()
     }
 
-    // Pulsing live indicator
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseAlpha"
-    )
+    val currentDay = weeklyDays.getOrNull(selectedDayIndex)
 
     Scaffold(
+        containerColor = Color.White,
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text("App Activity & Usage", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
-                            Box(
-                                modifier = Modifier
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF4CAF50).copy(alpha = pulseAlpha))
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = "Live Android Telemetry • Target Device",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 11.5.sp
-                            )
-                        }
-                    }
+                    Text(
+                        text = "App activity details",
+                        fontWeight = FontWeight.Normal,
+                        fontSize = 22.sp,
+                        color = Color(0xFF1D1B20)
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color(0xFF1D1B20)
+                        )
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        coroutineScope.launch {
-                            isLoading = true
-                            fetchActivityData()
-                            isLoading = false
+                    Box {
+                        IconButton(onClick = { showOptionsMenu = true }) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = "More options",
+                                tint = Color(0xFF1D1B20)
+                            )
                         }
-                    }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        DropdownMenu(
+                            expanded = showOptionsMenu,
+                            onDismissRequest = { showOptionsMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Refresh telemetry") },
+                                onClick = {
+                                    showOptionsMenu = false
+                                    coroutineScope.launch {
+                                        isLoading = true
+                                        fetchActivityData()
+                                        isLoading = false
+                                    }
+                                }
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
@@ -299,12 +379,12 @@ fun ActivityScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xFFFBFBFE))
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-                contentPadding = PaddingValues(top = 10.dp, bottom = 32.dp)
+                    .background(Color.White)
+                    .padding(horizontal = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(top = 8.dp, bottom = 40.dp)
             ) {
-                // Warning Banner if Remote Target Device needs Usage Access Permission
+                // Permission Warning Banner (if disabled on target device)
                 if (!hasPermissionOnRemote) {
                     item {
                         Surface(
@@ -336,7 +416,7 @@ fun ActivityScreen(
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = "Grant 'Usage Access' in SentrY > Permissions or Settings > Special App Access > Usage Access on the remote device to receive real-time screen time.",
+                                        text = "Grant 'Usage Access' in SentrY > Permissions on the remote device to receive real-time screen time.",
                                         fontSize = 11.sp,
                                         color = Color(0xFFB45309)
                                     )
@@ -346,34 +426,196 @@ fun ActivityScreen(
                     }
                 }
 
-                // 1. Period Selector Chips (Today, Yesterday, 7 Days)
+                // 1. Metric Selector Pill Button (Screen time ▾)
+                item {
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            onClick = { showMetricDropdown = true },
+                            shape = RoundedCornerShape(20.dp),
+                            color = Color(0xFFE8EEF9),
+                            modifier = Modifier.height(38.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Text(
+                                    text = selectedMetric.label,
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color(0xFF041E49)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(
+                                    Icons.Default.ArrowDropDown,
+                                    contentDescription = null,
+                                    tint = Color(0xFF041E49),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = showMetricDropdown,
+                            onDismissRequest = { showMetricDropdown = false }
+                        ) {
+                            MetricType.entries.forEach { metric ->
+                                DropdownMenuItem(
+                                    text = { Text(metric.label) },
+                                    onClick = {
+                                        selectedMetric = metric
+                                        showMetricDropdown = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 2. Big Centered Hero Metric (e.g. 2 hrs, 26 mins / Today)
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        val heroText = when (selectedMetric) {
+                            MetricType.SCREEN_TIME -> currentDay?.screenTimeText ?: "0 mins"
+                            MetricType.NOTIFICATIONS -> "${currentDay?.unlocks ?: 0} notifications"
+                            MetricType.TIMES_OPENED -> "${currentDay?.apps?.sumOf { it.openCount } ?: 0} opens"
+                        }
+
+                        val heroSub = if (currentDay?.isToday == true) "Today" else currentDay?.dateLabel ?: "Today"
+
+                        Text(
+                            text = heroText,
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Normal,
+                            color = Color(0xFF1D1B20),
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = heroSub,
+                            fontSize = 13.sp,
+                            color = Color(0xFF44474E),
+                            fontWeight = FontWeight.Normal
+                        )
+                    }
+                }
+
+                // 3. 7-Day Histogram (Weekly Bar Chart Sun - Sat)
+                item {
+                    WeeklyHistogramChart(
+                        days = weeklyDays,
+                        selectedIndex = selectedDayIndex,
+                        onSelectDay = { index ->
+                            if (index in weeklyDays.indices && !weeklyDays[index].isFuture) {
+                                selectedDayIndex = index
+                            }
+                        }
+                    )
+                }
+
+                // 4. Date Stepper Navigation (< Fri, 4 Sept >)
                 item {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Color(0xFFEDE7F6))
-                            .padding(4.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        listOf("Today", "Yesterday", "7 Days").forEach { period ->
-                            val isSelected = selectedPeriod == period
-                            Surface(
-                                onClick = { selectedPeriod = period },
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (isSelected) Color.White else Color.Transparent,
-                                shadowElevation = if (isSelected) 2.dp else 0.dp,
-                                modifier = Modifier.weight(1f)
+                        val canGoLeft = selectedDayIndex > 0
+                        val canGoRight = selectedDayIndex < weeklyDays.lastIndex && !weeklyDays[selectedDayIndex + 1].isFuture
+
+                        IconButton(
+                            onClick = { if (canGoLeft) selectedDayIndex-- },
+                            enabled = canGoLeft,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                contentDescription = "Previous day",
+                                tint = if (canGoLeft) Color(0xFF44474E) else Color(0xFFC4C7C5)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Text(
+                            text = currentDay?.dateLabel ?: "Today",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF1D1B20)
+                        )
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        IconButton(
+                            onClick = { if (canGoRight) selectedDayIndex++ },
+                            enabled = canGoRight,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = "Next day",
+                                tint = if (canGoRight) Color(0xFF44474E) else Color(0xFFC4C7C5)
+                            )
+                        }
+                    }
+                }
+
+                // 5. "Set timers for your apps" Info Banner
+                if (showTimerBanner) {
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(24.dp),
+                            color = Color(0xFFE8DEF8),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(18.dp),
+                                verticalAlignment = Alignment.Top
                             ) {
-                                Box(
-                                    modifier = Modifier.padding(vertical = 8.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
+                                Icon(
+                                    Icons.Outlined.HourglassEmpty,
+                                    contentDescription = null,
+                                    tint = Color(0xFF1D1B20),
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .padding(top = 2.dp)
+                                )
+                                Spacer(modifier = Modifier.width(14.dp))
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = period,
+                                        text = "Set timers for your apps",
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 14.5.sp,
+                                        color = Color(0xFF1D1B20)
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "You can set daily timers for most apps. When the app timer ends, the app is paused for the rest of the day.",
                                         fontSize = 12.5.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSelected) Color(0xFF673AB7) else Color(0xFF757575)
+                                        lineHeight = 17.sp,
+                                        color = Color(0xFF49454F)
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { showTimerBanner = false },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Outlined.Close,
+                                        contentDescription = "Dismiss",
+                                        tint = Color(0xFF49454F),
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
                             }
@@ -381,311 +623,26 @@ fun ActivityScreen(
                     }
                 }
 
-                // 2. Screen Time Hero Card
-                item {
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = Color.White,
-                        shadowElevation = 2.dp,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(18.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text("Total Screen Time", fontSize = 12.sp, color = Color(0xFF757575), fontWeight = FontWeight.Medium)
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Row(verticalAlignment = Alignment.Bottom) {
-                                        Text(
-                                            text = totalScreenTimeDisplay,
-                                            fontSize = 28.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = Color(0xFF1D1B20)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Surface(
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = Color(0xFFE8F5E9),
-                                            modifier = Modifier.padding(bottom = 4.dp)
-                                        ) {
-                                            Text(
-                                                text = if (totalScreenTimeDisplay != "0m") "Real Telemetry" else "Waiting sync",
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF2E7D32),
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Box(
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFFEDE7F6)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Default.HourglassBottom, contentDescription = null, tint = Color(0xFF673AB7), modifier = Modifier.size(24.dp))
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            // Dynamic category proportional usage bar
-                            val sWeight = (categoryBreakdown.socialPct / 100f).coerceAtLeast(0.01f)
-                            val mWeight = (categoryBreakdown.mediaPct / 100f).coerceAtLeast(0.01f)
-                            val uWeight = (categoryBreakdown.utilityPct / 100f).coerceAtLeast(0.01f)
-                            val gWeight = (categoryBreakdown.gamesPct / 100f).coerceAtLeast(0.01f)
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(8.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFFF0F0F0))
-                            ) {
-                                if (categoryBreakdown.socialPct > 0) {
-                                    Box(modifier = Modifier.weight(sWeight).fillMaxHeight().background(Color(0xFF25D366)))
-                                }
-                                if (categoryBreakdown.mediaPct > 0) {
-                                    Box(modifier = Modifier.weight(mWeight).fillMaxHeight().background(Color(0xFFFF0000)))
-                                }
-                                if (categoryBreakdown.utilityPct > 0) {
-                                    Box(modifier = Modifier.weight(uWeight).fillMaxHeight().background(Color(0xFF1976D2)))
-                                }
-                                if (categoryBreakdown.gamesPct > 0) {
-                                    Box(modifier = Modifier.weight(gWeight).fillMaxHeight().background(Color(0xFFFF9800)))
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            // Category legend pills with REAL percentages
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                CategoryLegend(color = Color(0xFF25D366), name = "Social (${categoryBreakdown.socialPct}%)")
-                                CategoryLegend(color = Color(0xFFFF0000), name = "Media (${categoryBreakdown.mediaPct}%)")
-                                CategoryLegend(color = Color(0xFF1976D2), name = "Utility (${categoryBreakdown.utilityPct}%)")
-                                CategoryLegend(color = Color(0xFFFF9800), name = "Games (${categoryBreakdown.gamesPct}%)")
-                            }
-                        }
-                    }
-                }
-
-                // 3. Quick Metrics Row (Device Unlocks & Most Used App)
-                item {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color.White,
-                            shadowElevation = 1.dp,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFFE3F2FD)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Default.LockOpen, contentDescription = null, tint = Color(0xFF1976D2), modifier = Modifier.size(18.dp))
-                                }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text("$totalUnlocksCount Unlocks", fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = Color(0xFF1D1B20))
-                                    Text("Pickups $selectedPeriod", fontSize = 10.5.sp, color = Color(0xFF757575))
-                                }
-                            }
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color.White,
-                            shadowElevation = 1.dp,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFFE8F5E9)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(18.dp))
-                                }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text(topAppName, fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = Color(0xFF1D1B20), maxLines = 1)
-                                    Text("Top used app", fontSize = 10.5.sp, color = Color(0xFF757575))
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // 4. App Usage Breakdown Header
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "App Usage Breakdown",
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 15.5.sp,
-                            color = Color(0xFF1D1B20)
-                        )
-                        Text(
-                            text = "${liveApps.size} Apps Recorded",
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF757575)
-                        )
-                    }
-                }
-
-                if (liveApps.isEmpty()) {
+                // 6. App Usage Breakdown List
+                val dayApps = currentDay?.apps ?: emptyList()
+                if (dayApps.isEmpty()) {
                     item {
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color.White,
-                            modifier = Modifier.fillMaxWidth()
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 32.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Column(
-                                modifier = Modifier.padding(32.dp).fillMaxWidth(),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Icon(
-                                    Icons.Outlined.QueryStats,
-                                    contentDescription = null,
-                                    tint = Color(0xFF9E9E9E),
-                                    modifier = Modifier.size(48.dp)
-                                )
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Text(
-                                    text = "No app usage recorded for $selectedPeriod",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = Color(0xFF757575)
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "Pull down or refresh to sync latest telemetry from SentrY",
-                                    fontSize = 11.sp,
-                                    color = Color(0xFFBDBDBD),
-                                    textAlign = TextAlign.Center
-                                )
-                            }
+                            Text(
+                                text = "No app activity recorded for this day",
+                                fontSize = 13.5.sp,
+                                color = Color(0xFF74777F)
+                            )
                         }
                     }
                 } else {
-                    // 5. App Usage Item Cards (with Real App Icons)
-                    items(liveApps, key = { "${it.packageName}_${it.durationMinutes}" }) { app ->
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color.White,
-                            shadowElevation = 1.5.dp,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(42.dp)
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .background(app.iconColor.copy(alpha = 0.12f)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            if (app.iconBitmap != null) {
-                                                Image(
-                                                    bitmap = app.iconBitmap.asImageBitmap(),
-                                                    contentDescription = app.name,
-                                                    modifier = Modifier
-                                                        .size(32.dp)
-                                                        .clip(RoundedCornerShape(8.dp))
-                                                )
-                                            } else {
-                                                Icon(app.icon, contentDescription = null, tint = app.iconColor, modifier = Modifier.size(24.dp))
-                                            }
-                                        }
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(
-                                                    text = app.name,
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 14.sp,
-                                                    color = Color(0xFF1D1B20)
-                                                )
-                                                if (app.isCurrentlyActive) {
-                                                    Spacer(modifier = Modifier.width(6.dp))
-                                                    Surface(
-                                                        shape = RoundedCornerShape(6.dp),
-                                                        color = Color(0xFFE8F5E9)
-                                                    ) {
-                                                        Row(
-                                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
-                                                            verticalAlignment = Alignment.CenterVertically
-                                                        ) {
-                                                            Box(modifier = Modifier.size(5.dp).clip(CircleShape).background(Color(0xFF2E7D32)))
-                                                            Spacer(modifier = Modifier.width(3.dp))
-                                                            Text("In Use", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = "${app.category} • ${app.openCount} opens",
-                                                fontSize = 11.sp,
-                                                color = Color(0xFF757575)
-                                            )
-                                        }
-                                    }
-
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text(
-                                            text = app.durationText,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 14.sp,
-                                            color = Color(0xFF1D1B20)
-                                        )
-                                        Text(
-                                            text = "${(app.percentage * 100).toInt()}% of time",
-                                            fontSize = 10.5.sp,
-                                            color = Color(0xFF757575)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                // Usage Progress bar
-                                LinearProgressIndicator(
-                                    progress = { app.percentage },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(5.dp)
-                                        .clip(CircleShape),
-                                    color = app.iconColor,
-                                    trackColor = Color(0xFFF0F0F0)
-                                )
-                            }
-                        }
+                    items(dayApps, key = { it.packageName }) { app ->
+                        AppDigitalWellbeingRow(app = app, metric = selectedMetric)
                     }
                 }
             }
@@ -694,10 +651,229 @@ fun ActivityScreen(
 }
 
 @Composable
-fun CategoryLegend(color: Color, name: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(color))
-        Spacer(modifier = Modifier.width(4.dp))
-        Text(text = name, fontSize = 10.sp, color = Color(0xFF757575), fontWeight = FontWeight.Medium)
+fun WeeklyHistogramChart(
+    days: List<DayActivityData>,
+    selectedIndex: Int,
+    onSelectDay: (Int) -> Unit
+) {
+    val maxMinutes = days.maxOfOrNull { it.screenTimeMinutes }?.coerceAtLeast(180) ?: 180
+    // Dynamic scale levels: 0h, max/3, 2*max/3, max
+    val scaleLevel1 = (maxMinutes * 0.33f / 60).toInt().coerceAtLeast(2)
+    val scaleLevel2 = (maxMinutes * 0.66f / 60).toInt().coerceAtLeast(scaleLevel1 + 2)
+    val scaleLevel3 = (maxMinutes * 1.0f / 60).toInt().coerceAtLeast(scaleLevel2 + 2)
+
+    val gridLabels = listOf(
+        "${scaleLevel3}h",
+        "${scaleLevel2}h",
+        "${scaleLevel1}h",
+        "0h"
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(160.dp)
+        ) {
+            // Left chart area with gridlines and bars
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+            ) {
+                // Background Horizontal Gridlines
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val canvasHeight = size.height - 24.dp.toPx()
+                    val stepY = canvasHeight / 3f
+
+                    for (i in 0..3) {
+                        val y = i * stepY
+                        drawLine(
+                            color = Color(0xFFE0E2E8),
+                            start = Offset(0f, y),
+                            end = Offset(size.width, y),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                    }
+                }
+
+                // 7 Vertical Bars
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(bottom = 24.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    val dayNames = arrayOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+                    for (i in 0..6) {
+                        val dayData = days.getOrNull(i)
+                        val isSelected = (i == selectedIndex)
+                        val isFuture = dayData?.isFuture == true
+                        val minutes = dayData?.screenTimeMinutes ?: 0
+                        val heightFraction = if (maxMinutes > 0 && !isFuture) {
+                            (minutes.toFloat() / (scaleLevel3 * 60f)).coerceIn(0.04f, 1.0f)
+                        } else 0f
+
+                        val barColor = when {
+                            isFuture -> Color.Transparent
+                            isSelected -> Color(0xFF0B57D0) // Digital Wellbeing Deep Blue for selected
+                            else -> Color(0xFFA8C7FA)       // Light pastel blue for other days
+                        }
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Bottom,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    enabled = !isFuture
+                                ) {
+                                    onSelectDay(i)
+                                }
+                        ) {
+                            if (!isFuture && heightFraction > 0f) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(22.dp)
+                                        .fillMaxHeight(heightFraction)
+                                        .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                                        .background(barColor)
+                                )
+                            } else {
+                                Spacer(modifier = Modifier.height(1.dp))
+                            }
+                        }
+                    }
+                }
+
+                // Day Labels at bottom (Sun, Mon, Tue, Wed, Thu, Fri, Sat)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    val dayNames = arrayOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+                    for (i in 0..6) {
+                        val isSelected = (i == selectedIndex)
+                        Text(
+                            text = dayNames[i],
+                            fontSize = 11.5.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) Color(0xFF0B57D0) else Color(0xFF74777F),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
+            // Right side grid labels (0h, 6h, 12h, 18h)
+            Column(
+                modifier = Modifier
+                    .width(32.dp)
+                    .fillMaxHeight()
+                    .padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.End
+            ) {
+                gridLabels.forEach { label ->
+                    Text(
+                        text = label,
+                        fontSize = 10.sp,
+                        color = Color(0xFF74777F)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AppDigitalWellbeingRow(
+    app: AppUsageStat,
+    metric: MetricType
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // App Icon
+        if (app.iconBitmap != null) {
+            Image(
+                bitmap = app.iconBitmap.asImageBitmap(),
+                contentDescription = app.name,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(app.iconColor.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = app.icon,
+                    contentDescription = app.name,
+                    tint = app.iconColor,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        // App Name and Category
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = app.name,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Normal,
+                color = Color(0xFF1D1B20),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        // Metric Value Text
+        val valueText = when (metric) {
+            MetricType.SCREEN_TIME -> app.durationText
+            MetricType.TIMES_OPENED -> "${app.openCount} opens"
+            MetricType.NOTIFICATIONS -> "${(app.openCount * 1.5).toInt()} notifs"
+        }
+
+        Text(
+            text = valueText,
+            fontSize = 13.5.sp,
+            color = Color(0xFF44474E),
+            fontWeight = FontWeight.Normal
+        )
+
+        Spacer(modifier = Modifier.width(14.dp))
+
+        // Digital Wellbeing Hourglass Timer Icon
+        Icon(
+            Icons.Outlined.HourglassEmpty,
+            contentDescription = "Set Timer",
+            tint = Color(0xFF74777F),
+            modifier = Modifier
+                .size(20.dp)
+                .clickable { /* timer action */ }
+        )
     }
 }

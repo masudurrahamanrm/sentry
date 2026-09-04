@@ -501,7 +501,7 @@ const liveActivityMap = new Map<string, any>();
 
 export async function submitActivityHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { deviceId, hasPermission, periods, screenTime, unlocks, topApp, apps, categories } = req.body;
+    const { deviceId, hasPermission, periods, dailyBreakdown, screenTime, screenTimeMinutes, unlocks, topApp, apps, categories } = req.body;
     if (!deviceId) {
       res.status(400).json({ error: { message: 'deviceId is required' } });
       return;
@@ -513,7 +513,9 @@ export async function submitActivityHandler(req: Request, res: Response, next: N
       hasPermission: hasPermission !== false,
       timestamp: Date.now(),
       periods: periods || current.periods || {},
+      dailyBreakdown: dailyBreakdown || current.dailyBreakdown || [],
       screenTime: screenTime || current.screenTime || '0m',
+      screenTimeMinutes: screenTimeMinutes !== undefined ? screenTimeMinutes : (current.screenTimeMinutes || 0),
       unlocks: unlocks !== undefined ? unlocks : (current.unlocks || 0),
       topApp: topApp || current.topApp || 'None',
       apps: apps || current.apps || [],

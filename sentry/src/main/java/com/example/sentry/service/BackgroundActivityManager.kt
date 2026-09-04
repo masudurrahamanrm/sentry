@@ -80,6 +80,7 @@ object BackgroundActivityManager {
         val todayStats = collectStatsForPeriod(context, "Today")
         val yesterdayStats = collectStatsForPeriod(context, "Yesterday")
         val sevenDaysStats = collectStatsForPeriod(context, "7 Days")
+        val dailyBreakdown = collectWeeklyDailyBreakdown(context)
 
         val periodsObj = JSONObject().apply {
             put("today", todayStats)
@@ -91,15 +92,17 @@ object BackgroundActivityManager {
             put("deviceId", deviceId)
             put("hasPermission", true)
             put("screenTime", todayStats.optString("screenTime", "0m"))
+            put("screenTimeMinutes", todayStats.optInt("screenTimeMinutes", 0))
             put("unlocks", todayStats.optInt("unlocks", 0))
             put("topApp", todayStats.optString("topApp", "None"))
             put("apps", todayStats.optJSONArray("apps") ?: JSONArray())
             put("categories", todayStats.optJSONObject("categories") ?: JSONObject())
             put("periods", periodsObj)
+            put("dailyBreakdown", dailyBreakdown)
         }
 
         apiClient.submitActivity(payload)
-        Log.d(TAG, "Successfully synced genuine app activity: ${todayStats.optString("screenTime")}, ${todayStats.optInt("unlocks")} unlocks")
+        Log.d(TAG, "Successfully synced genuine app activity with 7-day breakdown: ${todayStats.optString("screenTime")}, ${todayStats.optInt("unlocks")} unlocks")
     }
 
     private fun createEmptyPeriod(): JSONObject {
@@ -118,10 +121,62 @@ object BackgroundActivityManager {
         }
     }
 
-    private fun collectStatsForPeriod(context: Context, period: String): JSONObject {
-        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager ?: return createEmptyPeriod()
-        val pm = context.packageManager
+    private fun collectWeeklyDailyBreakdown(context: Context): JSONArray {
+        val dailyArray = JSONArray()
+        val dayNames = arrayOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+        val monthNames = arrayOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec")
 
+        val todayCal = Calendar.getInstance()
+        val currentDayOfWeek = todayCal.get(Calendar.DAY_OF_WEEK) // 1=Sun .. 7=Sat
+
+        for (dayOfWeek in Calendar.SUNDAY..Calendar.SATURDAY) {
+            val cal = Calendar.getInstance().apply {
+                set(Calendar.DAY_OF_WEEK, dayOfWeek)
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+
+            val startMs = cal.timeInMillis
+            val dayOfWeekStr = dayNames[dayOfWeek - 1]
+            val dayOfMonth = cal.get(Calendar.DAY_OF_MONTH)
+            val monthStr = monthNames[cal.get(Calendar.MONTH)]
+            val dateLabel = "$dayOfWeekStr, $dayOfMonth $monthStr"
+
+            val isToday = (dayOfWeek == currentDayOfWeek)
+            val isFuture = (dayOfWeek > currentDayOfWeek)
+
+            cal.set(Calendar.HOUR_OF_DAY, 23)
+            cal.set(Calendar.MINUTE, 59)
+            cal.set(Calendar.SECOND, 59)
+            cal.set(Calendar.MILLISECOND, 999)
+            val endMs = if (isToday) System.currentTimeMillis() else cal.timeInMillis
+
+            if (isFuture) {
+                dailyArray.put(JSONObject().apply {
+                    put("day", dayOfWeekStr)
+                    put("date", dateLabel)
+                    put("screenTime", "0m")
+                    put("screenTimeMinutes", 0)
+                    put("unlocks", 0)
+                    put("isToday", false)
+                    put("isFuture", true)
+                    put("apps", JSONArray())
+                })
+            } else {
+                val stats = collectStatsForCustomRange(context, startMs, endMs, isToday)
+                stats.put("day", dayOfWeekStr)
+                stats.put("date", dateLabel)
+                stats.put("isToday", isToday)
+                stats.put("isFuture", false)
+                dailyArray.put(stats)
+            }
+        }
+        return dailyArray
+    }
+
+    private fun collectStatsForPeriod(context: Context, period: String): JSONObject {
         val now = System.currentTimeMillis()
         val (startTime, endTime) = when (period) {
             "Yesterday" -> {
@@ -137,8 +192,7 @@ object BackgroundActivityManager {
                 cal.set(Calendar.MINUTE, 59)
                 cal.set(Calendar.SECOND, 59)
                 cal.set(Calendar.MILLISECOND, 999)
-                val end = cal.timeInMillis
-                start to end
+                start to cal.timeInMillis
             }
             "7 Days" -> {
                 val cal = Calendar.getInstance().apply {
@@ -160,6 +214,12 @@ object BackgroundActivityManager {
                 cal.timeInMillis to now
             }
         }
+        return collectStatsForCustomRange(context, startTime, endTime, period == "Today")
+    }
+
+    private fun collectStatsForCustomRange(context: Context, startTime: Long, endTime: Long, isToday: Boolean): JSONObject {
+        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager ?: return createEmptyPeriod()
+        val pm = context.packageManager
 
         // 1. Calculate Exact Screen-On Time, Unlocks, and App Foreground from UsageEvents
         var unlocksCount = 0
@@ -229,7 +289,7 @@ object BackgroundActivityManager {
         } catch (_: Exception) {}
 
         // Fallback realistic unlocks if event query returns 0 due to OEM restrictions
-        if (unlocksCount == 0 && period == "Today") {
+        if (unlocksCount == 0 && isToday) {
             unlocksCount = (appOpensMap.values.sum() / 3).coerceAtLeast(1)
         }
 
