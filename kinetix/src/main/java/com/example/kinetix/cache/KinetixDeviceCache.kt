@@ -216,7 +216,7 @@ object KinetixDeviceCache {
 
     // App Global Settings & Preferences
     fun getServerUrl(context: Context): String {
-        return getPrefs(context).getString("setting_server_url", "https://sentry-devloper-version.onrender.com/api/v1") ?: "https://sentry-devloper-version.onrender.com/api/v1"
+        return getPrefs(context).getString("setting_server_url", "https://sentry-qbaq.onrender.com/api/v1") ?: "https://sentry-qbaq.onrender.com/api/v1"
     }
 
     fun saveServerUrl(context: Context, url: String) {

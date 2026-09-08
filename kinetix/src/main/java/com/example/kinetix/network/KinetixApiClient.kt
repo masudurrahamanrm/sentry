@@ -30,6 +30,7 @@ class KinetixApiClient(
             if (custom.isNotBlank()) list.add(custom)
             if (baseUrl.isNotBlank() && !list.contains(baseUrl)) list.add(baseUrl)
             if (!list.contains(BuildConfig.BASE_URL)) list.add(BuildConfig.BASE_URL)
+            if (!list.contains("https://sentry-qbaq.onrender.com/api/v1")) list.add("https://sentry-qbaq.onrender.com/api/v1")
             if (!list.contains("https://sentry-devloper-version.onrender.com/api/v1")) list.add("https://sentry-devloper-version.onrender.com/api/v1")
             if (!list.contains("https://sentry-f502.onrender.com/api/v1")) list.add("https://sentry-f502.onrender.com/api/v1")
             return list

@@ -874,12 +874,12 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         SuggestionChip(
-                            onClick = { customServerInput = "https://sentry-devloper-version.onrender.com/api/v1" },
+                            onClick = { customServerInput = "https://sentry-qbaq.onrender.com/api/v1" },
                             label = { Text("Render Cloud", fontSize = 11.sp) }
                         )
                         SuggestionChip(
-                            onClick = { customServerInput = "https://sentry-f502.onrender.com/api/v1" },
-                            label = { Text("Backup Node", fontSize = 11.sp) }
+                            onClick = { customServerInput = "https://sentry-devloper-version.onrender.com/api/v1" },
+                            label = { Text("Developer Node", fontSize = 11.sp) }
                         )
                     }
                 }

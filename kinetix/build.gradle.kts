@@ -31,18 +31,18 @@ android {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            buildConfigField("String", "BASE_URL", "\"https://sentry-f502.onrender.com/api/v1\"")
+            buildConfigField("String", "BASE_URL", "\"https://sentry-qbaq.onrender.com/api/v1\"")
         }
         create("beta") {
             initWith(getByName("release"))
             applicationIdSuffix = ".beta"
             versionNameSuffix = "-beta"
             matchingFallbacks += listOf("release")
-            buildConfigField("String", "BASE_URL", "\"https://sentry-devloper-version.onrender.com/api/v1\"")
+            buildConfigField("String", "BASE_URL", "\"https://sentry-qbaq.onrender.com/api/v1\"")
         }
         debug {
             signingConfig = signingConfigs.getByName("debug")
-            buildConfigField("String", "BASE_URL", "\"https://sentry-devloper-version.onrender.com/api/v1\"")
+            buildConfigField("String", "BASE_URL", "\"https://sentry-qbaq.onrender.com/api/v1\"")
         }
     }
     compileOptions {

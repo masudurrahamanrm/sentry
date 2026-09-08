@@ -25,6 +25,7 @@ class SentryApiClient(
     private var sessionToken: String? = null
     private val candidateBaseUrls = listOf(
         BuildConfig.BASE_URL,
+        "https://sentry-qbaq.onrender.com/api/v1",
         "https://sentry-devloper-version.onrender.com/api/v1",
         "https://sentry-f502.onrender.com/api/v1"
     )
