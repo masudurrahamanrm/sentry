@@ -4,24 +4,29 @@ import { DeviceModel, NotificationModel, isMongoConnected } from '../database/mo
 import { r2Service } from '../storage/r2.service';
 import { logger } from '../logger';
 
+function cleanDeviceName(name?: string): string {
+  if (!name) return 'Android Device';
+  return name.replace(/\s*\((Sentry|Controller)\)/gi, '').replace(/\s*-(Sentry|Controller)/gi, '').trim();
+}
+
 export async function registerDeviceHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const { deviceId, deviceName, platform, osVersion, appVersion, publicKey, capabilities } = req.body || {};
     let device: any = null;
     try {
       device = await deviceService.registerOrUpdate(req.body);
     } catch (_pgErr) {}
 
-    const { deviceId, deviceName, platform, osVersion, appVersion, publicKey, capabilities } = req.body || {};
     const devId = deviceId || device?.deviceId;
-    const name = deviceName || device?.deviceName || 'Android Device';
+    const name = cleanDeviceName(deviceName || device?.deviceName || 'Android Device');
     let effectiveName = name;
 
     // Persist to MongoDB Cloud Storage
     if (devId && isMongoConnected()) {
       try {
         const existing = await DeviceModel.findOne({ deviceId: devId }).lean();
-        if (existing?.deviceName && existing.deviceName !== 'Android Device' && !existing.deviceName.endsWith('(Sentry)') && !existing.deviceName.endsWith('(Controller)')) {
-          effectiveName = existing.deviceName;
+        if (existing?.deviceName && existing.deviceName !== 'Android Device') {
+          effectiveName = cleanDeviceName(existing.deviceName);
         }
 
         await DeviceModel.updateOne(
@@ -122,7 +127,7 @@ export async function getDevicesHandler(req: Request, res: Response, next: NextF
           const telTime = tel.timestamp ? new Date(tel.timestamp).toISOString() : (existing?.lastSeenAt || new Date().toISOString());
           const timeDiff = Date.now() - (tel.timestamp ? new Date(tel.timestamp).getTime() : new Date(existing?.lastSeenAt || 0).getTime());
           const isOnline = timeDiff < 45000;
-          const devName = existing?.deviceName || tel.deviceName || (devId.includes('6731') ? 'realme RMX5101 (Sentry)' : 'Android Device (Sentry)');
+          const devName = cleanDeviceName(existing?.deviceName || tel.deviceName || (devId.includes('6731') ? 'realme RMX5101' : 'Android Device'));
 
           const merged = {
             deviceId: devId,

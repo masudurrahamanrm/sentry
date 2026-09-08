@@ -47,9 +47,13 @@ class KinetixApiClient(
         val deviceId = CryptoManager.getOrCreateDeviceId(context)
         val publicKeyPem = CryptoManager.getPublicKeyPem()
 
+        val manufacturer = Build.MANUFACTURER.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        val model = Build.MODEL
+        val devName = if (model.startsWith(manufacturer, ignoreCase = true)) model else "$manufacturer $model"
+
         val body = JSONObject().apply {
             put("deviceId", deviceId)
-            put("deviceName", "${Build.MANUFACTURER} ${Build.MODEL} (Controller)")
+            put("deviceName", devName)
             put("platform", "Android")
             put("osVersion", "Android ${Build.VERSION.RELEASE}")
             put("appVersion", "1.0.0")

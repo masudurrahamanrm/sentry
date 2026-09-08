@@ -33,8 +33,7 @@ fun CompanionInfoScreen(
     var deviceId by remember { mutableStateOf(com.example.sentry.crypto.CryptoManager.getOrCreateDeviceId(context)) }
     var deviceName by remember {
         mutableStateOf(
-            context.getSharedPreferences("sentry_device_prefs", Context.MODE_PRIVATE)
-                .getString("device_custom_name", "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} (Sentry)") ?: "Sentry Device"
+            com.example.sentry.config.SentryDeviceConfig.getDeviceName(context)
         )
     }
     var isConnected by remember { mutableStateOf(false) }

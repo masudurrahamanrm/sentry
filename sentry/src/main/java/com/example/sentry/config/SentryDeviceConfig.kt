@@ -9,15 +9,24 @@ object SentryDeviceConfig {
     private const val PREF_DEVICE_NAME = "device_name"
     private const val PREF_LAST_RENAMED = "last_renamed_time"
 
+    fun cleanDeviceName(name: String?): String {
+        if (name.isNullOrBlank()) return "Android Device"
+        return name
+            .replace(Regex("\\s*\\((Sentry|Controller)\\)", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("\\s*-(Sentry|Controller)", RegexOption.IGNORE_CASE), "")
+            .trim()
+    }
+
     fun getDeviceName(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val saved = prefs.getString(PREF_DEVICE_NAME, null)
         if (!saved.isNullOrBlank()) {
-            return saved
+            return cleanDeviceName(saved)
         }
         val manufacturer = Build.MANUFACTURER.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
         val model = Build.MODEL
-        return "$manufacturer $model (Sentry)"
+        val rawName = if (model.startsWith(manufacturer, ignoreCase = true)) model else "$manufacturer $model"
+        return cleanDeviceName(rawName)
     }
 
     fun setDeviceName(context: Context, newName: String) {

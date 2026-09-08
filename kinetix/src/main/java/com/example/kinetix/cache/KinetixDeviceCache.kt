@@ -11,12 +11,23 @@ object KinetixDeviceCache {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
-    fun saveDeviceName(context: Context, deviceId: String, name: String) {
-        getPrefs(context).edit().putString("name_$deviceId", name).apply()
+    fun cleanDeviceName(name: String?): String {
+        if (name.isNullOrBlank()) return "Android Device"
+        return name
+            .replace(Regex("\\s*\\((Sentry|Controller)\\)", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("\\s*-(Sentry|Controller)", RegexOption.IGNORE_CASE), "")
+            .trim()
     }
 
-    fun getDeviceName(context: Context, deviceId: String, defaultName: String = "realme RMX5101 (Sentry)"): String {
-        return getPrefs(context).getString("name_$deviceId", null) ?: defaultName
+    fun saveDeviceName(context: Context, deviceId: String, name: String) {
+        val cleaned = cleanDeviceName(name)
+        getPrefs(context).edit().putString("name_$deviceId", cleaned).apply()
+    }
+
+    fun getDeviceName(context: Context, deviceId: String, defaultName: String = "realme RMX5101"): String {
+        val saved = getPrefs(context).getString("name_$deviceId", null)
+        val rawName = if (!saved.isNullOrBlank()) saved else defaultName
+        return cleanDeviceName(rawName)
     }
 
     fun saveWallpaper(context: Context, deviceId: String, wallpaperBase64: String) {

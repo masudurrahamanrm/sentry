@@ -106,7 +106,7 @@ fun DeviceDetailScreen(
                             if (id == deviceId) {
                                 val fetchedName = item.optString("deviceName", item.optString("device_name", ""))
                                 val savedCustomName = com.example.kinetix.cache.KinetixDeviceCache.getDeviceName(context, deviceId, "")
-                                val finalName = if (savedCustomName.isNotBlank()) savedCustomName else fetchedName
+                                val finalName = com.example.kinetix.cache.KinetixDeviceCache.cleanDeviceName(if (savedCustomName.isNotBlank()) savedCustomName else fetchedName)
                                 if (finalName.isNotBlank()) {
                                     withContext(Dispatchers.Main) {
                                         deviceName = finalName

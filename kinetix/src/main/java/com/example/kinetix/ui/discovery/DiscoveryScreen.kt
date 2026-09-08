@@ -61,7 +61,7 @@ fun DiscoveryScreen(
                                 availableDevices.add(
                                     AvailableDevice(
                                         deviceId = devId,
-                                        deviceName = item.optString("deviceName", item.optString("device_name", "Sentry Device")),
+                                        deviceName = com.example.kinetix.cache.KinetixDeviceCache.cleanDeviceName(item.optString("deviceName", item.optString("device_name", "Android Device"))),
                                         platform = item.optString("platform", "Android"),
                                         osVersion = item.optString("osVersion", item.optString("os_version", "Android 14")),
                                         appVersion = item.optString("appVersion", item.optString("app_version", "1.0.0"))

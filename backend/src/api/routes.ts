@@ -743,12 +743,16 @@ router.delete('/audio/:deviceId/:audioId', async (req, res) => {
 export const liveBatteryTelemetry = new Map<string, any>();
 
 router.post('/battery/telemetry', async (req, res) => {
-  const { deviceId, deviceName, percentage, level, isCharging, chargingStatus, temperature, voltage, health, technology, powerSave, networkType, networkStatus, uptime, wallpaper, hardware } = req.body || {};
+  const cleanName = (name?: string) => {
+    if (!name) return 'Android Device';
+    return name.replace(/\s*\((Sentry|Controller)\)/gi, '').replace(/\s*-(Sentry|Controller)/gi, '').trim();
+  };
+
   const devId = deviceId || 'SN-U5ZY-78QZ';
   const existing = liveBatteryTelemetry.get(devId);
   const data = {
     deviceId: devId,
-    deviceName: existing?.deviceName || deviceName || 'realme RMX5101 (Sentry)',
+    deviceName: cleanName(existing?.deviceName || deviceName || 'realme RMX5101'),
     level: level ?? percentage ?? 100,
     percentage: percentage ?? level ?? 100,
     isCharging: isCharging ?? false,
@@ -886,7 +890,7 @@ router.get('/battery/:deviceId', async (req, res) => {
   res.json({
     telemetry: telemetry || {
       deviceId: devId,
-      deviceName: 'realme RMX5101 (Sentry)',
+      deviceName: 'realme RMX5101',
       level: 44,
       percentage: 44,
       isCharging: false,

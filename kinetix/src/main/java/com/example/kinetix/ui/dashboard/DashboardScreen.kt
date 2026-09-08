@@ -91,7 +91,8 @@ fun DashboardScreen(
                     val devId = obj.optString("deviceId", "")
                     if (devId.isNotBlank()) {
                         val savedCustomName = com.example.kinetix.cache.KinetixDeviceCache.getDeviceName(context, devId, "")
-                        val finalName = if (savedCustomName.isNotBlank()) savedCustomName else obj.optString("deviceName", "Device")
+                        val rawName = if (savedCustomName.isNotBlank()) savedCustomName else obj.optString("deviceName", "Device")
+                        val finalName = com.example.kinetix.cache.KinetixDeviceCache.cleanDeviceName(rawName)
                         add(
                             PairedDeviceItem(
                                 deviceId = devId,
@@ -270,8 +271,8 @@ fun DashboardScreen(
                             val item = arr.getJSONObject(i)
                             val devId = if (item.has("deviceId")) item.getString("deviceId") else item.optString("device_id", "")
                             val cachedName = com.example.kinetix.cache.KinetixDeviceCache.getDeviceName(context, devId, "")
-                            val serverName = if (item.has("deviceName")) item.getString("deviceName") else item.optString("device_name", "Sentry Device")
-                            val name = if (cachedName.isNotBlank()) cachedName else serverName
+                            val rawServerName = if (item.has("deviceName")) item.getString("deviceName") else item.optString("device_name", "Android Device")
+                            val name = com.example.kinetix.cache.KinetixDeviceCache.cleanDeviceName(if (cachedName.isNotBlank()) cachedName else rawServerName)
                             val platform = if (item.has("platform")) item.getString("platform") else "Android"
                             val osVer = if (item.has("osVersion")) item.getString("osVersion") else item.optString("os_version", "Android 14")
                             val status = if (item.has("status")) item.getString("status") else "ONLINE"
@@ -1127,7 +1128,7 @@ fun DashboardDeviceCard(
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = if (device.isThisDevice) "This device" else device.deviceName,
+                text = if (device.isThisDevice) "This device" else com.example.kinetix.cache.KinetixDeviceCache.cleanDeviceName(device.deviceName),
                 fontWeight = FontWeight.Bold,
                 fontSize = 14.sp,
                 color = Color(0xFF1D1B20)
